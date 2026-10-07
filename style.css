@@ -1,0 +1,723 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400&display=swap');
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "Roboto Condensed", sans-serif;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    font-style: normal;
+}
+
+#skrin {
+    background: #34567e;
+    padding: 20px 20px 0 20px;
+}
+
+#cernyLem {
+    background: #000;
+    padding: 1em;
+    border-radius: 3em;
+}
+
+/*#ridge-outer {
+    background: #dedede;
+    padding: 0.5em;
+    border-radius: 2em;
+    border: ridge 0.5em #dedede;
+}*/
+.ridge-outer {
+    border: .25em solid #dedede;
+    border-radius: 2em;
+}
+.ridge-inner {
+    border: .2em solid #808080;
+    border-radius: 1.8em;
+}
+
+#tabule {
+    width: 100%;
+    border-radius: 1em;
+    color: #fff;
+    border-collapse: collapse;
+}
+
+#tabule tr {
+    padding: 0;
+    margin: 0;
+    border-top: solid 0.5em #dedede;
+}
+
+#tabule tr:first-of-type {
+    border-top: none;
+    height: 4em;
+}
+
+#tabule tr:first-of-type td {
+    border-top-left-radius: 1.5em;
+    border-top-right-radius: 1.5em;
+}
+
+#tabule td {
+    padding: 0 4em;
+    margin: 0;
+    background: #333;
+    width: 1px;
+}
+
+#tabule td.light {
+    background: #ccc;
+    color: #000;
+    text-transform: uppercase;
+}
+
+#tabule td:first-of-type {
+    width: auto;
+}
+
+#tabule td.bottomLeft {
+    border-bottom-left-radius: 1.5em;
+}
+
+#tabule img {
+    height: 5em;
+    width: auto;
+    vertical-align: middle;
+}
+
+#tabule span {
+    font-size: 3em;
+}
+
+#clockBlock {
+    background: #000 !important;
+    zoom: 50%;
+    border-bottom-right-radius: 3em;
+}
+
+#pragotronAnalogClock {
+    background: #fff;
+    padding: 4em 2em 2em 2em;
+    width: 512px;
+    height: 512px;
+    border-radius: 512px;
+    filter: invert(1);
+}
+
+#clockBlock div.label {
+    text-transform: uppercase;
+    color: #fff;
+    text-align: center;
+    font-size: 3.5em;
+    padding: 0.25em 0;
+}
+
+/* One wide flap for the delay value. The number and unit flip together. */
+#tabule .delay-flap-display {
+    --flap-background: #333;
+    --flap-foreground: #fff;
+    position: relative;
+    display: inline-block;
+    width: 12em;
+    height: 5em;
+    overflow: hidden;
+    vertical-align: middle;
+    perspective: 8em;
+    color: var(--flap-foreground);
+    font-family: "Roboto Condensed", "Arial Narrow", sans-serif;
+    font-size: 1em;
+    line-height: 1;
+    transform-style: preserve-3d;
+    margin: -2em 0;
+}
+
+#tabule .delay-flap-half {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.42);
+    color: var(--flap-foreground);
+    backface-visibility: hidden;
+    font-size: 1em;
+    transform-style: preserve-3d;
+}
+
+#tabule .delay-flap-half--top-current,
+#tabule .delay-flap-half--top-next {
+    top: 0;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 48%),
+        var(--flap-background);
+    transform-origin: center bottom;
+}
+
+#tabule .delay-flap-half--bottom-current,
+#tabule .delay-flap-half--bottom-next {
+    top: 50%;
+    background:
+        linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.04) 60%),
+        var(--flap-background);
+    transform-origin: center top;
+}
+
+#tabule .delay-flap-half--top-current {
+    z-index: 4;
+}
+
+#tabule .delay-flap-half--top-next {
+    z-index: 3;
+}
+
+#tabule .delay-flap-half--bottom-current {
+    z-index: 2;
+}
+
+#tabule .delay-flap-half--bottom-next {
+    z-index: 5;
+    transform: rotateX(90deg);
+}
+
+#tabule .delay-flap-content {
+    position: absolute;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    height: 200%;
+    padding-left: 1em;
+    box-sizing: border-box;
+    font-size: 1em;
+    white-space: nowrap;
+}
+
+#tabule .delay-flap-half--top-current .delay-flap-content,
+#tabule .delay-flap-half--top-next .delay-flap-content {
+    top: 0;
+}
+
+#tabule .delay-flap-half--bottom-current .delay-flap-content,
+#tabule .delay-flap-half--bottom-next .delay-flap-content {
+    top: -100%;
+}
+
+#tabule .delay-flap-number {
+    font-size: 3em;
+    line-height: 1;
+}
+
+#tabule .delay-flap-unit {
+    margin-top: 0.5em;
+    margin-left: 0.2em;
+    font-size: 1.1em;
+    line-height: 1;
+}
+
+#tabule .delay-flap-display::after {
+    position: absolute;
+    top: calc(50% - 1px);
+    right: 0;
+    left: 0;
+    z-index: 10;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.62);
+    content: "";
+    pointer-events: none;
+}
+
+#tabule .delay-flap-display.is-flipping .delay-flap-half--top-current {
+    animation: flap-top 0.2s ease-in forwards;
+}
+
+#tabule .delay-flap-display.is-flipping .delay-flap-half--bottom-next {
+    animation: flap-bottom 0.2s ease-out 0.2s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #tabule .delay-flap-half--top-current,
+    #tabule .delay-flap-half--bottom-next {
+        animation: none !important;
+        transform: none !important;
+    }
+}
+
+div.logo {
+    height: 24px;
+    line-height: 24px;
+}
+
+img.pragotronLogo {
+    height: 24px;
+    margin: 0 1em 0 0;
+}
+
+.textRight {
+    text-align: right;
+}
+
+/* Split-flap board */
+#tabule {
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    overflow: hidden;
+}
+
+#tabule tr {
+    border-top: 0;
+}
+
+#tabule tr:first-of-type {
+    height: 2em;
+}
+
+#tabule tr + tr td {
+    border-top: solid 0.5em #dedede;
+}
+
+#tabule col.destinationColumn {
+    width: 54%;
+}
+
+#tabule col.detailColumn {
+    width: 18%;
+}
+
+#tabule col.clockColumn {
+    width: 28%;
+}
+
+#tabule td {
+    width: auto;
+    padding: 0.65em 0.7em;
+    vertical-align: middle;
+}
+
+#tabule td.displayCell {
+    padding-top: 0.8em;
+    padding-bottom: 0.8em;
+}
+
+#tabule td.destinationCell,
+#tabule td.trainCell,
+#tabule td.delayCell {
+    background: #a51f1d;
+}
+
+#tabule td.timeCell {
+    background: #151515;
+}
+
+#tabule td.delayLabelCell {
+    padding-right: 0.9em;
+}
+
+#tabule td#clockBlock {
+    padding: 0;
+}
+
+#clockBlock {
+    zoom: 1;
+    overflow: hidden;
+}
+
+#pragotronAnalogClock {
+    width: 256px;
+    height: 256px;
+    margin: 0 auto;
+    padding: 2em 1em 1em;
+    border-radius: 256px;
+}
+
+#pragotronAnalogClock canvas {
+    display: block;
+    width: 256px;
+    height: 256px;
+}
+
+#clockBlock div.label {
+    font-size: 1.75em;
+}
+
+#tabule .flap-character,
+#tabule .flap-half,
+#tabule .flap-glyph {
+    font-size: inherit;
+}
+
+.flap-display {
+    --flap-background: #a51f1d;
+    --flap-foreground: #f5f4ed;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.07em;
+    min-width: 0;
+    height: 1.08em;
+    overflow: visible;
+    color: var(--flap-foreground);
+    font-family: "Roboto Condensed", "Arial Narrow", sans-serif;
+    font-size: clamp(1.35rem, 3.5vw, 3rem);
+    font-weight: 400;
+    line-height: 1;
+    text-align: left;
+}
+
+.flap-display--light {
+    --flap-background: #c7c9c4;
+    --flap-foreground: #171717;
+}
+
+.destinationCell .flap-display {
+    font-size: clamp(1.35rem, 5vw, 4rem);
+}
+
+.trainCell .flap-display {
+    justify-content: center;
+    font-size: clamp(1.5rem, 4vw, 3.2rem);
+}
+
+.timeCell .flap-display {
+    justify-content: center;
+    --flap-background: #171717;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(1.15rem, 3vw, 2.4rem);
+}
+
+.delayLabelCell .flap-display {
+    justify-content: flex-end;
+    gap: 0.045em;
+    font-size: clamp(0.75rem, 1.9vw, 1.55rem);
+}
+
+#tabule .staticLabel {
+    display: block;
+    font-size: clamp(0.75rem, 1.9vw, 1.55rem);
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.delayCell .flap-display {
+    justify-content: center;
+    font-size: clamp(0.95rem, 2.2vw, 1.8rem);
+}
+
+.flap-character {
+    position: relative;
+    display: block;
+    flex: 0 0 0.64em;
+    width: 0.64em;
+    height: 1.6em;
+    overflow: hidden;
+    perspective: 8em;
+    transform-style: preserve-3d;
+}
+
+.flap-half {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.42);
+    color: var(--flap-foreground);
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+}
+
+.flap-half--top-current,
+.flap-half--top-next {
+    top: 0;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 48%),
+        var(--flap-background);
+    transform-origin: center bottom;
+}
+
+.flap-half--bottom-current,
+.flap-half--bottom-next {
+    top: 50%;
+    background:
+        linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.04) 60%),
+        var(--flap-background);
+    transform-origin: center top;
+}
+
+.flap-half--top-current {
+    z-index: 4;
+}
+
+.flap-half--top-next {
+    z-index: 3;
+}
+
+.flap-half--bottom-current {
+    z-index: 2;
+}
+
+.flap-half--bottom-next {
+    z-index: 5;
+    transform: rotateX(90deg);
+}
+
+.flap-glyph {
+    position: absolute;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 200%;
+    white-space: pre;
+    line-height: 1em;
+}
+
+.flap-half--top-current .flap-glyph,
+.flap-half--top-next .flap-glyph {
+    top: 0;
+}
+
+.flap-half--bottom-current .flap-glyph,
+.flap-half--bottom-next .flap-glyph {
+    top: -100%;
+}
+
+.flap-character::after {
+    position: absolute;
+    top: calc(50% - 1px);
+    right: 0;
+    left: 0;
+    z-index: 10;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.62);
+    content: "";
+    pointer-events: none;
+}
+
+@keyframes flap-top {
+    from {
+        transform: rotateX(0deg);
+    }
+
+    to {
+        transform: rotateX(-90deg);
+    }
+}
+
+@keyframes flap-bottom {
+    from {
+        transform: rotateX(90deg);
+    }
+
+    to {
+        transform: rotateX(0deg);
+    }
+}
+
+.flap-character.is-flipping .flap-half--top-current {
+    animation: flap-top 0.2s ease-in forwards;
+    animation-delay: var(--flap-delay, 0ms);
+}
+
+.flap-character.is-flipping .flap-half--bottom-next {
+    animation: flap-bottom 0.2s ease-out forwards;
+    animation-delay: calc(var(--flap-delay, 0ms) + 0.2s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .flap-half--top-current,
+    .flap-half--bottom-next {
+        animation: none !important;
+        transform: none !important;
+    }
+}
+
+@media (max-width: 700px) {
+    #skrin {
+        padding: 10px 10px 0;
+    }
+
+    #cernyLem {
+        padding: 0.55em;
+        border-radius: 1.5em;
+    }
+
+    #tabule td {
+        padding-right: 0.35em;
+        padding-left: 0.35em;
+    }
+
+    #tabule td.displayCell {
+        padding-top: 0.55em;
+        padding-bottom: 0.55em;
+    }
+
+    #pragotronAnalogClock {
+        width: 64px;
+        height: 64px;
+        padding: 0.5em 0.25em 0.25em;
+        border-radius: 64px;
+    }
+
+    #pragotronAnalogClock canvas {
+        width: 64px;
+        height: 64px;
+    }
+
+    #clockBlock div.label {
+        font-size: 0.6em;
+        line-height: 1.1;
+    }
+
+    .flap-display {
+        gap: 0.045em;
+        font-size: clamp(0.78rem, 4.2vw, 1.6rem);
+    }
+
+    .destinationCell .flap-display {
+        font-size: clamp(0.85rem, 5.8vw, 2rem);
+    }
+
+    .trainCell .flap-display {
+        font-size: clamp(0.95rem, 4.8vw, 1.8rem);
+    }
+
+    .timeCell .flap-display {
+        font-size: clamp(0.72rem, 3.7vw, 1.35rem);
+    }
+
+    .delayLabelCell .flap-display {
+        font-size: clamp(0.5rem, 2.1vw, 0.85rem);
+    }
+
+    #tabule .staticLabel {
+        font-size: clamp(0.5rem, 2.1vw, 0.85rem);
+    }
+
+    .delayCell .flap-display {
+        font-size: clamp(0.58rem, 2.4vw, 0.95rem);
+    }
+}
+
+/* Preserve the original board geometry; the rules above only provide the
+   reusable flap animation. */
+#skrin {
+    padding: 20px 20px 0;
+}
+
+#cernyLem {
+    padding: 1em;
+    border-radius: 3em;
+}
+
+#tabule {
+    border-collapse: collapse;
+    border-spacing: 0;
+    table-layout: auto;
+    overflow: visible;
+}
+
+#tabule tr {
+    border-top: solid 0.5em #dedede;
+}
+
+#tabule tr:first-of-type {
+    border-top: none;
+    height: 4em;
+}
+
+#tabule tr + tr td {
+    border-top: none;
+}
+
+#tabule td,
+#tabule td.displayCell,
+#tabule td.delayLabelCell,
+#tabule td#clockBlock {
+    width: 1px;
+    padding: 0 2em;
+    vertical-align: middle;
+}
+
+#tabule td:first-of-type {
+    width: auto;
+}
+
+#tabule td.destinationCell,
+#tabule td.trainCell,
+#tabule td.timeCell,
+#tabule td.delayCell {
+    background: #333;
+}
+
+#tabule .flap-display {
+    --flap-background: #333;
+    --flap-foreground: #fff;
+    display: inline-flex;
+    vertical-align: middle;
+    gap: 0.04em;
+    height: 1em;
+    min-width: 0;
+    overflow: visible;
+    font-size: 3em;
+}
+
+#tabule .destinationCell .flap-display,
+#tabule .trainCell .flap-display,
+#tabule .timeCell .flap-display,
+#tabule .delayCell .flap-display {
+    justify-content: flex-start;
+    font-size: 3em;
+}
+
+#tabule .trainCell .flap-display {
+    /* Reserve the width of the original EuroCity logo. */
+    min-width: 6.56em;
+}
+
+#tabule .flap-character {
+    flex-basis: 0.8em;
+    width: 0.8em;
+}
+
+#tabule .staticLabel {
+    display: inline;
+    font-size: 3em;
+    line-height: normal;
+    white-space: nowrap;
+}
+
+#clockBlock {
+    zoom: 50%;
+    overflow: visible;
+}
+
+#pragotronAnalogClock {
+    width: 512px;
+    height: 512px;
+    margin: 0;
+    padding: 4em 2em 2em 2em;
+    border-radius: 512px;
+}
+
+#pragotronAnalogClock canvas {
+    display: inline;
+    width: 512px;
+    height: 512px;
+}
+
+#clockBlock div.label {
+    text-transform: uppercase;
+    color: #fff;
+    text-align: center;
+    font-size: 3.5em;
+    padding: 0.25em 0;
+}

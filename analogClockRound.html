@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="author" content="Ondřej Kotas, KRtkovo.eu" />
+    <meta name="description" content="TLD registrator | Official Moravian Djamahiriya national TLD registrator" />
+    <meta name="keywords" content="moravia,djamahiriya,moravská,občanika,moravska,obcanika,registrator,domen,domain" />
+    <meta name="robots" content="index, follow" />
+
+    <title>PRAGOTRON</title>
+
+    <link href="favicon.ico" rel="icon" />
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script language="javascript" type="text/javascript" src="js/jquery.thooClock.js"></script>
+
+    <style type="text/css">
+        html, body {
+            margin: 0;
+            padding: 0;
+        }
+                
+        #pragotronAnalogClock {
+            background: #fff;
+            border: solid #000 1em;
+            padding: 2em;
+            width: 512px;
+            height: 512px;
+            border-radius: 512px;
+            box-shadow: inset rgba(60, 70, 85, 0.5) 0px 0px 40px 0px, inset rgba(60, 70, 85, 0.5) 0px 0px 40px 0px, inset rgba(0, 0, 0, 1) 0px 0px 36px -24px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="pragotronAnalogClock"></div>
+
+    <script language="javascript">
+        /*$(window).resize(function(){
+            window.location.reload()
+        });*/
+    
+        $(document).ready(function(){
+    
+            var audioElement = new Audio("");
+    
+            //clock plugin constructor
+            $('#pragotronAnalogClock').thooClock({
+                size:512,
+                sweepingMinutes:true,
+                sweepingSeconds:true,
+                showNumerals:false,
+                //brandText:'PRAGOTRON',
+                //brandText2:'Czechoslovakia',
+                brandText:'',
+                brandText2:'',
+                onEverySecond:function(){
+                    //callback that should be fired every second
+                    //console.log(new Date().getSeconds());
+                },
+                secondHandEnabled: false
+            });
+    
+        });
+    </script>
+    
+</body>
+</html>
