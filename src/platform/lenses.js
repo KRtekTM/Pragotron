@@ -35,7 +35,7 @@ export const LENS_DEFAULTS = Object.freeze({
     color: 'green',
     enabled: false,
     blinking: true,
-    blinkInterval: 0.2,
+    blinkInterval: 0.4,
     blinkDelay: 0
 });
 

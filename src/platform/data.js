@@ -164,12 +164,13 @@ export const createEmptyBoardState = () => ({
 
 export const cloneBoardState = (state) => {
     const source = state && typeof state === 'object' ? state : {};
+    const stations = Array.isArray(source.stations)
+        ? source.stations
+        : [source.stationOne, source.stationTwo];
 
     return {
         ...source,
-        stations: Array.isArray(source.stations)
-            ? [source.stations[0] || '', source.stations[1] || '']
-            : ['', ''],
+        stations: [stations[0] || '', stations[1] || ''],
         train: source.train || '',
         delay: source.delay ?? '',
         departureTime: source.departureTime

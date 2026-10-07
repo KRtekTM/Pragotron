@@ -120,7 +120,13 @@ Aktuální pořadí fyzické klapky je:
 
 Pořadí není pouze seznam povolených znaků. Klapka při animaci postupuje
 sekvenčně od aktuálního znaku k cílovému znaku, proto musí odpovídat pořadí
-znaků na skutečném kotouči.
+znaků na skutečném kotouči. Platí přitom pevné pravidlo fyzického mechanismu:
+každý split-flap se smí posunout pouze na následující položku sekvence.
+Komponenta nikdy nevolí kratší cestu zpět. Například změna `5` na `4` musí
+projít přes `6`, `7`, `8`, `9`, prázdnou kartu, `0`, `1`, `2`, `3` a teprve
+potom `4`. Toto pravidlo platí také pro vlastní číselné, časové, zpožďovací a
+vlakové katalogy, které proto musí být cyklické a musí obsahovat prázdnou kartu,
+pokud ji fyzický kotouč má.
 
 `SplitFlapDisplay`:
 
@@ -398,15 +404,15 @@ lenses.set({
             color: 'green',
             enabled: true,
             blinking: true,
-            blinkInterval: 0.2,
+            blinkInterval: 0.4,
             blinkDelay: 0
         },
         {
             color: 'green',
             enabled: true,
             blinking: true,
-            blinkInterval: 0.2,
-            blinkDelay: 0.7
+            blinkInterval: 0.4,
+            blinkDelay: 0.4
         }
     ],
     preDeparture: {
@@ -519,6 +525,15 @@ const registry = createDefaultRegistry({ audio });
 Výchozí cesta je `split-flap.wav` relativně k aktuálnímu dokumentu.
 Vlastní audio objekt lze předat všem display komponentám nebo sdílet přes
 `createDefaultRegistry()`.
+
+Prohlížeč povolí přehrávání až po uživatelské akci. Controller může aktivaci
+navázat na kořen tabule a stav zobrazit ve vzdáleném manage:
+
+```js
+audio.bindUserActivation(boardRoot);
+audio.subscribe((state) => console.log(state.unlocked));
+audio.getState(); // { available, unlocked }
+```
 
 Pro vypnutí zvuku v testu lze předat vlastní audio objekt s prázdnou metodou:
 
@@ -844,6 +859,36 @@ při jeho nedostupnosti použije `storage` event přes vlastní namespaced klí�
 Obě stránky proto musí být otevřené ve stejném prohlížeči a na stejném originu.
 Příkazy s animovanou změnou dostávají potvrzení až po `board.isSettled()`.
 
+Každá nástupištní tabule má stabilní identitu složenou z nástupiště, koleje
+a volitelného sektoru. Nastavit ji lze parametry URL:
+
+```text
+platformTable.html?platform=1&track=6a&sector=Jih
+```
+
+nebo po načtení tabule příkazem v konzoli:
+
+```js
+window.pragotron.configureIdentity({
+    platform: "1",
+    track: "6a",
+    sector: "Jih"
+});
+```
+
+Identita se ukládá do `sessionStorage`. Manage stránka tabule objevuje pomocí
+discovery zpráv a heartbeatů; v seznamu proto může být současně více tabulí
+stejné identity. Příkaz s prázdným sektorem se doručí všem sektorům dané
+koleje, zatímco vyplněný sektor se doručí pouze přesné shodě.
+
+U každé aktivní tabule je v manage stránce také administrátorské tlačítko
+`Identifikovat čočky`. Cíleně rozsvítí všechny čočky dané instance bez
+blikání. Druhé stisknutí obnoví původní stav podle právě platného odjezdu;
+identifikace proto nemění uložené nastavení ani odjezd.
+
+V manage editoru je volba `Bliká` záměrně pouze informativní a zůstává vždy
+zaškrtnutá; blikání čoček je součástí jejich komponentového chování.
+
 ```js
 const transport = new BoardTransport();
 
@@ -855,6 +900,11 @@ transport.subscribe((message) => {
 
 transport.publish('board:command', {
     action: 'apply-board',
+    target: {
+        platform: '1',
+        track: '6a',
+        sector: 'Jih'
+    },
     state: {
         stations: ['PRAHA', 'BRNO'],
         train: 'Ex',
@@ -866,6 +916,18 @@ transport.publish('board:command', {
 ```
 
 ## Persistence a vzdálené ovládání
+
+PoC manage ukládá odeslané odjezdy do namespaced `localStorage` jako kolekci
+unikátní podle kombinace `platform + track + sector`. Odeslání stejné
+kombinace řádek nahradí. Nově připojená tabule s odpovídající identitou dostane
+automaticky poslední uložený stav; reset ukládá i explicitní prázdný stav, aby
+se po reconnectu neobnovil starý odjezd. Číselné zpoždění zůstává skutečnou
+hodnotou, ale zobrazovací komponenta používá katalog nejbližší nižší hodnoty
+podle pravidla do 5 minut včetně skrytě.
+
+Manage může u odjezdu evidovat také volitelné číslo vlaku o délce nejvýše
+čtyř číslic. Zobrazuje se a řadí v manage tabulce, ale aktuální nástupištní
+tabule ho zatím nepoužívá ani nevykresluje.
 
 Framework komponenty samy neukládají stav. Controller může použít
 `LocalStorageAdapter`:

@@ -319,45 +319,31 @@ export class DelayFlapDisplay {
     updateLabel() {
         this.element.setAttribute(
             'aria-label',
-            this.currentValue === ''
+            this.targetValue === ''
                 ? 'Bez meškania'
-                : `Meškanie ${this.currentValue} minút`
+                : `Meškanie ${this.targetValue} minút`
         );
     }
 
     set(value) {
         const next = this.parse(value);
-        const current = this.currentValue === undefined ? '' : this.currentValue;
         const sequence = ++this.sequence;
         this.targetValue = next;
 
         clearTimer(this, 'timer');
         this.element.classList.remove('is-flipping');
-        this.render(current, next);
-        this.currentValue = next;
+        clearFlipTiming(this.element);
         this.updateLabel();
 
-        if (current === next || this.reducedMotion) {
+        if (this.currentValue === next) {
             this.render(next, next);
+            this.currentValue = next;
             return this.currentValue;
         }
 
-        const flipDuration = getFlapDuration();
-        applyFlipTiming(this.element, flipDuration);
-        this.audio.play();
-        this.element.classList.add('is-flipping');
+        this.advance(sequence);
 
-        this.timer = window.setTimeout(() => {
-            if (sequence !== this.sequence) {
-                return;
-            }
-
-            this.render(next, next);
-            this.element.classList.remove('is-flipping');
-            this.timer = null;
-        }, flipDuration);
-
-        return this.currentValue;
+        return this.targetValue;
     }
 
     setImmediate(value) {
@@ -373,30 +359,29 @@ export class DelayFlapDisplay {
     }
 
     clear() {
-        const sequence = ++this.sequence;
-        this.targetValue = '';
-        clearTimer(this, 'timer');
-        this.element.classList.remove('is-flipping');
-        this.advanceToBlank(sequence);
+        return this.set('');
     }
 
     advanceToBlank(sequence) {
-        if (sequence !== this.sequence || this.currentValue === '') {
+        this.advance(sequence);
+    }
+
+    advance(sequence) {
+        if (sequence !== this.sequence || this.currentValue === this.targetValue) {
             return;
         }
 
+        // A physical delay flap has one cyclic catalog. It may only advance
+        // to the next card; it must never take a shorter reverse route.
         const currentIndex = this.values.indexOf(this.currentValue);
-        const next = currentIndex >= 0 && currentIndex + 1 < this.values.length
-            ? this.values[currentIndex + 1]
-            : '';
-
+        const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0;
+        const next = this.values[(safeCurrentIndex + 1) % this.values.length];
         this.render(this.currentValue, next);
-        this.currentValue = next;
-        this.updateLabel();
 
         if (this.reducedMotion) {
             this.render(next, next);
-            scheduleFrame(() => this.advanceToBlank(sequence));
+            this.currentValue = next;
+            scheduleFrame(() => this.advance(sequence));
             return;
         }
 
@@ -412,13 +397,14 @@ export class DelayFlapDisplay {
 
             this.render(next, next);
             this.element.classList.remove('is-flipping');
+            this.currentValue = next;
             this.timer = null;
-            this.advanceToBlank(sequence);
+            this.advance(sequence);
         }, flipDuration);
     }
 
     getValue() {
-        return this.currentValue;
+        return this.targetValue;
     }
 
     isSettled() {
@@ -719,16 +705,14 @@ export class SequentialNumericFlap {
             return;
         }
 
+        // Numeric flaps also use a forward-only cycle: max -> blank -> min.
         let next;
         if (this.currentValue === '') {
             next = this.minimum;
-        } else if (this.targetValue === '') {
+        } else {
             next = this.currentValue === this.maximum
                 ? ''
                 : this.currentValue + 1;
-        } else {
-            const direction = this.targetValue > this.currentValue ? 1 : -1;
-            next = this.currentValue + direction;
         }
         const current = this.currentValue;
         this.render(current, next);

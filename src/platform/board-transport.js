@@ -1,6 +1,6 @@
-export const BOARD_TRANSPORT_CHANNEL = 'pragotron.platformTable.channel.v1';
+export const BOARD_TRANSPORT_CHANNEL = 'pragotron.platformTable.channel.v2';
 export const BOARD_TRANSPORT_STORAGE_KEY =
-    'pragotron.platformTable.transport.v1';
+    'pragotron.platformTable.transport.v2';
 
 const createId = (prefix) => {
     const random = globalThis.crypto?.randomUUID?.();
@@ -24,9 +24,11 @@ export class BoardTransport {
         channelName = BOARD_TRANSPORT_CHANNEL,
         storageKey = BOARD_TRANSPORT_STORAGE_KEY,
         storage,
-        windowRef = globalThis.window
+        windowRef = globalThis.window,
+        boardId = ''
     } = {}) {
         this.id = createId('client');
+        this.boardId = typeof boardId === 'string' ? boardId : '';
         this.storageKey = storageKey;
         this.storage = getStorage(storage);
         this.window = windowRef;
@@ -73,10 +75,19 @@ export class BoardTransport {
 
     receive(message) {
         if (!message
-            || message.version !== 1
+            || message.version !== 2
             || typeof message.messageId !== 'string'
             || message.source === this.id
             || this.seenMessages.has(message.messageId)) {
+            return;
+        }
+
+        if (message.target?.source && message.target.source !== this.id) {
+            return;
+        }
+
+        if (message.target?.boardId
+            && message.target.boardId !== this.boardId) {
             return;
         }
 
@@ -84,9 +95,14 @@ export class BoardTransport {
         this.listeners.forEach((listener) => listener(message));
     }
 
-    publish(type, payload = {}, requestId = createId('request')) {
+    publish(type, payload = {}, requestIdOrOptions) {
+        const options = requestIdOrOptions
+            && typeof requestIdOrOptions === 'object'
+            ? requestIdOrOptions
+            : { requestId: requestIdOrOptions };
+        const requestId = options.requestId || createId('request');
         const message = {
-            version: 1,
+            version: 2,
             messageId: createId('message'),
             requestId,
             source: this.id,
@@ -94,6 +110,11 @@ export class BoardTransport {
             payload,
             sentAt: Date.now()
         };
+        if (options.target) {
+            message.target = {
+                ...options.target
+            };
+        }
         this.remember(message.messageId);
 
         try {

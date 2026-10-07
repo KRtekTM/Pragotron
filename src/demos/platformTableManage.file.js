@@ -251,7 +251,7 @@
     color: "green",
     enabled: false,
     blinking: true,
-    blinkInterval: 0.2,
+    blinkInterval: 0.4,
     blinkDelay: 0
   });
   var LENS_BLINK_INTERVAL_MIN = 0.1;
@@ -655,8 +655,8 @@
   };
 
   // src/platform/board-transport.js
-  var BOARD_TRANSPORT_CHANNEL = "pragotron.platformTable.channel.v1";
-  var BOARD_TRANSPORT_STORAGE_KEY = "pragotron.platformTable.transport.v1";
+  var BOARD_TRANSPORT_CHANNEL = "pragotron.platformTable.channel.v2";
+  var BOARD_TRANSPORT_STORAGE_KEY = "pragotron.platformTable.transport.v2";
   var createId = (prefix) => {
     const random = globalThis.crypto?.randomUUID?.();
     return `${prefix}-${random || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
@@ -676,9 +676,11 @@
       channelName = BOARD_TRANSPORT_CHANNEL,
       storageKey = BOARD_TRANSPORT_STORAGE_KEY,
       storage: storage2,
-      windowRef = globalThis.window
+      windowRef = globalThis.window,
+      boardId = ""
     } = {}) {
       this.id = createId("client");
+      this.boardId = typeof boardId === "string" ? boardId : "";
       this.storageKey = storageKey;
       this.storage = getStorage(storage2);
       this.window = windowRef;
@@ -716,15 +718,23 @@
       }
     }
     receive(message) {
-      if (!message || message.version !== 1 || typeof message.messageId !== "string" || message.source === this.id || this.seenMessages.has(message.messageId)) {
+      if (!message || message.version !== 2 || typeof message.messageId !== "string" || message.source === this.id || this.seenMessages.has(message.messageId)) {
+        return;
+      }
+      if (message.target?.source && message.target.source !== this.id) {
+        return;
+      }
+      if (message.target?.boardId && message.target.boardId !== this.boardId) {
         return;
       }
       this.remember(message.messageId);
       this.listeners.forEach((listener) => listener(message));
     }
-    publish(type, payload = {}, requestId = createId("request")) {
+    publish(type, payload = {}, requestIdOrOptions) {
+      const options = requestIdOrOptions && typeof requestIdOrOptions === "object" ? requestIdOrOptions : { requestId: requestIdOrOptions };
+      const requestId = options.requestId || createId("request");
       const message = {
-        version: 1,
+        version: 2,
         messageId: createId("message"),
         requestId,
         source: this.id,
@@ -732,6 +742,11 @@
         payload,
         sentAt: Date.now()
       };
+      if (options.target) {
+        message.target = {
+          ...options.target
+        };
+      }
       this.remember(message.messageId);
       try {
         this.channel?.postMessage(message);
@@ -758,6 +773,40 @@
     }
   };
 
+  // src/platform/board-identity.js
+  var IDENTITY_FIELDS = Object.freeze([
+    "platform",
+    "track",
+    "sector"
+  ]);
+  var cleanValue = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
+  var normalizeBoardIdentity = (value = {}) => ({
+    platform: cleanValue(value.platform),
+    track: cleanValue(value.track),
+    sector: cleanValue(value.sector)
+  });
+  var getBoardIdentityKey = (identity) => {
+    const normalized = normalizeBoardIdentity(identity);
+    return JSON.stringify([
+      normalized.platform,
+      normalized.track,
+      normalized.sector
+    ]);
+  };
+  var formatBoardIdentity = (identity) => {
+    const normalized = normalizeBoardIdentity(identity);
+    const sector = normalized.sector || "cel\xE1 kolej";
+    return `n\xE1stupi\u0161t\u011B ${normalized.platform || "\u2014"}, kolej ${normalized.track || "\u2014"}, sektor ${sector}`;
+  };
+  var identitiesMatch = (boardIdentity, targetIdentity) => {
+    const board = normalizeBoardIdentity(boardIdentity);
+    const target = normalizeBoardIdentity(targetIdentity);
+    if (!target.platform || !target.track) {
+      return false;
+    }
+    return board.platform === target.platform && board.track === target.track && (!target.sector || board.sector === target.sector);
+  };
+
   // src/platform/sun-schedule.js
   var BRATISLAVA_SUN_LOCATION = Object.freeze({
     name: "Bratislava",
@@ -768,17 +817,32 @@
   var FALLBACK_REFRESH_MS = 15 * 60 * 1e3;
 
   // src/demos/platformTableManage.js
-  var STORAGE_KEY = "pragotron.platformTable.state.v1";
+  var STORAGE_KEY = "pragotron.platformTable.state.v2";
+  var LEGACY_STORAGE_KEY = "pragotron.platformTable.state.v1";
   var documentRef = document;
   var storage = new LocalStorageAdapter(STORAGE_KEY);
-  var savedState = storage.load();
+  var legacyStorage = new LocalStorageAdapter(LEGACY_STORAGE_KEY);
+  var currentState = storage.load();
+  var legacyState = currentState ? null : legacyStorage.load();
+  var savedState = currentState || legacyState || {};
+  if (!currentState && legacyState) {
+    storage.save({
+      ...legacyState,
+      version: 2
+    });
+  }
+  var savedSettings = savedState.settings || savedState;
   var transport = new BoardTransport();
   var boardForm = documentRef.querySelector("#boardForm");
   var stationInputs = [
     documentRef.querySelector("#stationOne"),
     documentRef.querySelector("#stationTwo")
   ];
+  var platformInput = documentRef.querySelector("#platformValue");
+  var trackInput = documentRef.querySelector("#trackValue");
+  var sectorInput = documentRef.querySelector("#sectorValue");
   var trainTypeInput = documentRef.querySelector("#trainType");
+  var trainNumberInput = documentRef.querySelector("#trainNumber");
   var departureTimeInput = documentRef.querySelector("#departureTime");
   var delayValueInput = documentRef.querySelector("#delayValue");
   var boardFormStatus = documentRef.querySelector("#boardFormStatus");
@@ -796,30 +860,56 @@
   var autoNightModeInput = documentRef.querySelector("#autoNightMode");
   var startButton = documentRef.querySelector("#startButton");
   var resetAllSettingsButton = documentRef.querySelector("#resetAllSettings");
+  var activeBoardsList = documentRef.querySelector("#activeBoardsList");
+  var departuresTable = documentRef.querySelector("#departuresTable");
+  var departuresTableBody = documentRef.querySelector("#departuresTableBody");
+  var departuresEmptyState = documentRef.querySelector("#departuresEmptyState");
   var submitButton = boardForm.querySelector('button[type="submit"]');
   var lighting = new LightingSettings({
-    initialLamps: savedState?.lamps || {},
-    initialClock: savedState?.clockLight || NIGHT_CLOCK_DEFAULTS
+    initialLamps: savedSettings?.lamps || {},
+    initialClock: savedSettings?.clockLight || NIGHT_CLOCK_DEFAULTS
   });
   var lensDisplay = new LensDisplay(documentRef.createElement("div"), {
     count: 2,
-    defaultState: savedState?.lenses || createDefaultLensState()
+    defaultState: savedSettings?.lenses || createDefaultLensState()
   });
-  var nightMode = savedState?.nightMode === true;
-  var autoNightMode = savedState?.autoNightMode === true;
+  var nightMode = savedSettings?.nightMode === true;
+  var autoNightMode = savedSettings?.autoNightMode === true;
   var exampleActive = false;
   var boardActionInProgress = false;
   var pendingActions = /* @__PURE__ */ new Map();
+  var pendingIdentificationActions = /* @__PURE__ */ new Map();
+  var activeBoards = /* @__PURE__ */ new Map();
+  var departures = Array.isArray(savedState.departures) ? savedState.departures : [];
+  var desiredStates = savedState.desired && typeof savedState.desired === "object" ? savedState.desired : {};
+  var nextRevision = Number(savedState.revision) || 0;
+  var globalResetRevision = Number(savedState.globalResetRevision) || 0;
+  var sortState = {
+    key: savedState.sort?.key || "departureTime",
+    direction: savedState.sort?.direction === "desc" ? "desc" : "asc"
+  };
+  var presenceTimer = null;
+  var heartbeatTimer = null;
   var exampleState = {
     stations: ["PRAHA", "BRATISLAVA"],
     train: "Eurocity",
     delay: "12",
+    target: {
+      platform: "1",
+      track: "6a",
+      sector: "Jih"
+    },
     departureTime: {
       hours: 16,
       minutes: 20
     }
   };
   var DEPARTURE_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  var TRAIN_NUMBER_PATTERN = /^\d{0,4}$/;
+  var normalizeTrainNumber = (value) => {
+    const text = String(value ?? "").trim();
+    return /^\d{1,4}$/.test(text) ? text : "";
+  };
   var setBoardFormStatus = (message, isError = false) => {
     boardFormStatus.textContent = message;
     boardFormStatus.classList.toggle("is-error", isError);
@@ -828,8 +918,12 @@
     stationInputs.forEach((input, index) => {
       input.value = state.stations[index] || "";
     });
+    platformInput.value = state.target?.platform || "";
+    trackInput.value = state.target?.track || "";
+    sectorInput.value = state.target?.sector || "";
     trainTypeInput.value = state.train;
-    departureTimeInput.value = `${String(state.departureTime.hours).padStart(2, "0")}:${String(state.departureTime.minutes).padStart(2, "0")}`;
+    trainNumberInput.value = normalizeTrainNumber(state.trainNumber);
+    departureTimeInput.value = state.departureTime ? `${String(state.departureTime.hours).padStart(2, "0")}:${String(state.departureTime.minutes).padStart(2, "0")}` : "";
     delayValueInput.value = state.delay === "" ? "" : String(state.delay);
   };
   var setSavedFormValues = (formState) => {
@@ -839,9 +933,19 @@
     const departureTime = typeof formState.departureTime === "string" && DEPARTURE_TIME_PATTERN.test(formState.departureTime) ? formState.departureTime : `${String(exampleState.departureTime.hours).padStart(2, "0")}:${String(exampleState.departureTime.minutes).padStart(2, "0")}`;
     const parsedDelay = parseDelayMinutes(formState.delay);
     const delay = parsedDelay === null ? exampleState.delay : parsedDelay === "" ? "" : String(parsedDelay);
+    const trainNumber = normalizeTrainNumber(formState.trainNumber);
+    const target = formState.target && typeof formState.target === "object" ? formState.target : {
+      platform: formState.platform,
+      track: formState.track,
+      sector: formState.sector
+    };
     stationInputs[0].value = stationOne;
     stationInputs[1].value = stationTwo;
+    platformInput.value = typeof target.platform === "string" ? target.platform.slice(0, 20) : exampleState.target.platform;
+    trackInput.value = typeof target.track === "string" ? target.track.slice(0, 20) : exampleState.target.track;
+    sectorInput.value = typeof target.sector === "string" ? target.sector.slice(0, 20) : exampleState.target.sector;
     trainTypeInput.value = train;
+    trainNumberInput.value = trainNumber;
     departureTimeInput.value = departureTime;
     delayValueInput.value = delay;
   };
@@ -851,21 +955,92 @@
     nightMode,
     autoNightMode
   });
+  var normalizeManagedLensState = (value) => {
+    const fallback = createDefaultLensState();
+    const source = value && typeof value === "object" ? value : fallback;
+    return {
+      ...source,
+      lenses: Array.isArray(source.lenses) ? source.lenses.map((lens) => ({
+        ...lens,
+        blinking: true
+      })) : fallback.lenses,
+      preDeparture: {
+        ...fallback.preDeparture,
+        ...source.preDeparture || {}
+      }
+    };
+  };
+  var getManagedLensState = () => normalizeManagedLensState(lensDisplay.getValue());
   var getSettingsState = () => ({
     ...getLightingSettingsState(),
-    lenses: lensDisplay.getValue()
+    lenses: getManagedLensState()
   });
+  var getDraftFormState = () => ({
+    stationOne: stationInputs[0].value,
+    stationTwo: stationInputs[1].value,
+    platform: platformInput.value,
+    track: trackInput.value,
+    sector: sectorInput.value,
+    train: trainTypeInput.value,
+    trainNumber: trainNumberInput.value,
+    departureTime: departureTimeInput.value,
+    delay: delayValueInput.value
+  });
+  var normalizeDeparture = (value) => {
+    const source = value?.state && typeof value.state === "object" ? { ...value.state, target: value.target } : value || {};
+    const target = {
+      platform: String(
+        value?.target?.platform ?? source.platform ?? ""
+      ).trim(),
+      track: String(
+        value?.target?.track ?? source.track ?? ""
+      ).trim(),
+      sector: String(
+        value?.target?.sector ?? source.sector ?? ""
+      ).trim()
+    };
+    const departureTime = source.departureTime && Number.isInteger(Number(source.departureTime.hours)) && Number.isInteger(Number(source.departureTime.minutes)) && Number(source.departureTime.hours) >= 0 && Number(source.departureTime.hours) <= 23 && Number(source.departureTime.minutes) >= 0 && Number(source.departureTime.minutes) <= 59 ? {
+      hours: Number(source.departureTime.hours),
+      minutes: Number(source.departureTime.minutes)
+    } : null;
+    const parsedDelay = parseDelayMinutes(source.delay);
+    const train = TRAIN_TYPES.some((type) => type.name === source.train) ? source.train : "";
+    const trainNumber = normalizeTrainNumber(source.trainNumber);
+    return {
+      id: getBoardIdentityKey(target),
+      target,
+      stations: [
+        String(
+          source.stations?.[0] ?? source.stationOne ?? ""
+        ).slice(0, 14),
+        String(
+          source.stations?.[1] ?? source.stationTwo ?? ""
+        ).slice(0, 14)
+      ],
+      train,
+      trainNumber,
+      delay: parsedDelay === null ? "" : parsedDelay,
+      departureTime,
+      lenses: normalizeManagedLensState(source.lenses),
+      revision: Number(value?.revision) || 0,
+      updatedAt: Number(value?.updatedAt) || 0
+    };
+  };
+  departures = departures.map(normalizeDeparture).filter(
+    (departure) => departure.target.platform && departure.target.track && departure.departureTime
+  );
   var persistState = () => {
+    const settings = getSettingsState();
     storage.save({
-      version: 1,
-      form: {
-        stationOne: stationInputs[0].value,
-        stationTwo: stationInputs[1].value,
-        train: trainTypeInput.value,
-        departureTime: departureTimeInput.value,
-        delay: delayValueInput.value
-      },
-      ...getSettingsState()
+      version: 2,
+      form: getDraftFormState(),
+      settings,
+      ...settings,
+      departures,
+      desired: desiredStates,
+      revision: nextRevision,
+      globalResetRevision,
+      sort: sortState
     });
   };
   var publishSettings = ({ persist = true } = {}) => {
@@ -873,6 +1048,294 @@
       persistState();
     }
     transport.publish("board:settings", getLightingSettingsState());
+  };
+  var getFormTarget = () => normalizeBoardIdentity({
+    platform: platformInput.value,
+    track: trackInput.value,
+    sector: sectorInput.value
+  });
+  var formatDepartureTime = (departureTime) => {
+    if (!departureTime) {
+      return "\u2014";
+    }
+    return `${String(departureTime.hours).padStart(2, "0")}:${String(departureTime.minutes).padStart(2, "0")}`;
+  };
+  var findMatchingBoards = (target) => [...activeBoards.values()].filter(
+    (boardPresence) => identitiesMatch(boardPresence.identity, target)
+  );
+  var getLensPresentation = (departure, now = Date.now()) => {
+    const settings = departure.lenses?.lenses || [];
+    const matching = findMatchingBoards(departure.target);
+    const liveState = matching[0]?.lensState;
+    const animationStartedAt = Number(liveState?.animationStartedAt) || Number(departure.updatedAt) || 0;
+    return settings.map((setting, index) => {
+      const liveSetting = liveState?.lenses?.[index] || setting;
+      const preDepartureActive = !liveState?.preDeparture?.enabled || liveState.preDepartureActive !== false;
+      const on = liveSetting.enabled && preDepartureActive;
+      const color = LENS_COLORS[liveSetting.color] || LENS_COLORS.green;
+      const blinkInterval = Number(liveSetting.blinkInterval) || Number(setting.blinkInterval) || 0.2;
+      const blinkDuration = blinkInterval * 2;
+      const elapsed = animationStartedAt > 0 ? (now - animationStartedAt) / 1e3 : 0;
+      const animationPhase = ((elapsed + index * blinkInterval) % blinkDuration + blinkDuration) % blinkDuration;
+      return {
+        color: color.light,
+        on,
+        blinking: on && liveSetting.blinking,
+        blinkInterval,
+        animationPhase
+      };
+    });
+  };
+  var renderDeparturesTable = () => {
+    if (!departuresTableBody || !departuresEmptyState) {
+      return;
+    }
+    const rows = [...departures].sort((first, second) => {
+      const getValue = (departure) => {
+        switch (sortState.key) {
+          case "stationOne":
+            return departure.stations[0];
+          case "stationTwo":
+            return departure.stations[1];
+          case "train":
+            return departure.train;
+          case "trainNumber":
+            return departure.trainNumber;
+          case "delay":
+            return Number(departure.delay || 0);
+          case "platform":
+            return departure.target.platform;
+          case "track":
+            return departure.target.track;
+          case "sector":
+            return departure.target.sector;
+          case "departureTime":
+          default:
+            return departure.departureTime ? departure.departureTime.hours * 60 + departure.departureTime.minutes : Number.POSITIVE_INFINITY;
+        }
+      };
+      const left = getValue(first);
+      const right = getValue(second);
+      const comparison = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right), "cs", {
+        sensitivity: "base",
+        numeric: true
+      });
+      return (sortState.direction === "desc" ? -1 : 1) * comparison || first.id.localeCompare(second.id);
+    });
+    departuresTableBody.replaceChildren();
+    const now = Date.now();
+    rows.forEach((departure) => {
+      const row = documentRef.createElement("tr");
+      const lensCell = documentRef.createElement("td");
+      lensCell.className = "departure-lens-status";
+      getLensPresentation(departure, now).forEach((lens, index) => {
+        const symbol = documentRef.createElement("span");
+        symbol.className = "lens-status-symbol";
+        symbol.classList.toggle("is-on", lens.on);
+        symbol.classList.toggle("is-blinking", lens.blinking);
+        symbol.style.setProperty("--status-color", lens.color);
+        symbol.style.setProperty(
+          "--lens-blink-duration",
+          `${lens.blinkInterval * 2}s`
+        );
+        symbol.style.setProperty(
+          "--lens-blink-delay",
+          `${lens.animationPhase}s`
+        );
+        symbol.textContent = "\u25CF";
+        symbol.setAttribute(
+          "aria-label",
+          `${index + 1}. \u010Do\u010Dka ${lens.on ? "sv\xEDt\xED" : "nesv\xEDt\xED"}`
+        );
+        lensCell.appendChild(symbol);
+      });
+      row.appendChild(lensCell);
+      [
+        departure.stations[0],
+        departure.stations[1],
+        departure.train || "\u2014",
+        departure.trainNumber || "\u2014",
+        formatDepartureTime(departure.departureTime),
+        departure.delay === "" ? "\u2014" : `${departure.delay} min`,
+        departure.target.platform,
+        departure.target.track,
+        departure.target.sector || "cel\xE1 kolej"
+      ].forEach((value) => {
+        const cell = documentRef.createElement("td");
+        cell.textContent = value;
+        row.appendChild(cell);
+      });
+      const actionsCell = documentRef.createElement("td");
+      actionsCell.className = "departure-row-actions";
+      const loadButton = documentRef.createElement("button");
+      loadButton.type = "button";
+      loadButton.dataset.departureAction = "load";
+      loadButton.dataset.departureId = departure.id;
+      loadButton.textContent = "Na\u010D\xEDst";
+      const resetButton = documentRef.createElement("button");
+      resetButton.type = "button";
+      resetButton.dataset.departureAction = "reset";
+      resetButton.dataset.departureId = departure.id;
+      resetButton.textContent = "Smazat a resetovat";
+      actionsCell.append(loadButton, resetButton);
+      row.appendChild(actionsCell);
+      departuresTableBody.appendChild(row);
+    });
+    departuresEmptyState.hidden = rows.length > 0;
+    departuresTable.hidden = rows.length === 0;
+    departuresTable.querySelectorAll("[data-sort-key]").forEach((button) => {
+      const header = button.closest("th");
+      const isActive = button.dataset.sortKey === sortState.key;
+      header?.setAttribute(
+        "aria-sort",
+        isActive ? sortState.direction === "asc" ? "ascending" : "descending" : "none"
+      );
+      button.dataset.sortDirection = isActive ? sortState.direction : "";
+      header?.classList.toggle("is-sorted", isActive);
+    });
+  };
+  var toggleBoardIdentification = (boardPresence) => {
+    if (!boardPresence || boardPresence.identificationPending) {
+      return;
+    }
+    const forceOn = boardPresence.identificationActive !== true;
+    const requestId = transport.publish("board:command", {
+      action: "identify-lenses",
+      forceOn
+    }, {
+      target: {
+        source: boardPresence.instanceId
+      }
+    });
+    const timeout = window.setTimeout(() => {
+      const pending = pendingIdentificationActions.get(requestId);
+      if (!pending) {
+        return;
+      }
+      pendingIdentificationActions.delete(requestId);
+      boardPresence.identificationPending = false;
+      renderActiveBoards();
+      setBoardFormStatus(
+        "Tabule nepotvrdila zm\u011Bnu identifika\u010Dn\xEDho svitu \u010Do\u010Dek.",
+        true
+      );
+    }, 5e3);
+    boardPresence.identificationPending = true;
+    pendingIdentificationActions.set(requestId, {
+      boardPresence,
+      timeout
+    });
+    renderActiveBoards();
+  };
+  var createEyeIcon = (isOpen) => {
+    const icon = documentRef.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+    icon.classList.add("identify-eye-icon");
+    icon.classList.toggle("is-open", isOpen);
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = isOpen ? '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="2.5"></circle>' : '<path d="M3 3l18 18"></path><path d="M5.3 7.1C3.2 8.5 2 10.4 2 12c0 0 3.6 6 10 6 1.8 0 3.4-.4 4.8-1"></path><path d="M18.7 16.9C20.8 15.5 22 13.6 22 12c0 0-3.6-6-10-6-1.8 0-3.4.4-4.8 1"></path>';
+    return icon;
+  };
+  var renderActiveBoards = () => {
+    if (!activeBoardsList) {
+      return;
+    }
+    activeBoardsList.replaceChildren();
+    const values = [...activeBoards.values()].sort((first, second) => formatBoardIdentity(first.identity).localeCompare(
+      formatBoardIdentity(second.identity),
+      "cs"
+    ));
+    if (values.length === 0) {
+      const empty = documentRef.createElement("p");
+      empty.className = "manage-empty-state";
+      empty.textContent = "Zat\xEDm nebyla nalezena \u017E\xE1dn\xE1 tabule.";
+      activeBoardsList.appendChild(empty);
+      return;
+    }
+    values.forEach((boardPresence) => {
+      const item = documentRef.createElement("div");
+      item.className = "active-board-item";
+      item.classList.toggle(
+        "is-unconfigured",
+        boardPresence.configured === false
+      );
+      const identity = documentRef.createElement("strong");
+      identity.textContent = boardPresence.configured === false ? "Tabule bez identity" : formatBoardIdentity(boardPresence.identity);
+      const details = documentRef.createElement("span");
+      details.textContent = `n\xE1stupi\u0161tn\xED tabule \xB7 instance ${boardPresence.instanceId || "\u2014"}`;
+      const status = documentRef.createElement("span");
+      status.className = "active-board-status";
+      status.textContent = boardPresence.configured === false ? "Nen\xED nakonfigurovan\xE1" : "Online";
+      const audioStatus = documentRef.createElement("span");
+      const audioUnlocked = boardPresence.audioState?.unlocked === true;
+      audioStatus.className = "active-board-audio";
+      audioStatus.textContent = audioUnlocked ? "\u{1F50A}" : "\u{1F508}";
+      audioStatus.title = audioUnlocked ? "P\u0159ehr\xE1v\xE1n\xED zvuku je povolen\xE9" : "P\u0159ehr\xE1v\xE1n\xED zvuku \u010Dek\xE1 na kliknut\xED do tabule";
+      audioStatus.setAttribute("role", "img");
+      audioStatus.setAttribute(
+        "aria-label",
+        audioUnlocked ? "Zvuk povolen" : "Zvuk nepovolen"
+      );
+      const actions = documentRef.createElement("div");
+      actions.className = "active-board-actions";
+      const identifyButton = documentRef.createElement("button");
+      identifyButton.type = "button";
+      identifyButton.className = "identify-board-button";
+      identifyButton.dataset.boardInstanceId = boardPresence.instanceId;
+      identifyButton.replaceChildren(
+        createEyeIcon(boardPresence.identificationActive === true)
+      );
+      identifyButton.disabled = boardPresence.identificationPending || boardPresence.configured === false;
+      identifyButton.setAttribute(
+        "aria-pressed",
+        String(boardPresence.identificationActive === true)
+      );
+      identifyButton.setAttribute(
+        "aria-label",
+        boardPresence.identificationActive ? "Vr\xE1tit \u010Do\u010Dky do p\u016Fvodn\xEDho stavu" : "Force rozsv\xEDtit \u010Do\u010Dky pro identifikaci tabule"
+      );
+      actions.appendChild(identifyButton);
+      item.append(identity, details, status, audioStatus, actions);
+      activeBoardsList.appendChild(item);
+    });
+  };
+  activeBoardsList?.addEventListener("click", (event) => {
+    const button = event.target.closest(".identify-board-button");
+    if (!button) {
+      return;
+    }
+    const boardPresence = [...activeBoards.values()].find(
+      (presence) => presence.instanceId === button.dataset.boardInstanceId
+    );
+    toggleBoardIdentification(boardPresence);
+  });
+  var getDepartureById = (id) => departures.find((departure) => departure.id === id);
+  var loadDepartureIntoForm = (departure) => {
+    if (!departure) {
+      return;
+    }
+    setFormValues(departure);
+    lensDisplay.set(departure.lenses);
+    syncLensControls();
+    setBoardFormStatus(
+      `Odjezd pro ${formatBoardIdentity(departure.target)} na\u010Dten do formul\xE1\u0159e.`
+    );
+  };
+  var nextStateRevision = () => {
+    nextRevision += 1;
+    return nextRevision;
+  };
+  var setDesiredState = (target, action, state, revision) => {
+    desiredStates[getBoardIdentityKey(target)] = {
+      target,
+      action,
+      state,
+      revision,
+      updatedAt: Date.now()
+    };
   };
   TRAIN_TYPES.forEach((type) => {
     const option = documentRef.createElement("option");
@@ -994,7 +1457,7 @@
       return;
     }
     controls.enabled.checked = settings.some((setting) => setting.enabled);
-    controls.blinking.checked = settings.some((setting) => setting.blinking);
+    controls.blinking.checked = true;
     controls.firstColor.value = settings[0].color;
     controls.secondColor.value = (settings[1] || settings[0]).color;
     controls.blinkInterval.value = String(settings[0].blinkInterval);
@@ -1011,7 +1474,7 @@
     state.lenses = state.lenses.map((lens, index) => ({
       ...lens,
       enabled: controls.enabled.checked,
-      blinking: controls.blinking.checked,
+      blinking: true,
       color: index === 0 ? controls.firstColor.value : controls.secondColor.value,
       blinkInterval: Number(controls.blinkInterval.value)
     }));
@@ -1051,6 +1514,22 @@
     blinkingLabel.className = "lamp-control-check";
     const blinking = documentRef.createElement("input");
     blinking.type = "checkbox";
+    blinking.checked = true;
+    blinking.disabled = true;
+    blinking.setAttribute("disabled", "disabled");
+    blinking.readOnly = true;
+    blinking.setAttribute("aria-readonly", "true");
+    blinking.title = "Blik\xE1n\xED je v\u017Edy zapnut\xE9";
+    blinking.addEventListener("click", (event) => {
+      event.preventDefault();
+      blinking.checked = true;
+    });
+    blinking.addEventListener("keydown", (event) => {
+      if (event.code === "Space" || event.code === "Enter") {
+        event.preventDefault();
+        blinking.checked = true;
+      }
+    });
     blinkingLabel.append(blinking, documentRef.createTextNode(" Blik\xE1"));
     const preDepartureEnabledLabel = documentRef.createElement("label");
     preDepartureEnabledLabel.className = "lamp-control-check";
@@ -1221,34 +1700,160 @@
       button.disabled = isBusy;
       button.setAttribute("aria-disabled", String(isBusy));
     });
+    documentRef.querySelectorAll("[data-departure-action]").forEach((button) => {
+      button.disabled = isBusy;
+      button.setAttribute("aria-disabled", String(isBusy));
+    });
+  };
+  var getDesiredStateForBoard = (identity) => {
+    const matching = Object.values(desiredStates).filter((desired) => identitiesMatch(identity, desired.target));
+    if (globalResetRevision > 0) {
+      matching.push({
+        action: "reset-all",
+        state: getEmptyState(),
+        revision: globalResetRevision,
+        target: null
+      });
+    }
+    return matching.sort(
+      (first, second) => Number(second.revision) - Number(first.revision)
+    )[0];
+  };
+  var syncBoardPresence = (boardPresence) => {
+    if (boardPresence.configured === false) {
+      return;
+    }
+    const desired = getDesiredStateForBoard(boardPresence.identity);
+    if (!desired || Number(desired.revision) <= Number(
+      boardPresence.appliedRevision || 0
+    ) || boardPresence.lastSyncedRevision === desired.revision) {
+      return;
+    }
+    if (boardPresence.syncPendingRevision === desired.revision && Date.now() - boardPresence.syncPendingAt < 8e3) {
+      return;
+    }
+    transport.publish("board:command", {
+      action: desired.action,
+      ...desired.target ? { target: desired.target } : {},
+      state: desired.state,
+      settings: getLightingSettingsState(),
+      revision: desired.revision
+    }, {
+      target: {
+        source: boardPresence.instanceId
+      }
+    });
+    boardPresence.syncPendingRevision = desired.revision;
+    boardPresence.syncPendingAt = Date.now();
+  };
+  var updateBoardPresence = (message) => {
+    const payload = message.payload || {};
+    const identity = normalizeBoardIdentity(payload.identity);
+    const boardId = payload.boardId || getBoardIdentityKey(identity);
+    const instanceId = payload.instanceId || message.source;
+    const key = `${boardId}:${instanceId}`;
+    const oldEntry = [...activeBoards.entries()].find(
+      ([, presence]) => presence.instanceId === instanceId
+    );
+    if (oldEntry && oldEntry[0] !== key) {
+      activeBoards.delete(oldEntry[0]);
+    }
+    const previous = activeBoards.get(key) || oldEntry?.[1];
+    const sameBoardIdentity = previous?.boardId === boardId;
+    const previousLensState = JSON.stringify(previous?.lensState);
+    const boardPresence = {
+      ...previous,
+      boardId,
+      instanceId,
+      identity,
+      configured: payload.configured !== false && Boolean(identity.platform && identity.track),
+      capabilities: payload.capabilities || previous?.capabilities || [],
+      appliedRevision: Number(payload.appliedRevision) || previous?.appliedRevision || 0,
+      lensState: payload.lensState || previous?.lensState || null,
+      audioState: payload.audio || previous?.audioState || { available: false, unlocked: false },
+      identificationActive: payload.identificationActive === true,
+      identificationPending: sameBoardIdentity ? previous?.identificationPending === true : false,
+      lastSeen: Date.now(),
+      lastSyncedRevision: sameBoardIdentity ? previous?.lastSyncedRevision : null,
+      syncPendingRevision: sameBoardIdentity ? previous?.syncPendingRevision : null,
+      syncPendingAt: sameBoardIdentity ? previous?.syncPendingAt || 0 : 0
+    };
+    activeBoards.set(key, boardPresence);
+    renderActiveBoards();
+    if (previousLensState !== JSON.stringify(boardPresence.lensState) || !previous) {
+      renderDeparturesTable();
+    }
+    syncBoardPresence(boardPresence);
+  };
+  var pruneActiveBoards = () => {
+    const expiry = Date.now() - 12e3;
+    let removed = false;
+    [...activeBoards.entries()].forEach(([key, boardPresence]) => {
+      if (boardPresence.lastSeen < expiry) {
+        activeBoards.delete(key);
+        removed = true;
+      }
+    });
+    renderActiveBoards();
+    if (removed) {
+      renderDeparturesTable();
+    }
+  };
+  var publishDiscovery = () => {
+    transport.publish("manage:discover", {
+      page: "platformTableManage",
+      sentAt: Date.now()
+    });
   };
   var finishBoardAction = (requestId, message) => {
     const pending = pendingActions.get(requestId);
     if (!pending) {
       return;
     }
-    window.clearTimeout(pending.timeout);
-    pendingActions.delete(requestId);
-    setBoardActionBusy(false);
+    const instanceId = message.payload?.instanceId || message.source;
+    if (pending.expectedInstances.size > 0 && !pending.expectedInstances.has(instanceId)) {
+      return;
+    }
+    pending.acknowledgedInstances.add(instanceId);
+    const boardPresence = [...activeBoards.values()].find(
+      (presence) => presence.instanceId === instanceId
+    );
+    if (boardPresence) {
+      boardPresence.appliedRevision = Number(message.payload?.revision) || boardPresence.appliedRevision;
+      boardPresence.lensState = message.payload?.lensState || boardPresence.lensState;
+      if (typeof message.payload?.identificationActive === "boolean") {
+        boardPresence.identificationActive = message.payload.identificationActive;
+      }
+      boardPresence.lastSeen = Date.now();
+      boardPresence.syncPendingRevision = null;
+    }
     if (message.payload?.ok === false) {
+      window.clearTimeout(pending.timeout);
+      pendingActions.delete(requestId);
+      setBoardActionBusy(false);
       setBoardFormStatus(
         message.payload.error || "Tabuli se nepoda\u0159ilo aktualizovat.",
         true
       );
       return;
     }
+    if (pending.acknowledgedInstances.size < pending.expectedInstances.size) {
+      return;
+    }
+    window.clearTimeout(pending.timeout);
+    pendingActions.delete(requestId);
+    setBoardActionBusy(false);
     setBoardFormStatus(pending.completedMessage);
+    pending.onComplete?.();
+    renderActiveBoards();
+    renderDeparturesTable();
   };
   transport.subscribe((message) => {
-    if (message.type === "board:ready") {
-      if (typeof message.payload?.nightMode === "boolean") {
-        nightMode = message.payload.nightMode;
+    if (message.type === "board:ready" || message.type === "board:heartbeat") {
+      updateBoardPresence(message);
+      if (message.type === "board:ready") {
+        transport.publish("board:settings", getLightingSettingsState());
       }
-      if (typeof message.payload?.autoNightMode === "boolean") {
-        autoNightMode = message.payload.autoNightMode;
-      }
-      renderNightMode();
-      transport.publish("board:settings", getLightingSettingsState());
       return;
     }
     if (message.type === "board:mode") {
@@ -1263,21 +1868,85 @@
       return;
     }
     if (message.type === "command:ack") {
-      finishBoardAction(message.payload?.requestId, message);
+      const pendingIdentification = pendingIdentificationActions.get(
+        message.requestId
+      );
+      if (pendingIdentification) {
+        window.clearTimeout(pendingIdentification.timeout);
+        pendingIdentificationActions.delete(message.requestId);
+        pendingIdentification.boardPresence.identificationPending = false;
+        if (message.payload?.ok === false) {
+          setBoardFormStatus(
+            message.payload.error || "\u010Co\u010Dky se nepoda\u0159ilo p\u0159epnout do identifika\u010Dn\xEDho re\u017Eimu.",
+            true
+          );
+        } else {
+          pendingIdentification.boardPresence.identificationActive = message.payload?.identificationActive === true;
+          pendingIdentification.boardPresence.lensState = message.payload?.lensState || pendingIdentification.boardPresence.lensState;
+          setBoardFormStatus(
+            pendingIdentification.boardPresence.identificationActive ? "Identifika\u010Dn\xED svit \u010Do\u010Dek zapnut." : "\u010Co\u010Dky vr\xE1ceny do p\u016Fvodn\xEDho stavu."
+          );
+        }
+        renderActiveBoards();
+        renderDeparturesTable();
+        return;
+      }
+      if (pendingActions.has(message.requestId)) {
+        finishBoardAction(message.requestId, message);
+        return;
+      }
+      const instanceId = message.payload?.instanceId || message.source;
+      const boardPresence = [...activeBoards.values()].find(
+        (presence) => presence.instanceId === instanceId
+      );
+      if (boardPresence) {
+        if (message.payload?.ok === false) {
+          boardPresence.syncPendingRevision = null;
+        }
+        boardPresence.appliedRevision = Number(message.payload?.revision) || boardPresence.appliedRevision;
+        boardPresence.lensState = message.payload?.lensState || boardPresence.lensState;
+        if (typeof message.payload?.identificationActive === "boolean") {
+          boardPresence.identificationActive = message.payload.identificationActive;
+        }
+        boardPresence.lastSeen = Date.now();
+        const desired = getDesiredStateForBoard(boardPresence.identity);
+        if (desired && Number(desired.revision) <= boardPresence.appliedRevision) {
+          boardPresence.lastSyncedRevision = desired.revision;
+          boardPresence.syncPendingRevision = null;
+        }
+        renderActiveBoards();
+        renderDeparturesTable();
+      }
     }
   });
-  var sendBoardAction = (action, state, completedMessage, { immediate = false, persist = true } = {}) => {
+  var sendBoardAction = (action, state, completedMessage, {
+    immediate = false,
+    persist = true,
+    target = null,
+    revision = 0,
+    onComplete,
+    onTimeout
+  } = {}) => {
     if (boardActionInProgress) {
-      return;
+      return null;
     }
     setBoardActionBusy(true);
     if (persist) {
       persistState();
     }
+    const expectedInstances = new Set(
+      target ? findMatchingBoards(target).map(
+        (boardPresence) => boardPresence.instanceId
+      ) : [...activeBoards.values()].map(
+        (boardPresence) => boardPresence.instanceId
+      )
+    );
     const requestId = transport.publish("board:command", {
       action,
       state,
+      ...target ? { target } : {},
       settings: getLightingSettingsState(),
+      revision,
       immediate
     });
     const timeout = window.setTimeout(() => {
@@ -1291,9 +1960,18 @@
         "Tabule nen\xED p\u0159ipojena nebo nepotvrdila dokon\u010Den\xED akce.",
         true
       );
+      pending.onTimeout?.();
     }, 1e4);
-    pendingActions.set(requestId, { completedMessage, timeout });
+    pendingActions.set(requestId, {
+      completedMessage,
+      expectedInstances,
+      acknowledgedInstances: /* @__PURE__ */ new Set(),
+      onComplete,
+      onTimeout,
+      timeout
+    });
     setBoardFormStatus("Tabule se p\u0159enastavuje\u2026");
+    return requestId;
   };
   var getFormState = () => {
     const [hours, minutes] = departureTimeInput.value.split(":").map(Number);
@@ -1301,36 +1979,169 @@
     return {
       stations: stationInputs.map((input) => input.value),
       train: trainTypeInput.value,
+      trainNumber: trainNumberInput.value.trim(),
       delay: parsedDelay === "" ? "" : parsedDelay,
       departureTime: { hours, minutes },
-      lenses: lensDisplay.getValue()
+      lenses: getManagedLensState()
     };
   };
   var getEmptyState = () => ({
     ...createEmptyBoardState(),
     lenses: createDefaultLensState()
   });
+  var getBoardStateFromDeparture = (departure) => ({
+    stations: [
+      String(departure.stations?.[0] || "").slice(0, 14),
+      String(departure.stations?.[1] || "").slice(0, 14)
+    ],
+    train: departure.train,
+    delay: departure.delay,
+    departureTime: departure.departureTime ? { ...departure.departureTime } : null,
+    lenses: departure.lenses
+  });
+  var desiredStatesRepaired = false;
+  departures.forEach((departure) => {
+    const key = getBoardIdentityKey(departure.target);
+    const revision = departure.revision || ++nextRevision;
+    nextRevision = Math.max(nextRevision, revision);
+    const existing = desiredStates[key];
+    const existingStations = existing?.state?.stations;
+    const hasCurrentStations = Array.isArray(existingStations) && existingStations.length >= 2 && existingStations[0] === departure.stations[0] && existingStations[1] === departure.stations[1];
+    if (!existing || Number(existing.revision) < Number(revision) || !hasCurrentStations) {
+      desiredStates[key] = {
+        target: departure.target,
+        action: "apply-board",
+        state: getBoardStateFromDeparture(departure),
+        revision: Math.max(Number(existing?.revision) || 0, revision),
+        updatedAt: departure.updatedAt || Date.now()
+      };
+      desiredStatesRepaired = true;
+    }
+  });
+  var upsertDeparture = (state, target) => {
+    const revision = nextStateRevision();
+    const departure = normalizeDeparture({
+      target,
+      ...state,
+      revision,
+      updatedAt: Date.now()
+    });
+    departures = [
+      ...departures.filter((item) => item.id !== departure.id),
+      departure
+    ];
+    setDesiredState(
+      target,
+      "apply-board",
+      getBoardStateFromDeparture(departure),
+      revision
+    );
+    persistState();
+    renderDeparturesTable();
+    return departure;
+  };
+  var resetDeparture = (departure) => {
+    if (!departure || boardActionInProgress) {
+      return;
+    }
+    const revision = nextStateRevision();
+    departures = departures.filter((item) => item.id !== departure.id);
+    setDesiredState(
+      departure.target,
+      "reset-board",
+      getEmptyState(),
+      revision
+    );
+    persistState();
+    renderDeparturesTable();
+    sendBoardAction(
+      "reset-board",
+      getEmptyState(),
+      `Tabule pro ${formatBoardIdentity(departure.target)} byla resetov\xE1na.`,
+      {
+        target: departure.target,
+        revision
+      }
+    );
+  };
+  departuresTable?.addEventListener("click", (event) => {
+    const actionButton = event.target.closest("[data-departure-action]");
+    if (!actionButton) {
+      return;
+    }
+    const departure = getDepartureById(actionButton.dataset.departureId);
+    if (actionButton.dataset.departureAction === "load") {
+      loadDepartureIntoForm(departure);
+    } else if (actionButton.dataset.departureAction === "reset") {
+      resetDeparture(departure);
+    }
+  });
+  departuresTable?.querySelectorAll("[data-sort-key]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.sortKey;
+      sortState = {
+        key,
+        direction: sortState.key === key && sortState.direction === "asc" ? "desc" : "asc"
+      };
+      persistState();
+      renderDeparturesTable();
+    });
+  });
   setFormValues(exampleState);
   if (savedState?.form && typeof savedState.form === "object") {
     setSavedFormValues(savedState.form);
   }
+  if (desiredStatesRepaired) {
+    persistState();
+  }
+  renderActiveBoards();
+  renderDeparturesTable();
   syncClockLightControls();
   renderNightMode();
   startButton.textContent = "Na\u010D\xEDst p\u0159\xEDklad";
   startButton.setAttribute("aria-pressed", "false");
   startButton.addEventListener("click", () => {
     const showExample = !exampleActive;
-    const state = showExample ? { ...exampleState, lenses: createDefaultLensState() } : getEmptyState();
     exampleActive = showExample;
     if (showExample) {
       setFormValues(exampleState);
+      const target2 = getFormTarget();
+      const state = {
+        ...exampleState,
+        lenses: createDefaultLensState()
+      };
+      const departure = upsertDeparture(state, target2);
+      startButton.textContent = "Resetovat tabuli";
+      startButton.setAttribute("aria-pressed", "true");
+      sendBoardAction(
+        "apply-board",
+        getBoardStateFromDeparture(departure),
+        "P\u0159\xEDklad na\u010Dten.",
+        {
+          target: target2,
+          revision: departure.revision
+        }
+      );
+      return;
     }
-    startButton.textContent = showExample ? "Resetovat tabuli" : "Na\u010D\xEDst p\u0159\xEDklad";
-    startButton.setAttribute("aria-pressed", String(showExample));
+    const target = getFormTarget();
+    const revision = nextStateRevision();
+    departures = departures.filter(
+      (departure) => departure.id !== getBoardIdentityKey(target)
+    );
+    setDesiredState(target, "reset-board", getEmptyState(), revision);
+    persistState();
+    renderDeparturesTable();
+    startButton.textContent = "Na\u010D\xEDst p\u0159\xEDklad";
+    startButton.setAttribute("aria-pressed", "false");
     sendBoardAction(
-      showExample ? "apply-board" : "reset-board",
-      state,
-      showExample ? "P\u0159\xEDklad na\u010Dten." : "Tabule resetov\xE1na."
+      "reset-board",
+      getEmptyState(),
+      "Tabule resetov\xE1na.",
+      {
+        target,
+        revision
+      }
     );
   });
   resetAllSettingsButton.addEventListener("click", () => {
@@ -1338,6 +2149,9 @@
       return;
     }
     storage.clear();
+    legacyStorage.clear();
+    departures = [];
+    desiredStates = {};
     lighting.reset();
     lensDisplay.setImmediate(createDefaultLensState());
     nightMode = false;
@@ -1352,6 +2166,10 @@
     exampleActive = false;
     startButton.textContent = "Na\u010D\xEDst p\u0159\xEDklad";
     startButton.setAttribute("aria-pressed", "false");
+    renderDeparturesTable();
+    const resetRevision = nextStateRevision();
+    globalResetRevision = resetRevision;
+    persistState();
     sendBoardAction(
       "reset-all",
       {
@@ -1359,7 +2177,11 @@
         lenses: createDefaultLensState()
       },
       "V\u0161echna nastaven\xED byla obnovena na v\xFDchoz\xED hodnoty.",
-      { immediate: true, persist: false }
+      {
+        immediate: true,
+        persist: false,
+        revision: resetRevision
+      }
     );
   });
   boardForm.addEventListener("submit", (event) => {
@@ -1383,32 +2205,79 @@
       delayValueInput.focus();
       return;
     }
+    if (!TRAIN_NUMBER_PATTERN.test(trainNumberInput.value.trim())) {
+      setBoardFormStatus(
+        "\u010C\xEDslo vlaku mus\xED obsahovat nejv\xFD\u0161e 4 \u010D\xEDslice.",
+        true
+      );
+      trainNumberInput.focus();
+      return;
+    }
+    const target = getFormTarget();
+    if (!target.platform || !target.track) {
+      setBoardFormStatus(
+        "Vypl\u0148te n\xE1stupi\u0161t\u011B a kolej, pro kter\xE9 se odjezd odes\xEDl\xE1.",
+        true
+      );
+      (!target.platform ? platformInput : trackInput).focus();
+      return;
+    }
+    const departure = upsertDeparture(getFormState(), target);
     exampleActive = true;
     startButton.textContent = "Resetovat tabuli";
     startButton.setAttribute("aria-pressed", "true");
     sendBoardAction(
       "apply-board",
-      getFormState(),
-      "\xDAdaje byly odesl\xE1ny na tabuli."
+      getBoardStateFromDeparture(departure),
+      "\xDAdaje byly odesl\xE1ny na tabuli.",
+      {
+        target,
+        revision: departure.revision
+      }
     );
   });
-  [...stationInputs, trainTypeInput, departureTimeInput, delayValueInput].forEach((input) => {
+  [
+    ...stationInputs,
+    platformInput,
+    trackInput,
+    sectorInput,
+    trainTypeInput,
+    trainNumberInput,
+    departureTimeInput,
+    delayValueInput
+  ].forEach((input) => {
     input.addEventListener("input", persistState);
     input.addEventListener("change", persistState);
   });
-  transport.publish("manage:hello", { page: "platformTableManage" });
+  publishDiscovery();
+  heartbeatTimer = window.setInterval(publishDiscovery, 4e3);
+  presenceTimer = window.setInterval(pruneActiveBoards, 4e3);
   window.pragotron = {
     transport,
     lighting,
     getState: () => ({
       form: getFormState(),
-      ...getSettingsState()
+      target: getFormTarget(),
+      ...getSettingsState(),
+      departures: [...departures]
     }),
+    getActiveBoards: () => [...activeBoards.values()].map((boardPresence) => ({
+      ...boardPresence,
+      identity: { ...boardPresence.identity }
+    })),
     setNightMode,
     setAutomaticNightMode,
     destroy: () => {
       pendingActions.forEach(({ timeout }) => window.clearTimeout(timeout));
       pendingActions.clear();
+      pendingIdentificationActions.forEach(
+        ({ timeout }) => window.clearTimeout(timeout)
+      );
+      pendingIdentificationActions.clear();
+      window.clearInterval(heartbeatTimer);
+      window.clearInterval(presenceTimer);
+      heartbeatTimer = null;
+      presenceTimer = null;
       transport.close();
       lensDisplay.destroy();
     }

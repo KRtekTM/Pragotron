@@ -227,9 +227,10 @@
   });
   var cloneBoardState = (state) => {
     const source = state && typeof state === "object" ? state : {};
+    const stations = Array.isArray(source.stations) ? source.stations : [source.stationOne, source.stationTwo];
     return {
       ...source,
-      stations: Array.isArray(source.stations) ? [source.stations[0] || "", source.stations[1] || ""] : ["", ""],
+      stations: [stations[0] || "", stations[1] || ""],
       train: source.train || "",
       delay: source.delay ?? "",
       departureTime: source.departureTime && typeof source.departureTime === "object" ? {
@@ -244,9 +245,102 @@
   var SplitFlapAudio = class {
     constructor(source = DEFAULT_SOUND_URL) {
       this.template = typeof Audio === "function" ? new Audio(source) : null;
+      this.unlocked = false;
+      this.activationTarget = null;
+      this.activationHandler = null;
+      this.listeners = /* @__PURE__ */ new Set();
       if (this.template) {
         this.template.preload = "auto";
       }
+    }
+    getState() {
+      return {
+        available: Boolean(this.template),
+        unlocked: this.unlocked
+      };
+    }
+    setUnlocked(value) {
+      const nextValue = Boolean(value);
+      if (nextValue === this.unlocked) {
+        return;
+      }
+      this.unlocked = nextValue;
+      this.listeners.forEach((listener) => listener(this.getState()));
+    }
+    subscribe(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("Listener audia mus\xED b\xFDt funkce.");
+      }
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    }
+    removeActivationListeners() {
+      if (!this.activationTarget || !this.activationHandler) {
+        return;
+      }
+      ["pointerdown", "keydown"].forEach((eventName) => {
+        this.activationTarget.removeEventListener(
+          eventName,
+          this.activationHandler,
+          true
+        );
+      });
+      this.activationTarget = null;
+      this.activationHandler = null;
+    }
+    bindUserActivation(target = globalThis.document) {
+      if (!this.template || !target?.addEventListener) {
+        return this;
+      }
+      if (this.unlocked || this.activationTarget) {
+        return this;
+      }
+      this.activationTarget = target;
+      this.activationHandler = () => {
+        this.unlock();
+      };
+      ["pointerdown", "keydown"].forEach((eventName) => {
+        target.addEventListener(
+          eventName,
+          this.activationHandler,
+          true
+        );
+      });
+      return this;
+    }
+    unlock() {
+      if (!this.template || this.unlocked) {
+        return this.unlocked;
+      }
+      const sound = this.template.cloneNode();
+      sound.preload = "auto";
+      sound.muted = true;
+      sound.volume = 0;
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) {
+          return;
+        }
+        cleanedUp = true;
+        sound.pause();
+        sound.remove();
+      };
+      const unlocked = () => {
+        this.setUnlocked(true);
+        this.removeActivationListeners();
+        cleanup();
+      };
+      try {
+        const playback = sound.play();
+        if (playback?.then) {
+          playback.then(unlocked).catch(cleanup);
+        } else {
+          unlocked();
+        }
+      } catch {
+        cleanup();
+      }
+      return this.unlocked;
     }
     play() {
       if (!this.template) {
@@ -266,14 +360,18 @@
       sound.addEventListener("error", cleanup, { once: true });
       try {
         const playback = sound.play();
-        if (playback) {
-          playback.catch(cleanup);
+        if (playback?.then) {
+          playback.then(() => this.setUnlocked(true)).catch(cleanup);
+        } else {
+          this.setUnlocked(true);
         }
       } catch {
         cleanup();
       }
     }
     destroy() {
+      this.removeActivationListeners();
+      this.listeners.clear();
       this.template?.pause();
       this.template = null;
     }
@@ -301,13 +399,13 @@
   };
   var SplitFlapDisplay = class {
     constructor(element, {
-      audio = new SplitFlapAudio(),
+      audio: audio2 = new SplitFlapAudio(),
       maxLength = STATION_CHARACTER_COUNT,
       sequence = STATION_FLAP_SEQUENCE
     } = {}) {
       this.element = element;
-      this.audio = audio;
-      this.ownsAudio = audio instanceof SplitFlapAudio;
+      this.audio = audio2;
+      this.ownsAudio = audio2 instanceof SplitFlapAudio;
       this.maxLength = maxLength;
       this.sequence = sequence;
       this.characters = [];
@@ -476,11 +574,11 @@
     }
   };
   var DelayFlapDisplay = class {
-    constructor(element, values = DELAY_VALUES, { audio = new SplitFlapAudio() } = {}) {
+    constructor(element, values = DELAY_VALUES, { audio: audio2 = new SplitFlapAudio() } = {}) {
       this.element = element;
       this.values = values;
-      this.audio = audio;
-      this.ownsAudio = audio instanceof SplitFlapAudio;
+      this.audio = audio2;
+      this.ownsAudio = audio2 instanceof SplitFlapAudio;
       this.defaultValue = element.dataset.delay || "";
       this.currentValue = "";
       this.targetValue = "";
@@ -530,36 +628,24 @@
     updateLabel() {
       this.element.setAttribute(
         "aria-label",
-        this.currentValue === "" ? "Bez me\u0161kania" : `Me\u0161kanie ${this.currentValue} min\xFAt`
+        this.targetValue === "" ? "Bez me\u0161kania" : `Me\u0161kanie ${this.targetValue} min\xFAt`
       );
     }
     set(value) {
       const next = this.parse(value);
-      const current = this.currentValue === void 0 ? "" : this.currentValue;
       const sequence = ++this.sequence;
       this.targetValue = next;
       clearTimer(this, "timer");
       this.element.classList.remove("is-flipping");
-      this.render(current, next);
-      this.currentValue = next;
+      clearFlipTiming(this.element);
       this.updateLabel();
-      if (current === next || this.reducedMotion) {
+      if (this.currentValue === next) {
         this.render(next, next);
+        this.currentValue = next;
         return this.currentValue;
       }
-      const flipDuration = getFlapDuration();
-      applyFlipTiming(this.element, flipDuration);
-      this.audio.play();
-      this.element.classList.add("is-flipping");
-      this.timer = window.setTimeout(() => {
-        if (sequence !== this.sequence) {
-          return;
-        }
-        this.render(next, next);
-        this.element.classList.remove("is-flipping");
-        this.timer = null;
-      }, flipDuration);
-      return this.currentValue;
+      this.advance(sequence);
+      return this.targetValue;
     }
     setImmediate(value) {
       const next = this.parse(value);
@@ -573,24 +659,23 @@
       this.updateLabel();
     }
     clear() {
-      const sequence = ++this.sequence;
-      this.targetValue = "";
-      clearTimer(this, "timer");
-      this.element.classList.remove("is-flipping");
-      this.advanceToBlank(sequence);
+      return this.set("");
     }
     advanceToBlank(sequence) {
-      if (sequence !== this.sequence || this.currentValue === "") {
+      this.advance(sequence);
+    }
+    advance(sequence) {
+      if (sequence !== this.sequence || this.currentValue === this.targetValue) {
         return;
       }
       const currentIndex = this.values.indexOf(this.currentValue);
-      const next = currentIndex >= 0 && currentIndex + 1 < this.values.length ? this.values[currentIndex + 1] : "";
+      const safeCurrentIndex = currentIndex >= 0 ? currentIndex : 0;
+      const next = this.values[(safeCurrentIndex + 1) % this.values.length];
       this.render(this.currentValue, next);
-      this.currentValue = next;
-      this.updateLabel();
       if (this.reducedMotion) {
         this.render(next, next);
-        scheduleFrame(() => this.advanceToBlank(sequence));
+        this.currentValue = next;
+        scheduleFrame(() => this.advance(sequence));
         return;
       }
       const flipDuration = getFlapDuration();
@@ -603,12 +688,13 @@
         }
         this.render(next, next);
         this.element.classList.remove("is-flipping");
+        this.currentValue = next;
         this.timer = null;
-        this.advanceToBlank(sequence);
+        this.advance(sequence);
       }, flipDuration);
     }
     getValue() {
-      return this.currentValue;
+      return this.targetValue;
     }
     isSettled() {
       return this.currentValue === this.targetValue && this.timer === null;
@@ -623,11 +709,11 @@
     }
   };
   var TrainFlapDisplay = class {
-    constructor(element, types = TRAIN_TYPES, { audio = new SplitFlapAudio() } = {}) {
+    constructor(element, types = TRAIN_TYPES, { audio: audio2 = new SplitFlapAudio() } = {}) {
       this.element = element;
       this.types = types;
-      this.audio = audio;
-      this.ownsAudio = audio instanceof SplitFlapAudio;
+      this.audio = audio2;
+      this.ownsAudio = audio2 instanceof SplitFlapAudio;
       this.defaultValue = element.dataset.type || element.dataset.src || "";
       this.defaultSource = element.dataset.src || this.defaultValue;
       this.currentIndex = 0;
@@ -776,12 +862,12 @@
     }
   };
   var SequentialNumericFlap = class {
-    constructor(element, minimum, maximum, { audio = new SplitFlapAudio() } = {}) {
+    constructor(element, minimum, maximum, { audio: audio2 = new SplitFlapAudio() } = {}) {
       this.element = element;
       this.minimum = minimum;
       this.maximum = maximum;
-      this.audio = audio;
-      this.ownsAudio = audio instanceof SplitFlapAudio;
+      this.audio = audio2;
+      this.ownsAudio = audio2 instanceof SplitFlapAudio;
       this.currentValue = "";
       this.targetValue = "";
       this.timer = null;
@@ -862,11 +948,8 @@
       let next;
       if (this.currentValue === "") {
         next = this.minimum;
-      } else if (this.targetValue === "") {
-        next = this.currentValue === this.maximum ? "" : this.currentValue + 1;
       } else {
-        const direction = this.targetValue > this.currentValue ? 1 : -1;
-        next = this.currentValue + direction;
+        next = this.currentValue === this.maximum ? "" : this.currentValue + 1;
       }
       const current = this.currentValue;
       this.render(current, next);
@@ -907,7 +990,7 @@
     }
   };
   var DepartureTimeDisplay = class {
-    constructor(element, { audio = new SplitFlapAudio() } = {}) {
+    constructor(element, { audio: audio2 = new SplitFlapAudio() } = {}) {
       this.element = element;
       this.defaultHours = Number(element.dataset.hours);
       this.defaultMinutes = Number(element.dataset.minutes);
@@ -915,19 +998,19 @@
         element.querySelector(".time-hour-flap"),
         0,
         23,
-        { audio }
+        { audio: audio2 }
       );
       this.minuteTens = new SequentialNumericFlap(
         element.querySelectorAll(".time-minute-flap")[0],
         0,
         5,
-        { audio }
+        { audio: audio2 }
       );
       this.minuteOnes = new SequentialNumericFlap(
         element.querySelectorAll(".time-minute-flap")[1],
         0,
         9,
-        { audio }
+        { audio: audio2 }
       );
       this.element.setAttribute("aria-label", "Odjezd");
     }
@@ -1042,7 +1125,7 @@
     color: "green",
     enabled: false,
     blinking: true,
-    blinkInterval: 0.2,
+    blinkInterval: 0.4,
     blinkDelay: 0
   });
   var LENS_BLINK_INTERVAL_MIN = 0.1;
@@ -1313,9 +1396,9 @@
       return factory(element, options);
     }
   };
-  var createDefaultRegistry = ({ audio = new SplitFlapAudio() } = {}) => {
+  var createDefaultRegistry = ({ audio: audio2 = new SplitFlapAudio() } = {}) => {
     const registry = new ComponentRegistry();
-    registry.register("split-flap", (element, options) => new SplitFlapDisplay(element, { ...options, audio })).register("delay-flap", (element, options) => new DelayFlapDisplay(element, DELAY_VALUES, { ...options, audio })).register("train-flap", (element, options) => new TrainFlapDisplay(element, TRAIN_TYPES, { ...options, audio })).register("departure-time", (element, options) => new DepartureTimeDisplay(element, { ...options, audio })).register("lens-display", (element, options) => new LensDisplay(element, options));
+    registry.register("split-flap", (element, options) => new SplitFlapDisplay(element, { ...options, audio: audio2 })).register("delay-flap", (element, options) => new DelayFlapDisplay(element, DELAY_VALUES, { ...options, audio: audio2 })).register("train-flap", (element, options) => new TrainFlapDisplay(element, TRAIN_TYPES, { ...options, audio: audio2 })).register("departure-time", (element, options) => new DepartureTimeDisplay(element, { ...options, audio: audio2 })).register("lens-display", (element, options) => new LensDisplay(element, options));
     return registry;
   };
   var BoardRuntime = class {
@@ -1818,8 +1901,8 @@
   };
 
   // src/platform/board-transport.js
-  var BOARD_TRANSPORT_CHANNEL = "pragotron.platformTable.channel.v1";
-  var BOARD_TRANSPORT_STORAGE_KEY = "pragotron.platformTable.transport.v1";
+  var BOARD_TRANSPORT_CHANNEL = "pragotron.platformTable.channel.v2";
+  var BOARD_TRANSPORT_STORAGE_KEY = "pragotron.platformTable.transport.v2";
   var createId = (prefix) => {
     const random = globalThis.crypto?.randomUUID?.();
     return `${prefix}-${random || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
@@ -1839,9 +1922,11 @@
       channelName = BOARD_TRANSPORT_CHANNEL,
       storageKey = BOARD_TRANSPORT_STORAGE_KEY,
       storage: storage2,
-      windowRef = globalThis.window
+      windowRef = globalThis.window,
+      boardId = ""
     } = {}) {
       this.id = createId("client");
+      this.boardId = typeof boardId === "string" ? boardId : "";
       this.storageKey = storageKey;
       this.storage = getStorage(storage2);
       this.window = windowRef;
@@ -1879,15 +1964,23 @@
       }
     }
     receive(message) {
-      if (!message || message.version !== 1 || typeof message.messageId !== "string" || message.source === this.id || this.seenMessages.has(message.messageId)) {
+      if (!message || message.version !== 2 || typeof message.messageId !== "string" || message.source === this.id || this.seenMessages.has(message.messageId)) {
+        return;
+      }
+      if (message.target?.source && message.target.source !== this.id) {
+        return;
+      }
+      if (message.target?.boardId && message.target.boardId !== this.boardId) {
         return;
       }
       this.remember(message.messageId);
       this.listeners.forEach((listener) => listener(message));
     }
-    publish(type, payload = {}, requestId = createId("request")) {
+    publish(type, payload = {}, requestIdOrOptions) {
+      const options = requestIdOrOptions && typeof requestIdOrOptions === "object" ? requestIdOrOptions : { requestId: requestIdOrOptions };
+      const requestId = options.requestId || createId("request");
       const message = {
-        version: 1,
+        version: 2,
         messageId: createId("message"),
         requestId,
         source: this.id,
@@ -1895,6 +1988,11 @@
         payload,
         sentAt: Date.now()
       };
+      if (options.target) {
+        message.target = {
+          ...options.target
+        };
+      }
       this.remember(message.messageId);
       try {
         this.channel?.postMessage(message);
@@ -1919,6 +2017,87 @@
       this.channel?.close();
       this.channel = null;
     }
+  };
+
+  // src/platform/board-identity.js
+  var BOARD_IDENTITY_STORAGE_KEY = "pragotron.platformTable.boardIdentity.v1";
+  var IDENTITY_FIELDS = Object.freeze([
+    "platform",
+    "track",
+    "sector"
+  ]);
+  var getSessionStorage = (storage2) => {
+    if (storage2 !== void 0) {
+      return storage2;
+    }
+    try {
+      return globalThis.window?.sessionStorage || null;
+    } catch {
+      return null;
+    }
+  };
+  var cleanValue = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
+  var normalizeBoardIdentity = (value = {}) => ({
+    platform: cleanValue(value.platform),
+    track: cleanValue(value.track),
+    sector: cleanValue(value.sector)
+  });
+  var getBoardIdentityKey = (identity) => {
+    const normalized = normalizeBoardIdentity(identity);
+    return JSON.stringify([
+      normalized.platform,
+      normalized.track,
+      normalized.sector
+    ]);
+  };
+  var identitiesMatch = (boardIdentity2, targetIdentity) => {
+    const board2 = normalizeBoardIdentity(boardIdentity2);
+    const target = normalizeBoardIdentity(targetIdentity);
+    if (!target.platform || !target.track) {
+      return false;
+    }
+    return board2.platform === target.platform && board2.track === target.track && (!target.sector || board2.sector === target.sector);
+  };
+  var loadBoardIdentity = ({
+    location = globalThis.window?.location,
+    storage: storageOption,
+    fallback = {}
+  } = {}) => {
+    const storage2 = getSessionStorage(storageOption);
+    let saved = {};
+    try {
+      const raw = storage2?.getItem(BOARD_IDENTITY_STORAGE_KEY);
+      saved = raw ? JSON.parse(raw) : {};
+    } catch {
+      saved = {};
+    }
+    const params = new URLSearchParams(location?.search || "");
+    const hasPlatformOrTrackParam = params.has("platform") || params.has("track");
+    const hasAnyParam = IDENTITY_FIELDS.some((field) => params.has(field));
+    const urlIdentity = hasAnyParam ? {
+      platform: params.has("platform") ? params.get("platform") : hasPlatformOrTrackParam ? "" : saved.platform,
+      track: params.has("track") ? params.get("track") : hasPlatformOrTrackParam ? "" : saved.track,
+      sector: params.has("sector") ? params.get("sector") : hasPlatformOrTrackParam ? "" : saved.sector
+    } : null;
+    const identity = normalizeBoardIdentity(
+      urlIdentity || saved || fallback
+    );
+    if (urlIdentity) {
+      saveBoardIdentity(identity, storage2);
+    }
+    return identity;
+  };
+  var saveBoardIdentity = (identity, storageOption) => {
+    const storage2 = getSessionStorage(storageOption);
+    const normalized = normalizeBoardIdentity(identity);
+    try {
+      storage2?.setItem(
+        BOARD_IDENTITY_STORAGE_KEY,
+        JSON.stringify(normalized)
+      );
+    } catch {
+    }
+    return normalized;
   };
 
   // node_modules/sunrise-sunset-js/dist/index.js
@@ -4543,31 +4722,75 @@
   });
 
   // src/demos/platformTableBoard.js
-  var STORAGE_KEY = "pragotron.platformTable.state.v1";
+  var STORAGE_KEY = "pragotron.platformTable.state.v2";
+  var LEGACY_STORAGE_KEY = "pragotron.platformTable.state.v1";
   var documentRef = document;
   var storage = new LocalStorageAdapter(STORAGE_KEY);
-  var savedState = storage.load();
-  var transport = new BoardTransport();
-  var automaticNightMode = savedState?.autoNightMode === true;
+  var legacyStorage = new LocalStorageAdapter(LEGACY_STORAGE_KEY);
+  var currentState = storage.load();
+  var legacyState = currentState ? null : legacyStorage.load();
+  var savedState = currentState || legacyState || {};
+  if (!currentState && legacyState) {
+    storage.save({
+      ...legacyState,
+      version: 2
+    });
+  }
+  var savedSettings = savedState.settings || savedState;
+  var boardIdentity = loadBoardIdentity();
+  var transport = new BoardTransport({
+    boardId: getBoardIdentityKey(boardIdentity)
+  });
+  var appliedRevision = 0;
+  var automaticNightMode = savedSettings?.autoNightMode === true;
+  var heartbeatTimer = null;
+  var commandQueue = Promise.resolve();
   var createEmptyDisplayState = () => ({
     ...createEmptyBoardState(),
     lenses: createDefaultLensState()
   });
+  var normalizeIncomingBoardState = (state) => {
+    const source = state && typeof state === "object" ? state : {};
+    const stations = Array.isArray(source.stations) ? source.stations : [source.stationOne, source.stationTwo];
+    return {
+      ...source,
+      stations: [stations[0] || "", stations[1] || ""]
+    };
+  };
+  var isValidBoardState = (state) => {
+    const departureTime = state?.departureTime;
+    const validTime = departureTime === null || Number.isInteger(Number(departureTime?.hours)) && Number(departureTime.hours) >= 0 && Number(departureTime.hours) <= 23 && Number.isInteger(Number(departureTime?.minutes)) && Number(departureTime.minutes) >= 0 && Number(departureTime.minutes) <= 59;
+    const validStations = Array.isArray(state?.stations) && state.stations.length >= 2 && state.stations.slice(0, 2).every(
+      (station) => typeof station === "string" && station.length <= 14
+    );
+    return validStations && TRAIN_TYPES.some((type) => type.name === state.train) && parseDelayMinutes(state.delay) !== null && validTime;
+  };
+  var audio = new SplitFlapAudio();
   var board = createBoard({
     root: documentRef.querySelector(PLATFORM_TABLE_TEMPLATE.rootSelector),
     slots: PLATFORM_TABLE_TEMPLATE.slots,
-    registry: createDefaultRegistry({ audio: new SplitFlapAudio() }),
+    registry: createDefaultRegistry({ audio }),
     initialState: createEmptyDisplayState()
   });
   var lensDisplay = board.getComponent("lenses");
   var lensActivationTimer = null;
   var lensActivationToken = 0;
+  var lensAnimationStartedAt = Date.now();
+  var currentDisplayState = createEmptyDisplayState();
+  var identificationActive = false;
+  var normalLensState = null;
+  var operationalPreDepartureActive = true;
   var cancelLensActivation = () => {
     lensActivationToken += 1;
     if (lensActivationTimer !== null) {
       window.clearTimeout(lensActivationTimer);
       lensActivationTimer = null;
     }
+  };
+  var setLensPreDepartureActive = (isActive) => {
+    operationalPreDepartureActive = Boolean(isActive);
+    lensDisplay.setPreDepartureActive(isActive);
+    lensAnimationStartedAt = Date.now();
   };
   var getEffectiveDeparture = (state) => {
     const departureTime = state?.departureTime;
@@ -4592,42 +4815,97 @@
       (lens) => lens.enabled && lens.blinking
     );
     if (!preDeparture.enabled || !hasBlinkingLens) {
-      lensDisplay.setPreDepartureActive(true);
+      setLensPreDepartureActive(true);
       return;
     }
     const departure = getEffectiveDeparture(state);
     if (!departure) {
-      lensDisplay.setPreDepartureActive(true);
+      setLensPreDepartureActive(true);
       return;
     }
     const activationTime = departure.getTime() - preDeparture.seconds * 1e3;
     if (activationTime <= Date.now()) {
-      lensDisplay.setPreDepartureActive(true);
+      setLensPreDepartureActive(true);
       return;
     }
-    lensDisplay.setPreDepartureActive(false);
+    setLensPreDepartureActive(false);
     const token = lensActivationToken;
     lensActivationTimer = window.setTimeout(() => {
       if (token !== lensActivationToken) {
         return;
       }
       lensActivationTimer = null;
-      lensDisplay.setPreDepartureActive(true);
+      setLensPreDepartureActive(true);
+      publishHeartbeat();
     }, activationTime - Date.now());
+  };
+  var cloneLensState = (value) => ({
+    lenses: Array.isArray(value?.lenses) ? value.lenses.map((lens) => ({ ...lens })) : createDefaultLensState().lenses,
+    preDeparture: {
+      ...value?.preDeparture || {}
+    }
+  });
+  var applyIdentificationLensState = () => {
+    const source = normalLensState || currentDisplayState.lenses || createDefaultLensState();
+    lensDisplay.set({
+      lenses: source.lenses.map((lens) => ({
+        ...lens,
+        enabled: true,
+        blinking: false
+      })),
+      preDeparture: {
+        ...source.preDeparture,
+        enabled: false
+      }
+    });
+    lensDisplay.setPreDepartureActive(true);
+  };
+  var setIdentificationActive = (forceOn) => {
+    const nextValue = Boolean(forceOn);
+    if (nextValue === identificationActive) {
+      if (nextValue) {
+        applyIdentificationLensState();
+      }
+      return identificationActive;
+    }
+    if (nextValue) {
+      normalLensState = cloneLensState(
+        currentDisplayState.lenses || lensDisplay.getValue()
+      );
+      identificationActive = true;
+      cancelLensActivation();
+      applyIdentificationLensState();
+      return identificationActive;
+    }
+    identificationActive = false;
+    lensDisplay.set(
+      normalLensState || currentDisplayState.lenses || createDefaultLensState()
+    );
+    normalLensState = null;
+    scheduleLensActivation(currentDisplayState);
+    return identificationActive;
   };
   var setBoardState = (state, options = {}) => {
     cancelLensActivation();
     const nextState = state || createEmptyDisplayState();
+    currentDisplayState = nextState;
+    if (identificationActive) {
+      normalLensState = nextState.lenses || createDefaultLensState();
+    }
     const result = board.setState(nextState, options);
     scheduleLensActivation(nextState);
+    if (identificationActive) {
+      applyIdentificationLensState();
+    }
     return result;
   };
   var screenElement = documentRef.querySelector("#skrin");
+  audio.bindUserActivation(screenElement || documentRef);
   var nightLighting = new NightLighting({
     root: screenElement,
     clockBlock: documentRef.querySelector("#clockBlock"),
-    initialLamps: savedState?.lamps || {},
-    initialClock: savedState?.clockLight || NIGHT_CLOCK_DEFAULTS
+    initialLamps: savedSettings?.lamps || {},
+    initialClock: savedSettings?.clockLight || NIGHT_CLOCK_DEFAULTS
   }).mount();
   var analogClock = new AnalogClock(
     documentRef.querySelector("#pragotronAnalogClock")
@@ -4642,11 +4920,18 @@
     analogClock.transitionNightMode();
   };
   var persistNightModeState = () => {
-    const currentState = storage.load() || {};
-    storage.save({
-      ...currentState,
+    const currentState2 = storage.load() || {};
+    const modeState = {
       nightMode: nightLighting.isNightMode(),
       autoNightMode: automaticNightMode
+    };
+    storage.save({
+      ...currentState2,
+      ...modeState,
+      settings: {
+        ...currentState2.settings || {},
+        ...modeState
+      }
     });
   };
   var publishBoardMode = () => {
@@ -4700,54 +4985,144 @@
     };
     check();
   });
-  var acknowledge = (requestId, payload = {}) => {
+  var getLensPresenceState = () => ({
+    ...normalLensState || lensDisplay.getValue(),
+    preDepartureActive: normalLensState ? operationalPreDepartureActive : lensDisplay.preDepartureActive,
+    animationStartedAt: lensAnimationStartedAt
+  });
+  var acknowledge = (message, payload = {}) => {
     transport.publish("command:ack", {
-      requestId,
+      boardId: getBoardIdentityKey(boardIdentity),
+      identity: boardIdentity,
+      instanceId: transport.id,
+      revision: appliedRevision,
+      lensState: getLensPresenceState(),
+      identificationActive,
       ...payload
+    }, {
+      requestId: message.requestId,
+      target: {
+        source: message.source
+      }
     });
   };
   var publishReady = () => {
     transport.publish("board:ready", {
       page: "platformTable",
-      capabilities: ["apply-board", "reset-board", "reset-all"],
+      boardId: getBoardIdentityKey(boardIdentity),
+      identity: boardIdentity,
+      instanceId: transport.id,
+      configured: Boolean(boardIdentity.platform && boardIdentity.track),
+      capabilities: [
+        "apply-board",
+        "reset-board",
+        "reset-all",
+        "identify-lenses"
+      ],
       nightMode: nightLighting.isNightMode(),
-      autoNightMode: automaticNightMode
+      autoNightMode: automaticNightMode,
+      appliedRevision,
+      lensState: getLensPresenceState(),
+      audio: audio.getState(),
+      identificationActive
     });
   };
+  var publishHeartbeat = () => {
+    transport.publish("board:heartbeat", {
+      page: "platformTable",
+      boardId: getBoardIdentityKey(boardIdentity),
+      identity: boardIdentity,
+      instanceId: transport.id,
+      configured: Boolean(boardIdentity.platform && boardIdentity.track),
+      appliedRevision,
+      lensState: getLensPresenceState(),
+      audio: audio.getState(),
+      identificationActive
+    });
+  };
+  audio.subscribe(() => {
+    publishHeartbeat();
+  });
   var handleCommand = async (message) => {
     const {
       action,
       state,
       settings,
+      revision,
+      forceOn,
       immediate = false
     } = message.payload || {};
     try {
+      const isTargetedAction = action === "apply-board" || action === "reset-board";
+      const isIdentificationAction = action === "identify-lenses";
+      if (isTargetedAction) {
+        if (!message.payload?.target || !identitiesMatch(boardIdentity, message.payload.target)) {
+          return;
+        }
+      }
+      if (isIdentificationAction && message.target?.source !== transport.id) {
+        return;
+      }
+      if (![
+        "apply-board",
+        "reset-board",
+        "reset-all",
+        "identify-lenses"
+      ].includes(action)) {
+        throw new Error("Nezn\xE1m\xE1 akce tabule.");
+      }
+      if (isIdentificationAction) {
+        setIdentificationActive(forceOn);
+        acknowledge(message, {
+          ok: true,
+          identificationActive
+        });
+        publishHeartbeat();
+        return;
+      }
+      if (Number.isFinite(Number(revision)) && Number(revision) <= appliedRevision) {
+        acknowledge(message, { ok: true });
+        return;
+      }
       if (settings) {
         applySettings(settings);
       }
       if (action === "apply-board" || action === "reset-board") {
-        setBoardState(state || createEmptyDisplayState(), { immediate });
+        const nextState = normalizeIncomingBoardState(
+          state || createEmptyDisplayState()
+        );
+        if (!isValidBoardState(nextState)) {
+          throw new Error("Neplatn\xE1 data odjezdov\xE9 tabule.");
+        }
+        setBoardState(nextState, { immediate });
         if (!immediate) {
           await waitForBoardToSettle();
         }
       } else if (action === "reset-all") {
         setBoardState(createEmptyDisplayState(), { immediate: true });
       }
-      acknowledge(message.requestId, { ok: true });
+      if (Number.isFinite(Number(revision))) {
+        appliedRevision = Number(revision);
+      }
+      acknowledge(message, { ok: true });
     } catch (error) {
-      acknowledge(message.requestId, {
+      acknowledge(message, {
         ok: false,
         error: error instanceof Error ? error.message : "Tabuli se nepoda\u0159ilo aktualizovat."
       });
     }
   };
   transport.subscribe((message) => {
-    if (message.type === "manage:hello") {
+    if (message.type === "manage:hello" || message.type === "manage:discover") {
       publishReady();
       return;
     }
     if (message.type === "board:command") {
-      handleCommand(message);
+      if (message.payload?.action === "identify-lenses") {
+        void handleCommand(message);
+      } else {
+        commandQueue = commandQueue.then(() => handleCommand(message));
+      }
       return;
     }
     if (message.type === "board:settings") {
@@ -4755,25 +5130,48 @@
     }
   });
   applySettings({
-    nightMode: savedState?.nightMode === true,
+    nightMode: savedSettings?.nightMode === true,
     autoNightMode: automaticNightMode
   });
   publishReady();
+  heartbeatTimer = window.setInterval(publishHeartbeat, 4e3);
   window.pragotron = {
     board,
     lighting: nightLighting,
     clock: analogClock,
+    audio,
+    identity: boardIdentity,
     transport,
     getState: () => board.getState(),
+    getIdentity: () => ({ ...boardIdentity }),
     setState: (state, options) => setBoardState(state, options),
     setNightMode,
+    configureIdentity: (value) => {
+      const previousBoardId = getBoardIdentityKey(boardIdentity);
+      boardIdentity = saveBoardIdentity(value);
+      transport.boardId = getBoardIdentityKey(boardIdentity);
+      if (transport.boardId !== previousBoardId) {
+        appliedRevision = 0;
+      }
+      window.pragotron.identity = boardIdentity;
+      const message = `Identita tabule nastavena: n\xE1stupi\u0161t\u011B ${boardIdentity.platform || "\u2014"}, kolej ${boardIdentity.track || "\u2014"}, sektor ${boardIdentity.sector || "cel\xE1 kolej"}.`;
+      console.info(message);
+      publishReady();
+      return {
+        ...boardIdentity,
+        message
+      };
+    },
     destroy: () => {
       cancelLensActivation();
       sunSchedule.destroy();
+      window.clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
       transport.close();
       board.destroy();
       nightLighting.destroy();
       analogClock.destroy();
+      audio.destroy();
     }
   };
 })();

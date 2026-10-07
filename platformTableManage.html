@@ -19,12 +19,32 @@
     <script src="src/demos/platformTableManagePreload.js"></script>
 
     <div id="manage">
-        <form id="boardForm">
+        <div class="manage-main-column">
+            <form id="boardForm">
             <fieldset>
                 <div><legend>Nastavení odjezdové tabule</legend></div>
                 <div class="board-form-grid">
+                    <label class="board-form-field" for="trainType">
+                        Typ vlaku
+                        <select id="trainType" name="trainType"></select>
+                    </label>
+                    <label class="board-form-field" for="trainNumber">
+                        Číslo vlaku
+                        <input
+                            id="trainNumber"
+                            name="trainNumber"
+                            type="text"
+                            inputmode="numeric"
+                            maxlength="4"
+                            pattern="[0-9]{0,4}"
+                            autocomplete="off"
+                            aria-describedby="trainNumberHelp"
+                        >
+                        <small id="trainNumberHelp">Volitelné, nejvýše 4 číslice.</small>
+                    </label></div>
+                <div class="board-form-grid board-form-grid-secondary">
                     <label class="board-form-field" for="stationOne">
-                        Stanice 1
+                        Cílová stanice
                         <input
                             id="stationOne"
                             name="stationOne"
@@ -34,7 +54,7 @@
                         >
                     </label>
                     <label class="board-form-field" for="stationTwo">
-                        Stanice 2
+                        Přes stanici
                         <input
                             id="stationTwo"
                             name="stationTwo"
@@ -42,11 +62,8 @@
                             maxlength="14"
                             autocomplete="off"
                         >
-                    </label>
-                    <label class="board-form-field" for="trainType">
-                        Typ vlaku
-                        <select id="trainType" name="trainType"></select>
-                    </label>
+                    </label></div>
+                <div class="board-form-grid board-form-grid-secondary">
                     <label class="board-form-field" for="departureTime">
                         Odjezd
                         <input
@@ -77,6 +94,40 @@
                         <small id="delayHelp">
                             Do 5 minut včetně se zpoždění na tabuli nezobrazuje.
                         </small>
+                    </label></div>
+                <div class="board-form-grid board-form-grid-secondary">
+                    <label class="board-form-field" for="platformValue">
+                        Nástupiště
+                        <input
+                            id="platformValue"
+                            name="platform"
+                            type="text"
+                            maxlength="20"
+                            autocomplete="off"
+                            required
+                        >
+                    </label>
+                    <label class="board-form-field" for="trackValue">
+                        Kolej
+                        <input
+                            id="trackValue"
+                            name="track"
+                            type="text"
+                            maxlength="20"
+                            autocomplete="off"
+                            required
+                        >
+                    </label>
+                    <label class="board-form-field" for="sectorValue">
+                        Sektor
+                        <input
+                            id="sectorValue"
+                            name="sector"
+                            type="text"
+                            maxlength="20"
+                            autocomplete="off"
+                        >
+                        <small>Volitelné; prázdný sektor znamená celou kolej.</small>
                     </label>
                 </div>
 
@@ -86,8 +137,9 @@
                 </fieldset>
 
                 <div class="board-form-actions">
-                    <button type="submit">Odeslat na tabuli</button>
-                    <button id="startButton" type="button">Načíst příklad</button>
+                    <button type="submit" style="margin: 1.5rem auto; scale: 1.5;">Odeslat na tabuli</button>
+                </div>
+                <div class="board-form-actions" style="justify-content: center;">
                     <button id="nightModeButton" type="button" aria-pressed="false">
                         🌙 Noční režim
                     </button>
@@ -95,6 +147,7 @@
                         <input id="autoNightMode" type="checkbox">
                         Automaticky podle slunce
                     </label>
+                    <button id="startButton" type="button">Načíst příklad</button>
                     <button id="resetAllSettings" type="button">
                         Resetovat všechna nastavení
                     </button>
@@ -142,7 +195,44 @@
 
                 <p id="boardFormStatus" role="status" aria-live="polite"></p>
             </fieldset>
-        </form>
+            </form>
+        </div>
+
+        <div class="manage-side-column">
+            <fieldset id="activeBoardsPanel" class="manage-panel">
+            <div><legend>Připojené tabule</legend></div>
+            <div id="activeBoardsList" class="active-boards-list">
+                <p class="manage-empty-state">Zatím nebyla nalezena žádná tabule.</p>
+            </div>
+            </fieldset>
+
+            <fieldset id="departuresPanel" class="manage-panel">
+            <div><legend>Odjezdy na tabulích</legend></div>
+            <div class="departures-table-wrap">
+                <table id="departuresTable">
+                    <thead>
+                        <tr>
+                            <th scope="col">Čočky</th>
+                            <th scope="col"><button type="button" data-sort-key="stationOne">Stanice 1</button></th>
+                            <th scope="col"><button type="button" data-sort-key="stationTwo">Stanice 2</button></th>
+                            <th scope="col"><button type="button" data-sort-key="train">Typ vlaku</button></th>
+                            <th scope="col"><button type="button" data-sort-key="trainNumber">Číslo vlaku</button></th>
+                            <th scope="col"><button type="button" data-sort-key="departureTime">Odjezd</button></th>
+                            <th scope="col"><button type="button" data-sort-key="delay">Zpoždění</button></th>
+                            <th scope="col"><button type="button" data-sort-key="platform">Nástupiště</button></th>
+                            <th scope="col"><button type="button" data-sort-key="track">Kolej</button></th>
+                            <th scope="col"><button type="button" data-sort-key="sector">Sektor</button></th>
+                            <th scope="col">Akce</th>
+                        </tr>
+                    </thead>
+                    <tbody id="departuresTableBody"></tbody>
+                </table>
+                <p id="departuresEmptyState" class="manage-empty-state">
+                    Zatím nebyl odeslán žádný odjezd.
+                </p>
+            </div>
+            </fieldset>
+        </div>
     </div>
 
     <script src="src/demos/platformTableManageLoader.js"></script>

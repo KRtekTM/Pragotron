@@ -35,6 +35,7 @@ prohlížeči a originu.
 - `src/platform/night-lighting.js` — noční režim, žárovky a lifecycle timerů.
 - `src/platform/lighting-state.js` — stavové nastavení světel bez DOM.
 - `src/platform/board-transport.js` — komunikace mezi tabulí a manage stránkou.
+- `src/platform/board-identity.js` — identita nástupiště, koleje a sektoru.
 - `src/platform/sun-schedule.js` — automatické řízení podle slunce.
 - `src/platform/storage.js` — volitelný adapter pro `localStorage`.
 - `src/templates/` — datové definice rozložení tabulí.
@@ -76,6 +77,29 @@ window.pragotron.getState();
 
 `setState(state)` spouští skutečnou flip animaci. Pro obnovu bez animace
 používá platforma interně `setState(state, { immediate: true })`.
+
+## Identita nástupištní tabule
+
+Zobrazovací stránku lze otevřít s identitou v URL:
+
+```text
+platformTable.html?platform=1&track=6a&sector=Jih
+```
+
+Identita se ukládá do `sessionStorage`, takže přežije refresh, ale různé
+prohlížečové taby se navzájem nepřepisují. Lze ji změnit i z konzole:
+
+```js
+window.pragotron.configureIdentity({
+    platform: "1",
+    track: "6a",
+    sector: "Jih"
+});
+```
+
+Pole `sector` je volitelné. Příkaz z manage stránky s prázdným sektorem
+zasáhne všechny tabule stejného nástupiště a koleje; vyplněný sektor zasáhne
+jen přesnou shodu.
 
 ## Nová šablona tabule
 

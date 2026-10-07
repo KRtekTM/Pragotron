@@ -54,6 +54,16 @@ export {
     BoardTransport
 } from './board-transport.js';
 export {
+    BOARD_IDENTITY_STORAGE_KEY,
+    formatBoardIdentity,
+    getBoardIdentityKey,
+    identitiesMatch,
+    isBoardIdentityConfigured,
+    loadBoardIdentity,
+    normalizeBoardIdentity,
+    saveBoardIdentity
+} from './board-identity.js';
+export {
     BRATISLAVA_SUN_LOCATION,
     SunSchedule,
     calculateSunSchedule

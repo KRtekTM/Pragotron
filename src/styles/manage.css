@@ -1,12 +1,35 @@
 #manage {
-    margin-top: 5em;
+    display: grid;
+    grid-template-columns: minmax(0, 0.4fr) minmax(22rem, 0.6fr);
+    align-items: start;
+    gap: 1rem;
     padding: 1.25rem 20px 2rem;
     color: #fff;
 }
 
+.manage-main-column,
+.manage-side-column {
+    min-width: 0;
+}
+
+.manage-side-column {
+    display: grid;
+    gap: 1rem;
+}
+
 #boardForm {
-    max-width: 1100px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
+}
+
+#manage .manage-side-column > .manage-panel {
+    max-width: none;
+    margin: 0;
+    padding: 1rem;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 1rem;
+    background: #222;
 }
 
 #boardForm fieldset {
@@ -26,9 +49,12 @@
 
 .board-form-grid {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
     gap: 0.8rem;
 }
+.board-form-grid-secondary {
+    margin-top: 1.5rem;
+ }
 
 .board-form-field {
     display: flex;
@@ -163,6 +189,211 @@
     color: #ff9b9b;
 }
 
+#manage .manage-panel > div > legend {
+    display: block;
+    margin-bottom: 0.7rem;
+    padding: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.active-boards-list {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.active-board-item {
+    display: grid;
+    grid-template-columns:
+        minmax(12rem, 1fr)
+        minmax(12rem, 1fr)
+        max-content
+        max-content
+        max-content;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 0.5rem;
+    background: #292929;
+}
+
+.active-board-item > span {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.82rem;
+}
+
+.active-board-status {
+    color: #bfe8c5 !important;
+    font-weight: 700;
+}
+
+.active-board-audio {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.active-board-item.is-unconfigured .active-board-status {
+    color: #ffcc8a !important;
+}
+
+.active-board-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.active-board-actions button {
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.active-board-actions button:hover {
+    background: #fff;
+}
+
+.active-board-actions button:disabled {
+    cursor: wait;
+    opacity: 0.48;
+}
+
+.identify-eye-icon {
+    display: block;
+    width: 1.2rem;
+    height: 1.2rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+    line-height: 1;
+    opacity: 0.35;
+}
+
+.identify-eye-icon.is-open {
+    color: #d4a92c;
+    opacity: 1;
+    filter: drop-shadow(0 0 0.28rem #ffd866);
+}
+
+.manage-empty-state {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.68);
+}
+
+.departures-table-wrap {
+    overflow-x: auto;
+}
+
+#departuresTable {
+    width: 100%;
+    min-width: 58rem;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+}
+
+#departuresTable th,
+#departuresTable td {
+    padding: 0.55rem 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    text-align: left;
+    vertical-align: middle;
+}
+
+#departuresTable th {
+    color: rgba(255, 255, 255, 0.76);
+    white-space: nowrap;
+}
+
+#departuresTable th button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+#departuresTable th button::after {
+    content: ' ↕';
+    opacity: 0.5;
+}
+
+#departuresTable th.is-sorted button::after {
+    content: ' ' attr(data-sort-direction);
+    opacity: 1;
+}
+
+#departuresTable th button:focus-visible {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 2px;
+}
+
+.departure-lens-status {
+    white-space: nowrap;
+}
+
+.lens-status-symbol {
+    display: inline-block;
+    margin-right: 0.2rem;
+    color: var(--status-color);
+    opacity: 0.25;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.lens-status-symbol.is-on {
+    opacity: 1;
+    text-shadow: 0 0 0.45rem var(--status-color);
+}
+
+.lens-status-symbol.is-blinking {
+    animation:
+        manage-lens-status-blink
+        var(--lens-blink-duration, 0.4s)
+        steps(1, end)
+        infinite;
+    animation-delay: calc(-1 * var(--lens-blink-delay, 0s));
+    animation-fill-mode: both;
+}
+
+@keyframes manage-lens-status-blink {
+    0%,
+    49.999% {
+        opacity: 1;
+        text-shadow: 0 0 0.45rem var(--status-color);
+    }
+
+    50%,
+    100% {
+        opacity: 0.25;
+        text-shadow: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lens-status-symbol.is-blinking {
+        animation: none;
+    }
+}
+
+.departure-row-actions {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.departure-row-actions button {
+    padding: 0.35rem 0.55rem !important;
+    font-size: 0.8rem !important;
+}
+
 #boardForm .lamp-settings {
     margin-top: 1rem;
     padding: 0.9rem;
@@ -231,6 +462,10 @@
     accent-color: var(--control-focus);
 }
 
+.lens-component-controls .lamp-control-check input[aria-readonly="true"] {
+    cursor: not-allowed;
+}
+
 .lamp-control-range,
 .lamp-control-select {
     display: flex;
@@ -284,7 +519,9 @@ body.manage-night-mode #manage {
 #skrin.night-mode ~ #manage #boardForm > fieldset,
 #skrin.night-mode ~ #manage #boardForm .lamp-settings,
 body.manage-night-mode #manage #boardForm > fieldset,
-body.manage-night-mode #manage #boardForm .lamp-settings {
+body.manage-night-mode #manage #boardForm .lamp-settings,
+#skrin.night-mode ~ #manage .manage-side-column > .manage-panel,
+body.manage-night-mode #manage .manage-side-column > .manage-panel {
     border-color: #3f464d;
     background: #171a1e;
 }
@@ -336,10 +573,47 @@ body.manage-night-mode #manage #boardForm .lamp-settings-help {
     color: #aeb5bc;
 }
 
+#skrin.night-mode ~ #manage .active-board-item,
+body.manage-night-mode #manage .active-board-item {
+    border-color: #3a424a;
+    background: #20252a;
+}
+
+#skrin.night-mode ~ #manage .active-board-actions button,
+body.manage-night-mode #manage .active-board-actions button {
+    border-color: #626d77;
+    background: #30363d;
+    color: #f0f2f4;
+}
+
+#skrin.night-mode ~ #manage .active-board-actions button:hover,
+body.manage-night-mode #manage .active-board-actions button:hover {
+    background: #424b54;
+}
+
+#skrin.night-mode ~ #manage #departuresTable th,
+body.manage-night-mode #manage #departuresTable th {
+    color: #aeb5bc;
+}
+
 @media (max-width: 900px) {
+    #manage {
+        grid-template-columns: 1fr;
+    }
+
     .board-form-grid,
     .lamp-controls {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .active-board-item {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .active-board-status,
+    .active-board-audio,
+    .active-board-actions {
+        grid-column: 1 / -1;
     }
 
     .lens-component-controls {
@@ -361,5 +635,15 @@ body.manage-night-mode #manage #boardForm .lamp-settings-help {
 
     .clock-light-controls {
         grid-template-columns: 1fr;
+    }
+
+    .active-board-item {
+        grid-template-columns: 1fr;
+    }
+
+    .active-board-status,
+    .active-board-audio,
+    .active-board-actions {
+        grid-column: auto;
     }
 }
