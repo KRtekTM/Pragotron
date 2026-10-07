@@ -1,6 +1,8 @@
 import {
     DELAY_VALUES,
+    getDisplayedDelay,
     getFlapDuration,
+    parseDelayMinutes,
     STATION_CHARACTER_COUNT,
     STATION_FLAP_SEQUENCE,
     TRAIN_TYPES
@@ -271,17 +273,15 @@ export class DelayFlapDisplay {
             return '';
         }
 
-        const match = String(value).trim().match(/^(\d+)\s*min\.?$/i)
-            || String(value).trim().match(/^(\d+)$/);
-        const numericValue = match ? Number(match[1]) : NaN;
+        const numericValue = parseDelayMinutes(value);
 
-        if (!this.values.includes(numericValue)) {
+        if (numericValue === null) {
             throw new RangeError(
-                `Nepodporované zpoždění "${value}". Povolené hodnoty: ${this.values.join(', ')}`
+                `Neplatné zpoždění "${value}". Zadejte nezáporné minuty.`
             );
         }
 
-        return numericValue;
+        return getDisplayedDelay(numericValue, this.values);
     }
 
     createHalf(className, value) {

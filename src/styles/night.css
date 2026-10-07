@@ -197,36 +197,34 @@
 }
 
 .night-light--top-left {
-    --lamp-cycle: 45s;
     left: 13%;
     top: 1.5%;
 }
 
 .night-light--top-center {
-    --lamp-core: #ffe59a;
-    --lamp-glow: rgba(255, 193, 87, 0.18);
-    --lamp-halo: rgba(255, 175, 62, 0.04);
-    --lamp-cycle: 60s;
     left: 50%;
     top: 1%;
     transform: translateX(-50%);
 }
 
 .night-light--top-right {
-    --lamp-cycle: 45s;
     right: 13%;
     top: 1.5%;
 }
 
 .night-light--bottom-left {
-    --lamp-cycle: 60s;
-    --lamp-glow: rgba(255, 207, 122, 0.3);
-    --lamp-halo: rgba(190, 139, 48, 0.1);
     bottom: 2.5%;
     left: 14%;
 }
 
+.night-light--bottom-center {
+    bottom: 2.5%;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
 .night-light--bottom-left::after,
+.night-light--bottom-center::after,
 .night-light--bottom-right::after {
     top: auto;
     bottom: 0.25rem;
@@ -241,17 +239,8 @@
 }
 
 .night-light--bottom-right {
-    --lamp-core: #ffedaf;
-    --lamp-glow: rgba(255, 214, 121, 0.2);
-    --lamp-cycle: 55s;
     right: 14%;
     bottom: 2.5%;
-}
-
-.night-light--dim {
-    --lamp-core: #d8b96d;
-    --lamp-glow: rgba(188, 142, 56, 0.27);
-    --lamp-halo: rgba(166, 111, 32, 0.07);
 }
 
 @keyframes night-lamp-pulse {

@@ -13,6 +13,13 @@
     <link rel="preload" href="images/pragotron.svg" as="image" type="image/svg+xml" />
     <link href="style.css" rel="stylesheet" type="text/css" media="screen,projection" />
     <link href="favicon.ico" rel="icon" />
+    <script type="importmap">
+        {
+            "imports": {
+                "sunrise-sunset-js": "./node_modules/sunrise-sunset-js/dist/index.js"
+            }
+        }
+    </script>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
     <script language="javascript" type="text/javascript" src="js/jquery.thooClock.js"></script>  
@@ -25,8 +32,9 @@
             <div class="night-lighting" aria-hidden="true">
                 <span class="night-light night-light--top-left" data-light-id="top-left"></span>
                 <span class="night-light night-light--top-center" data-light-id="top-center"></span>
-                <span class="night-light night-light--top-right night-light--dim" data-light-id="top-right"></span>
+                <span class="night-light night-light--top-right" data-light-id="top-right"></span>
                 <span class="night-light night-light--bottom-left" data-light-id="bottom-left"></span>
+                <span class="night-light night-light--bottom-center" data-light-id="bottom-center"></span>
                 <span class="night-light night-light--bottom-right" data-light-id="bottom-right"></span>
             </div>
             <div class="ridge-outer"><div class="ridge-inner">
@@ -115,109 +123,6 @@
         </div>
     </div>
 
-    <div id="manage">
-        <form id="boardForm">
-            <fieldset>
-                <div class="">
-                    <legend>Nastavení odjezdové tabule</legend>
-                </div>
-                <div class="board-form-grid">
-                    <label class="board-form-field" for="stationOne">
-                        Stanice 1
-                        <input
-                            id="stationOne"
-                            name="stationOne"
-                            type="text"
-                            maxlength="14"
-                            autocomplete="off"
-                        />
-                    </label>
-                    <label class="board-form-field" for="stationTwo">
-                        Stanice 2
-                        <input
-                            id="stationTwo"
-                            name="stationTwo"
-                            type="text"
-                            maxlength="14"
-                            autocomplete="off"
-                        />
-                    </label>
-                    <label class="board-form-field" for="trainType">
-                        Typ vlaku
-                        <select id="trainType" name="trainType"></select>
-                    </label>
-                    <label class="board-form-field" for="departureTime">
-                        Odjezd
-                        <input
-                            id="departureTime"
-                            name="departureTime"
-                            type="time"
-                            step="60"
-                        />
-                    </label>
-                    <label class="board-form-field" for="delayValue">
-                        Zpoždění
-                        <select id="delayValue" name="delayValue"></select>
-                    </label>
-                </div>
-                <div class="board-form-actions">
-                    <button type="submit">Odeslat na tabuli</button>
-                    <button id="startButton" type="button">Start/Reset</button>
-                    <button id="nightModeButton" type="button" aria-pressed="false">
-                        🌙 Noční režim
-                    </button>
-                    <button id="resetAllSettings" type="button">
-                        Resetovat všechna nastavení
-                    </button>
-                </div>
-                <fieldset id="lensSettingsPanel" class="lens-settings">
-                    <div><legend>Nastavení čoček</legend></div>
-                    <div id="lensControls"></div>
-                </fieldset>
-                <fieldset id="lampSettingsPanel" class="lamp-settings" hidden>
-                    <div><legend>Nastavení jednotlivých žárovek</legend></div>
-                    <div id="lampControls" class="lamp-controls">
-                        <fieldset id="clockLightControl" class="lamp-control clock-light-control">
-                            <div><legend>Osvětlení hodin</legend></div>
-                            <div class="clock-light-controls">
-                                <label class="lamp-control-check" for="clockLightEnabled">
-                                    <input id="clockLightEnabled" type="checkbox" checked />
-                                    Svítí
-                                </label>
-                                <label class="lamp-control-range" for="clockLightIntensity">
-                                    <span class="lamp-control-range-header">
-                                        <span>Intenzita</span>
-                                <output id="clockLightIntensityOutput">50%</output>
-                                    </span>
-                                    <input
-                                        id="clockLightIntensity"
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                value="50"
-                                    />
-                                </label>
-                            </div>
-                        </fieldset>
-                    </div>
-                    <p class="lamp-settings-help">
-                        Checkbox „Kolísá“ zapíná vybraný světelný efekt. Volba
-                        „Bez pohasínání“ udrží žárovku ve stálém svitu. Délka
-                        cyklu je skutečný čas celého efektu; vyšší hodnota
-                        znamená pomalejší změny.
-                    </p>
-                    <div class="lamp-settings-actions">
-                        <button id="resetLampSettings" type="button">
-                            Obnovit výchozí světla
-                        </button>
-                    </div>
-                </fieldset>
-                <p id="boardFormStatus" role="status" aria-live="polite"></p>
-            </fieldset>
-        </form>
-    </div>
-
-    <script src="src/demos/platformTableLoader.js"></script>
+    <script src="src/demos/platformTableBoardLoader.js"></script>
 </body>
 </html>

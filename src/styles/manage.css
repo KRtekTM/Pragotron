@@ -80,6 +80,31 @@
     background: #fff;
 }
 
+#boardForm .auto-night-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2.35rem;
+    padding: 0.45rem 0.7rem;
+    box-sizing: border-box;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+#boardForm .auto-night-toggle:hover {
+    background: #fff;
+}
+
+#boardForm .auto-night-toggle input {
+    margin: 0;
+    accent-color: var(--control-focus);
+}
+
 #boardForm button:disabled,
 #boardForm.is-updating .board-form-actions button {
     cursor: wait;
@@ -94,7 +119,7 @@
     background: #181818;
 }
 
-#boardForm .lens-settings > legend {
+#boardForm .lens-settings > div > legend {
     margin-bottom: 0.7rem;
     font-size: 1rem;
 }
@@ -103,11 +128,17 @@
     display: grid;
     grid-template-columns:
         max-content
-        minmax(9rem, 1fr)
-        minmax(9rem, 1fr)
-        minmax(14rem, 1.5fr);
+        minmax(12rem, 1fr)
+        minmax(14rem, 1.25fr);
     align-items: end;
     gap: 0.65rem 1rem;
+}
+
+.lens-control-stack {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.55rem;
 }
 
 .lens-component-controls .lamp-control-toggles,
@@ -139,14 +170,14 @@
     background: #181818;
 }
 
-#boardForm .lamp-settings > legend {
+#boardForm .lamp-settings > div > legend {
     margin-bottom: 0.7rem;
     font-size: 1rem;
 }
 
 .lamp-controls {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.65rem;
 }
 
@@ -244,23 +275,28 @@
     font-size: 0.82rem;
 }
 
-#skrin.night-mode ~ #manage {
+#skrin.night-mode ~ #manage,
+body.manage-night-mode #manage {
     color: #d9dde1;
     color-scheme: dark;
 }
 
 #skrin.night-mode ~ #manage #boardForm > fieldset,
-#skrin.night-mode ~ #manage #boardForm .lamp-settings {
+#skrin.night-mode ~ #manage #boardForm .lamp-settings,
+body.manage-night-mode #manage #boardForm > fieldset,
+body.manage-night-mode #manage #boardForm .lamp-settings {
     border-color: #3f464d;
     background: #171a1e;
 }
 
-#skrin.night-mode ~ #manage #boardForm .lamp-control {
+#skrin.night-mode ~ #manage #boardForm .lamp-control,
+body.manage-night-mode #manage #boardForm .lamp-control {
     border-color: #3a424a;
     background: #20252a;
 }
 
-#skrin.night-mode ~ #manage #boardForm .lens-settings {
+#skrin.night-mode ~ #manage #boardForm .lens-settings,
+body.manage-night-mode #manage #boardForm .lens-settings {
     border-color: #3f464d;
     background: #171a1e;
 }
@@ -268,24 +304,35 @@
 #skrin.night-mode ~ #manage #boardForm .board-form-field input,
 #skrin.night-mode ~ #manage #boardForm .board-form-field select,
 #skrin.night-mode ~ #manage #boardForm .lamp-control-select select,
-#skrin.night-mode ~ #manage #boardForm .lens-settings select {
+#skrin.night-mode ~ #manage #boardForm .lens-settings select,
+body.manage-night-mode #manage #boardForm .board-form-field input,
+body.manage-night-mode #manage #boardForm .board-form-field select,
+body.manage-night-mode #manage #boardForm .lamp-control-select select,
+body.manage-night-mode #manage #boardForm .lens-settings select {
     border-color: #59636d;
     background: #272d33;
     color: #f0f2f4;
     color-scheme: dark;
 }
 
-#skrin.night-mode ~ #manage #boardForm button {
+#skrin.night-mode ~ #manage #boardForm button,
+#skrin.night-mode ~ #manage #boardForm .auto-night-toggle,
+body.manage-night-mode #manage #boardForm button,
+body.manage-night-mode #manage #boardForm .auto-night-toggle {
     border-color: #626d77;
     background: #30363d;
     color: #f0f2f4;
 }
 
-#skrin.night-mode ~ #manage #boardForm button:hover {
+#skrin.night-mode ~ #manage #boardForm button:hover,
+#skrin.night-mode ~ #manage #boardForm .auto-night-toggle:hover,
+body.manage-night-mode #manage #boardForm button:hover,
+body.manage-night-mode #manage #boardForm .auto-night-toggle:hover {
     background: #424b54;
 }
 
-#skrin.night-mode ~ #manage #boardForm .lamp-settings-help {
+#skrin.night-mode ~ #manage #boardForm .lamp-settings-help,
+body.manage-night-mode #manage #boardForm .lamp-settings-help {
     color: #aeb5bc;
 }
 

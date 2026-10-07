@@ -1,9 +1,12 @@
 export {
     DELAY_VALUES,
+    DELAY_DISPLAY_THRESHOLD,
     FLAP_TIMING_VARIATION_MS,
     NIGHT_CLOCK_DEFAULTS,
     NIGHT_FADE_MODES,
     NIGHT_LIGHT_DEFAULTS,
+    getDisplayedDelay,
+    parseDelayMinutes,
     STATION_CHARACTER_COUNT,
     STATION_FLAP_SEQUENCE,
     TRAIN_TYPES,
@@ -25,6 +28,10 @@ export {
     LENS_BLINK_INTERVAL_MAX,
     LENS_BLINK_INTERVAL_MIN,
     LENS_DEFAULTS,
+    LENS_PREDEPARTURE_DEFAULTS,
+    LENS_PREDEPARTURE_SECONDS_MAX,
+    LENS_PREDEPARTURE_SECONDS_MIN,
+    LENS_PREDEPARTURE_SECONDS_STEP,
     LensDisplay,
     createDefaultLensState
 } from './lenses.js';
@@ -35,5 +42,19 @@ export {
     createDefaultRegistry
 } from './runtime.js';
 export { AnalogClock, DEFAULT_CLOCK_OPTIONS } from './analog-clock.js';
+export {
+    LightingSettings,
+    cloneLampSetting
+} from './lighting-state.js';
 export { NightLighting } from './night-lighting.js';
 export { LocalStorageAdapter } from './storage.js';
+export {
+    BOARD_TRANSPORT_CHANNEL,
+    BOARD_TRANSPORT_STORAGE_KEY,
+    BoardTransport
+} from './board-transport.js';
+export {
+    BRATISLAVA_SUN_LOCATION,
+    SunSchedule,
+    calculateSunSchedule
+} from './sun-schedule.js';

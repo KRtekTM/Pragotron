@@ -1,27 +1,28 @@
 import {
-    DELAY_VALUES,
     LENS_BLINK_INTERVAL_MAX,
     LENS_BLINK_INTERVAL_MIN,
     LENS_COLORS,
+    LENS_PREDEPARTURE_SECONDS_MAX,
+    LENS_PREDEPARTURE_SECONDS_MIN,
+    LENS_PREDEPARTURE_SECONDS_STEP,
     NIGHT_CLOCK_DEFAULTS,
     NIGHT_FADE_MODES,
     NIGHT_LIGHT_DEFAULTS,
+    parseDelayMinutes,
     TRAIN_TYPES,
-    AnalogClock,
+    BoardTransport,
+    LensDisplay,
+    LightingSettings,
     LocalStorageAdapter,
-    NightLighting,
-    SplitFlapAudio,
-    createBoard,
     createDefaultLensState,
-    createDefaultRegistry,
     createEmptyBoardState
 } from '../platform/index.js';
-import { PLATFORM_TABLE_TEMPLATE } from '../templates/platformTable.js';
 
 const STORAGE_KEY = 'pragotron.platformTable.state.v1';
 const documentRef = document;
 const storage = new LocalStorageAdapter(STORAGE_KEY);
 const savedState = storage.load();
+const transport = new BoardTransport();
 
 const boardForm = documentRef.querySelector('#boardForm');
 const stationInputs = [
@@ -32,89 +33,48 @@ const trainTypeInput = documentRef.querySelector('#trainType');
 const departureTimeInput = documentRef.querySelector('#departureTime');
 const delayValueInput = documentRef.querySelector('#delayValue');
 const boardFormStatus = documentRef.querySelector('#boardFormStatus');
-const screenElement = documentRef.querySelector('#skrin');
-const lensSettingsPanel = documentRef.querySelector('#lensSettingsPanel');
 const lensControls = documentRef.querySelector('#lensControls');
 const lampSettingsPanel = documentRef.querySelector('#lampSettingsPanel');
 const lampControls = documentRef.querySelector('#lampControls');
 const clockLightControl = documentRef.querySelector('#clockLightControl');
 const clockLightEnabledInput = documentRef.querySelector('#clockLightEnabled');
 const clockLightIntensityInput = documentRef.querySelector('#clockLightIntensity');
-const clockLightIntensityOutput = documentRef.querySelector('#clockLightIntensityOutput');
+const clockLightIntensityOutput = documentRef.querySelector(
+    '#clockLightIntensityOutput'
+);
 const resetLampSettingsButton = documentRef.querySelector('#resetLampSettings');
 const nightModeButton = documentRef.querySelector('#nightModeButton');
+const autoNightModeInput = documentRef.querySelector('#autoNightMode');
 const startButton = documentRef.querySelector('#startButton');
 const resetAllSettingsButton = documentRef.querySelector('#resetAllSettings');
 const submitButton = boardForm.querySelector('button[type="submit"]');
 
-const defaultLensState = savedState?.lenses || createDefaultLensState();
-const emptyBoardState = {
-    ...createEmptyBoardState(),
-    lenses: defaultLensState
-};
-
-const board = createBoard({
-    root: documentRef.querySelector(PLATFORM_TABLE_TEMPLATE.rootSelector),
-    slots: PLATFORM_TABLE_TEMPLATE.slots,
-    registry: createDefaultRegistry({ audio: new SplitFlapAudio() }),
-    initialState: emptyBoardState
-});
-const lensDisplay = board.getComponent('lenses');
-
-const nightLighting = new NightLighting({
-    root: screenElement,
-    clockBlock: documentRef.querySelector('#clockBlock'),
+const lighting = new LightingSettings({
     initialLamps: savedState?.lamps || {},
     initialClock: savedState?.clockLight || NIGHT_CLOCK_DEFAULTS
-}).mount();
+});
+const lensDisplay = new LensDisplay(documentRef.createElement('div'), {
+    count: 2,
+    defaultState: savedState?.lenses || createDefaultLensState()
+});
 
-const analogClock = new AnalogClock(
-    documentRef.querySelector('#pragotronAnalogClock')
-);
+let nightMode = savedState?.nightMode === true;
+let autoNightMode = savedState?.autoNightMode === true;
+let exampleActive = false;
+let boardActionInProgress = false;
+const pendingActions = new Map();
 
-try {
-    analogClock.mount();
-} catch (error) {
-    console.warn('Analogové hodiny se nepodařilo inicializovat.', error);
-}
-
-const stationDisplays = stationInputs.map((_, index) =>
-    documentRef.querySelector(`[data-board-slot="station${index === 0 ? 'One' : 'Two'}"]`)
-);
 const exampleState = {
-    stations: stationDisplays.map((display) => display.dataset.text || ''),
-    train: documentRef.querySelector('[data-board-slot="train"]').dataset.type || '',
-    delay: documentRef.querySelector('[data-board-slot="delay"]').dataset.delay || '',
+    stations: ['PRAHA', 'BRATISLAVA'],
+    train: 'Eurocity',
+    delay: '12',
     departureTime: {
-        hours: Number(
-            documentRef.querySelector('[data-board-slot="departureTime"]').dataset.hours
-        ),
-        minutes: Number(
-            documentRef.querySelector('[data-board-slot="departureTime"]').dataset.minutes
-        )
-    },
-    lenses: createDefaultLensState()
+        hours: 16,
+        minutes: 20
+    }
 };
 
-const cloneState = (state) => {
-    const source = state && typeof state === 'object' ? state : {};
-
-    return {
-        ...source,
-        stations: Array.isArray(source.stations)
-            ? [source.stations[0] || '', source.stations[1] || '']
-            : ['', ''],
-        train: source.train || '',
-        delay: source.delay ?? '',
-        departureTime: source.departureTime
-            && typeof source.departureTime === 'object'
-            ? {
-                hours: Number(source.departureTime.hours) || 0,
-                minutes: Number(source.departureTime.minutes) || 0
-            }
-            : null
-    };
-};
+const DEPARTURE_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 const setBoardFormStatus = (message, isError = false) => {
     boardFormStatus.textContent = message;
@@ -143,16 +103,17 @@ const setSavedFormValues = (formState) => {
         ? formState.train
         : exampleState.train;
     const departureTime = typeof formState.departureTime === 'string'
-        && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(formState.departureTime)
+        && DEPARTURE_TIME_PATTERN.test(formState.departureTime)
         ? formState.departureTime
         : `${String(exampleState.departureTime.hours).padStart(2, '0')}:${
             String(exampleState.departureTime.minutes).padStart(2, '0')
         }`;
-    const delay = formState.delay === '' || DELAY_VALUES.some(
-        (value) => String(value) === String(formState.delay)
-    )
-        ? String(formState.delay)
-        : String(exampleState.delay);
+    const parsedDelay = parseDelayMinutes(formState.delay);
+    const delay = parsedDelay === null
+        ? exampleState.delay
+        : parsedDelay === ''
+            ? ''
+            : String(parsedDelay);
 
     stationInputs[0].value = stationOne;
     stationInputs[1].value = stationTwo;
@@ -161,8 +122,19 @@ const setSavedFormValues = (formState) => {
     delayValueInput.value = delay;
 };
 
+const getLightingSettingsState = () => ({
+    lamps: lighting.getLampSettings(),
+    clockLight: lighting.getClockSettings(),
+    nightMode,
+    autoNightMode
+});
+
+const getSettingsState = () => ({
+    ...getLightingSettingsState(),
+    lenses: lensDisplay.getValue()
+});
+
 const persistState = () => {
-    const lamps = nightLighting.getLampSettings();
     storage.save({
         version: 1,
         form: {
@@ -172,11 +144,15 @@ const persistState = () => {
             departureTime: departureTimeInput.value,
             delay: delayValueInput.value
         },
-        lamps,
-        clockLight: nightLighting.getClockSettings(),
-        lenses: board.getState().lenses,
-        nightMode: nightLighting.isNightMode()
+        ...getSettingsState()
     });
+};
+
+const publishSettings = ({ persist = true } = {}) => {
+    if (persist) {
+        persistState();
+    }
+    transport.publish('board:settings', getLightingSettingsState());
 };
 
 TRAIN_TYPES.forEach((type) => {
@@ -184,13 +160,6 @@ TRAIN_TYPES.forEach((type) => {
     option.value = type.name;
     option.textContent = type.name || 'Bez typu vlaku';
     trainTypeInput.appendChild(option);
-});
-
-DELAY_VALUES.forEach((value) => {
-    const option = documentRef.createElement('option');
-    option.value = value === '' ? '' : String(value);
-    option.textContent = value === '' ? 'Bez zpoždění' : `${value} min`;
-    delayValueInput.appendChild(option);
 });
 
 const lampControlElements = new Map();
@@ -222,9 +191,9 @@ const readLampControls = (id) => {
 };
 
 const updateLampFromControls = (id) => {
-    const setting = nightLighting.updateLamp(id, readLampControls(id));
-    syncLampControls(setting);
-    persistState();
+    lighting.updateLamp(id, readLampControls(id));
+    syncLampControls(lighting.getLampSettings()[id]);
+    publishSettings();
 };
 
 NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
@@ -233,7 +202,9 @@ NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
 
     const legend = documentRef.createElement('legend');
     legend.textContent = defaultSetting.label;
-    panel.appendChild(legend);
+    const legendWrapper = documentRef.createElement('div');
+    legendWrapper.appendChild(legend);
+    panel.appendChild(legendWrapper);
 
     const toggles = documentRef.createElement('div');
     toggles.className = 'lamp-control-toggles';
@@ -304,7 +275,7 @@ NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
         fade
     };
     lampControlElements.set(defaultSetting.id, controls);
-    syncLampControls(nightLighting.getLampSettings()[defaultSetting.id]);
+    syncLampControls(lighting.getLampSettings()[defaultSetting.id]);
 
     [enabled, variation, intensity, speed, fade].forEach((input) => {
         input.addEventListener('input', () => updateLampFromControls(defaultSetting.id));
@@ -315,7 +286,8 @@ NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
 const lensControlElements = new Map();
 
 const syncLensControls = () => {
-    const settings = lensDisplay.getValue().lenses;
+    const lensState = lensDisplay.getValue();
+    const settings = lensState.lenses;
     const controls = lensControlElements.get('component');
     if (!controls || settings.length === 0) {
         return;
@@ -328,6 +300,12 @@ const syncLensControls = () => {
     controls.blinkInterval.value = String(settings[0].blinkInterval);
     controls.blinkIntervalOutput.textContent =
         `${settings[0].blinkInterval.toFixed(1)} s`;
+    controls.preDepartureEnabled.checked = lensState.preDeparture.enabled;
+    controls.preDepartureSeconds.value = String(
+        lensState.preDeparture.seconds
+    );
+    controls.preDepartureSecondsOutput.textContent =
+        `${lensState.preDeparture.seconds} s`;
 };
 
 const updateLensFromControls = () => {
@@ -343,6 +321,10 @@ const updateLensFromControls = () => {
             : controls.secondColor.value,
         blinkInterval: Number(controls.blinkInterval.value)
     }));
+    state.preDeparture = {
+        enabled: controls.preDepartureEnabled.checked,
+        seconds: Number(controls.preDepartureSeconds.value)
+    };
     lensDisplay.set(state);
     syncLensControls();
     persistState();
@@ -365,7 +347,7 @@ const createLensColorSelect = (labelText) => {
     return { label, select };
 };
 
-if (lensControls && lensDisplay) {
+if (lensControls) {
     const panel = documentRef.createElement('div');
     panel.className = 'lens-component-controls';
 
@@ -383,7 +365,20 @@ if (lensControls && lensDisplay) {
     const blinking = documentRef.createElement('input');
     blinking.type = 'checkbox';
     blinkingLabel.append(blinking, documentRef.createTextNode(' Bliká'));
-    toggles.append(enabledLabel, blinkingLabel);
+
+    const preDepartureEnabledLabel = documentRef.createElement('label');
+    preDepartureEnabledLabel.className = 'lamp-control-check';
+    const preDepartureEnabled = documentRef.createElement('input');
+    preDepartureEnabled.type = 'checkbox';
+    preDepartureEnabledLabel.append(
+        preDepartureEnabled,
+        documentRef.createTextNode(' Rozblikat před odjezdem')
+    );
+    toggles.append(
+        enabledLabel,
+        blinkingLabel,
+        preDepartureEnabledLabel
+    );
 
     const firstColor = createLensColorSelect('Barva 1. čočky');
     const secondColor = createLensColorSelect('Barva 2. čočky');
@@ -403,11 +398,37 @@ if (lensControls && lensDisplay) {
     blinkInterval.step = '0.1';
     blinkIntervalLabel.append(blinkIntervalHeader, blinkInterval);
 
+    const preDepartureSecondsLabel = documentRef.createElement('label');
+    preDepartureSecondsLabel.className = 'lamp-control-range';
+    const preDepartureSecondsHeader = documentRef.createElement('span');
+    preDepartureSecondsHeader.className = 'lamp-control-range-header';
+    preDepartureSecondsHeader.appendChild(
+        documentRef.createTextNode('Před odjezdem')
+    );
+    const preDepartureSecondsOutput = documentRef.createElement('output');
+    preDepartureSecondsHeader.appendChild(preDepartureSecondsOutput);
+    const preDepartureSeconds = documentRef.createElement('input');
+    preDepartureSeconds.type = 'range';
+    preDepartureSeconds.min = String(LENS_PREDEPARTURE_SECONDS_MIN);
+    preDepartureSeconds.max = String(LENS_PREDEPARTURE_SECONDS_MAX);
+    preDepartureSeconds.step = String(LENS_PREDEPARTURE_SECONDS_STEP);
+    preDepartureSecondsLabel.append(
+        preDepartureSecondsHeader,
+        preDepartureSeconds
+    );
+
+    const colorControls = documentRef.createElement('div');
+    colorControls.className = 'lens-control-stack';
+    colorControls.append(firstColor.label, secondColor.label);
+
+    const timingControls = documentRef.createElement('div');
+    timingControls.className = 'lens-control-stack';
+    timingControls.append(blinkIntervalLabel, preDepartureSecondsLabel);
+
     panel.append(
         toggles,
-        firstColor.label,
-        secondColor.label,
-        blinkIntervalLabel
+        colorControls,
+        timingControls
     );
     lensControls.replaceChildren(panel);
 
@@ -417,10 +438,21 @@ if (lensControls && lensDisplay) {
         firstColor: firstColor.select,
         secondColor: secondColor.select,
         blinkInterval,
-        blinkIntervalOutput
+        blinkIntervalOutput,
+        preDepartureEnabled,
+        preDepartureSeconds,
+        preDepartureSecondsOutput
     });
 
-    [enabled, blinking, firstColor.select, secondColor.select, blinkInterval]
+    [
+        enabled,
+        blinking,
+        preDepartureEnabled,
+        firstColor.select,
+        secondColor.select,
+        blinkInterval,
+        preDepartureSeconds
+    ]
         .forEach((input) => {
             input.addEventListener('input', updateLensFromControls);
             input.addEventListener('change', updateLensFromControls);
@@ -430,73 +462,97 @@ if (lensControls && lensDisplay) {
 
 lampControls.appendChild(clockLightControl);
 
-let clockRedrawFrame = null;
-const requestClockRedraw = () => {
-    if (clockRedrawFrame !== null) {
-        return;
-    }
-
-    clockRedrawFrame = window.requestAnimationFrame(() => {
-        clockRedrawFrame = null;
-        analogClock.redraw();
-    });
-};
-
 const syncClockLightControls = () => {
-    const settings = nightLighting.getClockSettings();
+    const settings = lighting.getClockSettings();
     clockLightEnabledInput.checked = settings.enabled;
     clockLightIntensityInput.value = String(settings.intensity);
     clockLightIntensityOutput.textContent = `${settings.intensity}%`;
 };
 
-const updateClockLightFromControls = () => {
-    nightLighting.setClockLight({
+const updateClockLightFromControls = ({ persist = false } = {}) => {
+    lighting.setClockLight({
         enabled: clockLightEnabledInput.checked,
         intensity: Number(clockLightIntensityInput.value)
     });
     syncClockLightControls();
-    requestClockRedraw();
+    publishSettings({ persist });
 };
 
 clockLightEnabledInput.addEventListener('input', updateClockLightFromControls);
 clockLightIntensityInput.addEventListener('input', updateClockLightFromControls);
 [clockLightEnabledInput, clockLightIntensityInput].forEach((input) => {
-    input.addEventListener('change', () => {
-        updateClockLightFromControls();
-        persistState();
-    });
-});
-
-resetLampSettingsButton.addEventListener('click', () => {
-    nightLighting.reset();
-    NIGHT_LIGHT_DEFAULTS.forEach((setting) =>
-        syncLampControls(nightLighting.getLampSettings()[setting.id])
+    input.addEventListener('change', () =>
+        updateClockLightFromControls({ persist: true })
     );
-    syncClockLightControls();
-    requestClockRedraw();
-    persistState();
-    setBoardFormStatus('Výchozí nastavení světel obnoveno.');
 });
 
-const setNightMode = (isNight, { persist = true } = {}) => {
-    nightLighting.setNightMode(isNight);
-    analogClock.transitionNightMode();
-    lampSettingsPanel.hidden = !isNight;
-    nightModeButton.textContent = isNight ? '☀️ Denní režim' : '🌙 Noční režim';
-    nightModeButton.setAttribute('aria-pressed', String(isNight));
-    setBoardFormStatus(isNight ? 'Noční režim zapnut.' : 'Denní režim zapnut.');
-    if (persist) {
+const renderNightMode = () => {
+    documentRef.body.classList.toggle('manage-night-mode', nightMode);
+    lampSettingsPanel.hidden = !nightMode;
+    autoNightModeInput.checked = autoNightMode;
+    nightModeButton.disabled = autoNightMode;
+    nightModeButton.setAttribute('aria-disabled', String(autoNightMode));
+    nightModeButton.textContent = nightMode
+        ? '☀️ Denní režim'
+        : '🌙 Noční režim';
+    nightModeButton.setAttribute('aria-pressed', String(nightMode));
+};
+
+const setNightMode = (isNight, { persist = true, publish = true } = {}) => {
+    nightMode = Boolean(isNight);
+    renderNightMode();
+    if (publish) {
+        publishSettings({ persist });
+    } else if (persist) {
         persistState();
     }
 };
 
-nightModeButton.addEventListener('click', () =>
-    setNightMode(!nightLighting.isNightMode())
-);
+const setAutomaticNightMode = (
+    isEnabled,
+    { persist = true, publish = true } = {}
+) => {
+    autoNightMode = Boolean(isEnabled);
+    renderNightMode();
 
-const boardActionButtons = [submitButton, startButton, resetAllSettingsButton];
-let boardActionInProgress = false;
-let exampleActive = false;
+    if (publish) {
+        publishSettings({ persist });
+    } else if (persist) {
+        persistState();
+    }
+};
+
+nightModeButton.addEventListener('click', () => {
+    setNightMode(!nightMode);
+    setBoardFormStatus(
+        nightMode ? 'Noční režim zapnut.' : 'Denní režim zapnut.'
+    );
+});
+
+autoNightModeInput.addEventListener('change', () => {
+    setAutomaticNightMode(autoNightModeInput.checked);
+    setBoardFormStatus(
+        autoNightMode
+            ? 'Automatický režim podle slunce zapnut.'
+            : 'Automatický režim podle slunce vypnut.'
+    );
+});
+
+resetLampSettingsButton.addEventListener('click', () => {
+    lighting.reset();
+    NIGHT_LIGHT_DEFAULTS.forEach((setting) =>
+        syncLampControls(lighting.getLampSettings()[setting.id])
+    );
+    syncClockLightControls();
+    publishSettings();
+    setBoardFormStatus('Výchozí nastavení světel obnoveno.');
+});
+
+const boardActionButtons = [
+    submitButton,
+    startButton,
+    resetAllSettingsButton
+];
 
 const setBoardActionBusy = (isBusy) => {
     boardActionInProgress = isBusy;
@@ -508,66 +564,140 @@ const setBoardActionBusy = (isBusy) => {
     });
 };
 
-const waitForBoardToSettle = () => new Promise((resolve) => {
-    const check = () => {
-        if (board.isSettled()) {
-            resolve();
-            return;
-        }
-
-        window.setTimeout(check, 50);
-    };
-    check();
-});
-
-const runBoardAction = (action, completedMessage) => {
-    if (boardActionInProgress) {
+const finishBoardAction = (requestId, message) => {
+    const pending = pendingActions.get(requestId);
+    if (!pending) {
         return;
     }
 
-    setBoardActionBusy(true);
+    window.clearTimeout(pending.timeout);
+    pendingActions.delete(requestId);
+    setBoardActionBusy(false);
 
-    try {
-        action();
-        persistState();
-        setBoardFormStatus('Tabule se přenastavuje…');
-    } catch (error) {
-        setBoardActionBusy(false);
+    if (message.payload?.ok === false) {
         setBoardFormStatus(
-            error instanceof Error ? error.message : 'Tabuli se nepodařilo přenastavit.',
+            message.payload.error || 'Tabuli se nepodařilo aktualizovat.',
             true
         );
         return;
     }
 
-    waitForBoardToSettle().then(() => {
-        setBoardActionBusy(false);
-        persistState();
-        setBoardFormStatus(completedMessage);
-    });
+    setBoardFormStatus(pending.completedMessage);
 };
 
-const applyBoardState = (showExample) => {
-    board.setState(showExample ? exampleState : emptyBoardState);
-    exampleActive = showExample;
-    if (showExample) {
-        setFormValues(exampleState);
+transport.subscribe((message) => {
+    if (message.type === 'board:ready') {
+        if (typeof message.payload?.nightMode === 'boolean') {
+            nightMode = message.payload.nightMode;
+        }
+        if (typeof message.payload?.autoNightMode === 'boolean') {
+            autoNightMode = message.payload.autoNightMode;
+        }
+        renderNightMode();
+        transport.publish('board:settings', getLightingSettingsState());
+        return;
     }
-    startButton.textContent = showExample ? 'Resetovat tabuli' : 'Načíst příklad';
-    startButton.setAttribute('aria-pressed', String(showExample));
-};
 
-startButton.textContent = 'Načíst příklad';
-startButton.setAttribute('aria-pressed', 'false');
+    if (message.type === 'board:mode') {
+        if (typeof message.payload?.nightMode === 'boolean') {
+            nightMode = message.payload.nightMode;
+        }
+        if (typeof message.payload?.autoNightMode === 'boolean') {
+            autoNightMode = message.payload.autoNightMode;
+        }
+        renderNightMode();
+        persistState();
+        return;
+    }
 
-startButton.addEventListener('click', () => {
+    if (message.type === 'command:ack') {
+        finishBoardAction(message.payload?.requestId, message);
+    }
+});
+
+const sendBoardAction = (
+    action,
+    state,
+    completedMessage,
+    { immediate = false, persist = true } = {}
+) => {
     if (boardActionInProgress) {
         return;
     }
 
+    setBoardActionBusy(true);
+    if (persist) {
+        persistState();
+    }
+
+    const requestId = transport.publish('board:command', {
+        action,
+        state,
+        settings: getLightingSettingsState(),
+        immediate
+    });
+    const timeout = window.setTimeout(() => {
+        const pending = pendingActions.get(requestId);
+        if (!pending) {
+            return;
+        }
+
+        pendingActions.delete(requestId);
+        setBoardActionBusy(false);
+        setBoardFormStatus(
+            'Tabule není připojena nebo nepotvrdila dokončení akce.',
+            true
+        );
+    }, 10000);
+
+    pendingActions.set(requestId, { completedMessage, timeout });
+    setBoardFormStatus('Tabule se přenastavuje…');
+};
+
+const getFormState = () => {
+    const [hours, minutes] = departureTimeInput.value.split(':').map(Number);
+    const parsedDelay = parseDelayMinutes(delayValueInput.value);
+    return {
+        stations: stationInputs.map((input) => input.value),
+        train: trainTypeInput.value,
+        delay: parsedDelay === '' ? '' : parsedDelay,
+        departureTime: { hours, minutes },
+        lenses: lensDisplay.getValue()
+    };
+};
+
+const getEmptyState = () => ({
+    ...createEmptyBoardState(),
+    lenses: createDefaultLensState()
+});
+
+setFormValues(exampleState);
+if (savedState?.form && typeof savedState.form === 'object') {
+    setSavedFormValues(savedState.form);
+}
+syncClockLightControls();
+renderNightMode();
+
+startButton.textContent = 'Načíst příklad';
+startButton.setAttribute('aria-pressed', 'false');
+startButton.addEventListener('click', () => {
     const showExample = !exampleActive;
-    runBoardAction(
-        () => applyBoardState(showExample),
+    const state = showExample
+        ? { ...exampleState, lenses: createDefaultLensState() }
+        : getEmptyState();
+
+    exampleActive = showExample;
+    if (showExample) {
+        setFormValues(exampleState);
+    }
+    startButton.textContent = showExample
+        ? 'Resetovat tabuli'
+        : 'Načíst příklad';
+    startButton.setAttribute('aria-pressed', String(showExample));
+
+    sendBoardAction(
+        showExample ? 'apply-board' : 'reset-board',
+        state,
         showExample ? 'Příklad načten.' : 'Tabule resetována.'
     );
 });
@@ -578,43 +708,31 @@ resetAllSettingsButton.addEventListener('click', () => {
     }
 
     storage.clear();
-
-    const resetLensState = createDefaultLensState();
-    emptyBoardState.lenses = resetLensState;
-    board.setState(
-        {
-            ...createEmptyBoardState(),
-            lenses: resetLensState
-        },
-        { immediate: true }
+    lighting.reset();
+    lensDisplay.setImmediate(createDefaultLensState());
+    nightMode = false;
+    autoNightMode = false;
+    renderNightMode();
+    syncLensControls();
+    NIGHT_LIGHT_DEFAULTS.forEach((setting) =>
+        syncLampControls(lighting.getLampSettings()[setting.id])
     );
-
-    exampleActive = false;
+    syncClockLightControls();
     setFormValues(exampleState);
+    exampleActive = false;
     startButton.textContent = 'Načíst příklad';
     startButton.setAttribute('aria-pressed', 'false');
 
-    nightLighting.reset();
-    NIGHT_LIGHT_DEFAULTS.forEach((setting) =>
-        syncLampControls(nightLighting.getLampSettings()[setting.id])
+    sendBoardAction(
+        'reset-all',
+        {
+            ...createEmptyBoardState(),
+            lenses: createDefaultLensState()
+        },
+        'Všechna nastavení byla obnovena na výchozí hodnoty.',
+        { immediate: true, persist: false }
     );
-    syncClockLightControls();
-    requestClockRedraw();
-    syncLensControls();
-    setNightMode(false, { persist: false });
-    setBoardFormStatus('Všechna nastavení byla obnovena na výchozí hodnoty.');
 });
-
-const formState = () => {
-    const [hours, minutes] = departureTimeInput.value.split(':').map(Number);
-    return {
-        stations: stationInputs.map((input) => input.value),
-        train: trainTypeInput.value,
-        delay: delayValueInput.value,
-        departureTime: { hours, minutes },
-        lenses: board.getState().lenses || defaultLensState
-    };
-};
 
 boardForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -623,18 +741,32 @@ boardForm.addEventListener('submit', (event) => {
         return;
     }
 
-    if (!departureTimeInput.value) {
-        setBoardFormStatus('Vyplňte prosím čas odjezdu.', true);
+    if (!DEPARTURE_TIME_PATTERN.test(departureTimeInput.value)) {
+        setBoardFormStatus(
+            'Zadejte čas odjezdu ve formátu HH:MM (00:00–23:59).',
+            true
+        );
         departureTimeInput.focus();
         return;
     }
 
-    runBoardAction(() => {
-        board.setState(formState());
-        exampleActive = true;
-        startButton.textContent = 'Resetovat tabuli';
-        startButton.setAttribute('aria-pressed', 'true');
-    }, 'Údaje byly odeslány na tabuli.');
+    if (parseDelayMinutes(delayValueInput.value) === null) {
+        setBoardFormStatus(
+            'Zpoždění musí být nezáporný počet minut.',
+            true
+        );
+        delayValueInput.focus();
+        return;
+    }
+
+    exampleActive = true;
+    startButton.textContent = 'Resetovat tabuli';
+    startButton.setAttribute('aria-pressed', 'true');
+    sendBoardAction(
+        'apply-board',
+        getFormState(),
+        'Údaje byly odeslány na tabuli.'
+    );
 });
 
 [...stationInputs, trainTypeInput, departureTimeInput, delayValueInput]
@@ -643,26 +775,21 @@ boardForm.addEventListener('submit', (event) => {
         input.addEventListener('change', persistState);
     });
 
-if (savedState?.form && typeof savedState.form === 'object') {
-    setSavedFormValues(savedState.form);
-} else {
-    setFormValues(exampleState);
-}
-
-board.setState(emptyBoardState, { immediate: true });
-syncClockLightControls();
-setNightMode(savedState?.nightMode === true);
+transport.publish('manage:hello', { page: 'platformTableManage' });
 
 window.pragotron = {
-    board,
-    lighting: nightLighting,
-    clock: analogClock,
-    getState: () => board.getState(),
-    setState: (state, options) => board.setState(cloneState(state), options),
+    transport,
+    lighting,
+    getState: () => ({
+        form: getFormState(),
+        ...getSettingsState()
+    }),
     setNightMode,
+    setAutomaticNightMode,
     destroy: () => {
-        board.destroy();
-        nightLighting.destroy();
-        analogClock.destroy();
+        pendingActions.forEach(({ timeout }) => window.clearTimeout(timeout));
+        pendingActions.clear();
+        transport.close();
+        lensDisplay.destroy();
     }
 };

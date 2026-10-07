@@ -1,34 +1,13 @@
 import {
     NIGHT_CLOCK_DEFAULTS,
-    NIGHT_FADE_MODES,
     NIGHT_LIGHT_DEFAULTS
 } from './data.js';
-
-const clamp = (value, minimum, maximum, fallback) => {
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue)
-        ? Math.min(maximum, Math.max(minimum, numericValue))
-        : fallback;
-};
+import { LightingSettings } from './lighting-state.js';
 
 const randomBetween = (minimum, maximum) =>
     minimum + Math.random() * (maximum - minimum);
 
-const validFade = (fade) => NIGHT_FADE_MODES.some((mode) => mode.value === fade)
-    ? fade
-    : 'soft';
-
-const cloneLamp = (setting) => ({
-    id: setting.id,
-    label: setting.label,
-    enabled: Boolean(setting.enabled),
-    variation: Boolean(setting.variation),
-    intensity: Math.round(clamp(setting.intensity, 0, 100, 0)),
-    speed: Math.round(clamp(setting.speed, 1, 120, 60) * 2) / 2,
-    fade: validFade(setting.fade)
-});
-
-export class NightLighting {
+export class NightLighting extends LightingSettings {
     constructor({
         root,
         clockBlock = root?.querySelector('#clockBlock'),
@@ -36,6 +15,8 @@ export class NightLighting {
         initialLamps = {},
         initialClock = NIGHT_CLOCK_DEFAULTS
     } = {}) {
+        super({ lampDefaults, initialLamps, initialClock });
+
         if (!root) {
             throw new TypeError('NightLighting vyžaduje root element.');
         }
@@ -49,28 +30,6 @@ export class NightLighting {
                 light
             ])
         );
-        this.settings = new Map(
-            lampDefaults.map((defaultSetting) => {
-                const savedSetting = initialLamps[defaultSetting.id] || {};
-                return [
-                    defaultSetting.id,
-                    cloneLamp({ ...defaultSetting, ...savedSetting })
-                ];
-            })
-        );
-        this.clockSettings = {
-            enabled: typeof initialClock.enabled === 'boolean'
-                ? initialClock.enabled
-                : NIGHT_CLOCK_DEFAULTS.enabled,
-            intensity: Math.round(
-                clamp(
-                    initialClock.intensity,
-                    0,
-                    100,
-                    NIGHT_CLOCK_DEFAULTS.intensity
-                )
-            )
-        };
         this.flickerTimers = new Map();
         this.flickerTokens = new Map();
         this.visibilityHandler = () => this.handleVisibilityChange();
@@ -105,63 +64,22 @@ export class NightLighting {
         return this.root.classList.contains('night-mode');
     }
 
-    getLampSettings() {
-        const result = {};
-        this.settings.forEach((setting, id) => {
-            result[id] = { ...setting };
-        });
-        return result;
-    }
-
-    getClockSettings() {
-        return { ...this.clockSettings };
-    }
-
     updateLamp(id, patch) {
-        const current = this.settings.get(id);
-        if (!current) {
-            throw new Error(`Neznámé světlo "${id}".`);
-        }
-
-        const next = cloneLamp({ ...current, ...patch, id });
-        this.settings.set(id, next);
+        const next = super.updateLamp(id, patch);
         this.applyLampVisual(next);
-        return { ...next };
-    }
-
-    setLampSettings(settings = {}) {
-        this.settings.forEach((setting, id) => {
-            if (settings[id]) {
-                this.updateLamp(id, settings[id]);
-            }
-        });
+        return next;
     }
 
     reset() {
-        NIGHT_LIGHT_DEFAULTS.forEach((setting) => {
-            this.settings.set(setting.id, cloneLamp(setting));
-            this.applyLampVisual(this.settings.get(setting.id));
-        });
-        this.clockSettings = { ...NIGHT_CLOCK_DEFAULTS };
+        super.reset();
+        this.settings.forEach((setting) => this.applyLampVisual(setting));
         this.applyClockVisual();
     }
 
     setClockLight(patch = {}) {
-        this.clockSettings = {
-            enabled: typeof patch.enabled === 'boolean'
-                ? patch.enabled
-                : this.clockSettings.enabled,
-            intensity: Math.round(
-                clamp(
-                    patch.intensity,
-                    0,
-                    100,
-                    this.clockSettings.intensity
-                )
-            )
-        };
+        const settings = super.setClockLight(patch);
         this.applyClockVisual();
-        return this.getClockSettings();
+        return settings;
     }
 
     applyClockVisual() {

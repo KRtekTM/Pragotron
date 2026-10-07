@@ -26,6 +26,44 @@ export const DELAY_VALUES = Object.freeze([
     150, 180, 210, 240, 270, 300, 330, 360, 390
 ]);
 
+export const DELAY_DISPLAY_THRESHOLD = 5;
+
+export const parseDelayMinutes = (value) => {
+    if (value === '' || value === null || value === undefined) {
+        return '';
+    }
+
+    const text = String(value).trim();
+    const match = text.match(/^(\d+(?:[.,]\d+)?)\s*min\.?$/i);
+    const numericValue = Number(match ? match[1].replace(',', '.') : value);
+
+    return Number.isFinite(numericValue) && numericValue >= 0
+        ? Math.floor(numericValue)
+        : null;
+};
+
+export const getDisplayedDelay = (
+    value,
+    values = DELAY_VALUES
+) => {
+    const minutes = parseDelayMinutes(value);
+
+    if (minutes === '' || minutes === null
+        || minutes <= DELAY_DISPLAY_THRESHOLD) {
+        return '';
+    }
+
+    const availableValues = values.filter(
+        (candidate) => Number.isFinite(Number(candidate))
+            && Number(candidate) > 0
+            && Number(candidate) < minutes
+    );
+
+    return availableValues.length
+        ? availableValues[availableValues.length - 1]
+        : '';
+};
+
 export const TRAIN_TYPES = Object.freeze([
     {
         name: '',
@@ -95,52 +133,21 @@ export const NIGHT_FADE_MODES = Object.freeze([
     { value: 'flicker', label: 'Nepravidelné poblikávání' }
 ]);
 
+const NIGHT_LIGHT_BASE_DEFAULTS = Object.freeze({
+    enabled: true,
+    variation: true,
+    intensity: 100,
+    speed: 45,
+    fade: 'soft'
+});
+
 export const NIGHT_LIGHT_DEFAULTS = Object.freeze([
-    {
-        id: 'top-left',
-        label: 'Horní levá',
-        enabled: true,
-        variation: true,
-        intensity: 100,
-        speed: 45,
-        fade: 'soft'
-    },
-    {
-        id: 'top-center',
-        label: 'Horní střed',
-        enabled: true,
-        variation: true,
-        intensity: 85,
-        speed: 60,
-        fade: 'slow'
-    },
-    {
-        id: 'top-right',
-        label: 'Horní pravá',
-        enabled: true,
-        variation: true,
-        intensity: 55,
-        speed: 45,
-        fade: 'flicker'
-    },
-    {
-        id: 'bottom-left',
-        label: 'Dolní levá',
-        enabled: false,
-        variation: false,
-        intensity: 0,
-        speed: 60,
-        fade: 'soft'
-    },
-    {
-        id: 'bottom-right',
-        label: 'Dolní pravá',
-        enabled: true,
-        variation: true,
-        intensity: 75,
-        speed: 55,
-        fade: 'slow'
-    }
+    { id: 'top-left', label: 'Horní levá', ...NIGHT_LIGHT_BASE_DEFAULTS },
+    { id: 'top-center', label: 'Horní střed', ...NIGHT_LIGHT_BASE_DEFAULTS },
+    { id: 'top-right', label: 'Horní pravá', ...NIGHT_LIGHT_BASE_DEFAULTS },
+    { id: 'bottom-left', label: 'Dolní levá', ...NIGHT_LIGHT_BASE_DEFAULTS },
+    { id: 'bottom-center', label: 'Dolní střed', ...NIGHT_LIGHT_BASE_DEFAULTS },
+    { id: 'bottom-right', label: 'Dolní pravá', ...NIGHT_LIGHT_BASE_DEFAULTS }
 ]);
 
 export const NIGHT_CLOCK_DEFAULTS = Object.freeze({

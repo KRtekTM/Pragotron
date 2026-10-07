@@ -33,7 +33,7 @@ export const LENS_COLORS = Object.freeze({
 
 export const LENS_DEFAULTS = Object.freeze({
     color: 'green',
-    enabled: true,
+    enabled: false,
     blinking: true,
     blinkInterval: 0.2,
     blinkDelay: 0
@@ -41,6 +41,13 @@ export const LENS_DEFAULTS = Object.freeze({
 
 export const LENS_BLINK_INTERVAL_MIN = 0.1;
 export const LENS_BLINK_INTERVAL_MAX = 1.5;
+export const LENS_PREDEPARTURE_SECONDS_MIN = 0;
+export const LENS_PREDEPARTURE_SECONDS_MAX = 300;
+export const LENS_PREDEPARTURE_SECONDS_STEP = 10;
+export const LENS_PREDEPARTURE_DEFAULTS = Object.freeze({
+    enabled: false,
+    seconds: 60
+});
 
 const resolveBlinkInterval = (setting, fallback) => {
     const value = Number.isFinite(Number(setting?.blinkInterval))
@@ -66,13 +73,40 @@ const resolveColor = (setting, fallback) => {
     ) || fallback;
 };
 
+const normalizePreDeparture = (setting = {}) => {
+    const source = setting?.preDeparture || setting;
+    const enabled = typeof source?.enabled === 'boolean'
+        ? source.enabled
+        : typeof setting?.preDepartureEnabled === 'boolean'
+            ? setting.preDepartureEnabled
+            : LENS_PREDEPARTURE_DEFAULTS.enabled;
+    const rawSeconds = source?.seconds
+        ?? setting?.preDepartureSeconds
+        ?? LENS_PREDEPARTURE_DEFAULTS.seconds;
+    const numericSeconds = Number(rawSeconds);
+    const seconds = Number.isFinite(numericSeconds)
+        ? Math.round(
+            Math.min(
+                LENS_PREDEPARTURE_SECONDS_MAX,
+                Math.max(LENS_PREDEPARTURE_SECONDS_MIN, numericSeconds)
+            ) / LENS_PREDEPARTURE_SECONDS_STEP
+        ) * LENS_PREDEPARTURE_SECONDS_STEP
+        : LENS_PREDEPARTURE_DEFAULTS.seconds;
+
+    return { enabled, seconds };
+};
+
 export const createDefaultLensState = (count = 2, overrides = {}) => {
     const numericCount = Math.max(1, Math.floor(Number(count) || 2));
     const sharedOverrides = { ...overrides };
+    const preDeparture = normalizePreDeparture(sharedOverrides);
     const normalizedOverrides = {
         ...sharedOverrides,
         color: resolveColor(sharedOverrides, LENS_DEFAULTS.color)
     };
+    delete normalizedOverrides.preDeparture;
+    delete normalizedOverrides.preDepartureEnabled;
+    delete normalizedOverrides.preDepartureSeconds;
     delete normalizedOverrides.glassColor;
     delete normalizedOverrides.lightColor;
     delete normalizedOverrides.blinkPeriod;
@@ -88,7 +122,8 @@ export const createDefaultLensState = (count = 2, overrides = {}) => {
             ...normalizedOverrides,
             blinkInterval,
             blinkDelay: index * blinkInterval
-        }))
+        })),
+        preDeparture
     };
 };
 
@@ -158,6 +193,7 @@ export class LensDisplay {
         this.defaultState = defaultState
             || createDefaultLensState(this.count, defaultOverrides);
         this.state = this.normalize(this.defaultState);
+        this.preDepartureActive = true;
         this.render();
     }
 
@@ -176,7 +212,8 @@ export class LensDisplay {
                             index
                         )
                     )
-                )
+                ),
+                preDeparture: normalizePreDeparture()
             };
         }
 
@@ -196,7 +233,8 @@ export class LensDisplay {
                         index
                     )
                 )
-            )
+            ),
+            preDeparture: normalizePreDeparture(source)
         };
     }
 
@@ -215,8 +253,16 @@ export class LensDisplay {
             `${setting.blinkInterval * 2}s`
         );
         lens.style.setProperty('--lens-blink-delay', `${setting.blinkDelay}s`);
-        lens.classList.toggle('is-on', setting.enabled);
-        lens.classList.toggle('is-blinking', setting.enabled && setting.blinking);
+        const preDepartureActive = !this.state.preDeparture.enabled
+            || this.preDepartureActive;
+        lens.classList.toggle(
+            'is-on',
+            setting.enabled && preDepartureActive
+        );
+        lens.classList.toggle(
+            'is-blinking',
+            setting.enabled && setting.blinking && preDepartureActive
+        );
 
         const lightElement = document.createElement('span');
         lightElement.className = 'lens-light';
@@ -248,13 +294,20 @@ export class LensDisplay {
         return this.set(value);
     }
 
+    setPreDepartureActive(isActive) {
+        this.preDepartureActive = Boolean(isActive);
+        this.render();
+        return this.preDepartureActive;
+    }
+
     clear() {
         return this.set('');
     }
 
     getValue() {
         return {
-            lenses: this.state.lenses.map((setting) => ({ ...setting }))
+            lenses: this.state.lenses.map((setting) => ({ ...setting })),
+            preDeparture: { ...this.state.preDeparture }
         };
     }
 

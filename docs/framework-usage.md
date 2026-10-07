@@ -10,8 +10,9 @@ odděluje:
 - runtime, který propojuje DOM se stavem,
 - aplikační controller, který řeší formuláře, vzdálené řízení a persistence.
 
-`platformTable.html` je demonstrační PoC. Framework není vázaný na jeho
-konkrétní formulář ani na jeho názvy stanic.
+`platformTable.html` je zobrazovací část demonstračního PoC a
+`platformTableManage.html` je jeho ovládací stránka. Framework není vázaný na
+jejich konkrétní formulář ani na názvy stanic.
 
 ## Rychlé spuštění
 
@@ -19,6 +20,7 @@ Pro vývoj je vhodné spouštět projekt přes HTTP server, protože ES modules
 prohlížeče z bezpečnostních důvodů nemusí načíst z `file://`:
 
 ```text
+npm install
 python -m http.server 8000
 ```
 
@@ -28,8 +30,16 @@ Potom otevřete:
 http://localhost:8000/platformTable.html
 ```
 
-Při otevření přes `file://` použije `platformTableLoader.js` fallback bundle
-`src/demos/platformTableDemo.file.js`.
+Ovládání otevřete ve druhém tabu stejného originu:
+
+```text
+http://localhost:8000/platformTableManage.html
+```
+
+Při otevření přes `file://` použijí stránky vlastní loader a fallback bundle:
+
+- `platformTableBoardLoader.js` → `platformTableBoard.file.js`,
+- `platformTableManageLoader.js` → `platformTableManage.file.js`.
 
 ## Struktura frameworku
 
@@ -43,6 +53,9 @@ src/
 │  ├─ lenses.js           komponenta barevných signalizačních čoček
 │  ├─ analog-clock.js     adapter analogových hodin
 │  ├─ night-lighting.js   noční režim a světla
+│  ├─ lighting-state.js   stavové nastavení světel bez DOM
+│  ├─ board-transport.js  komunikace mezi tabulí a manage stránkou
+│  ├─ sun-schedule.js     výpočet východu/západu a automatický režim
 │  ├─ storage.js          localStorage adapter
 │  └─ index.js            veřejné API
 ├─ templates/             definice layoutů tabulí
@@ -303,20 +316,25 @@ const delay = new DelayFlapDisplay(
     { audio }
 );
 
-delay.set(5);
-delay.set('15 min');
+delay.set(7);
+delay.set(12);       // na tabuli se zobrazí 10 min
 delay.setImmediate(30);
 delay.clear();
 ```
 
-Výchozí hodnoty jsou exportované jako `DELAY_VALUES` a obsahují také prázdnou
-hodnotu. Komponenta odmítne hodnotu, která v katalogu není:
+`DelayFlapDisplay` přijímá skutečné nezáporné zpoždění v minutách. Hodnoty do
+5 minut včetně skryje; u vyšších hodnot vybere nejbližší nižší položku z
+`DELAY_VALUES` (tedy 7 → 5, 10 → 5, 11 → 10, 15 → 10):
 
 ```js
-delay.set(65); // RangeError, 65 není v DELAY_VALUES
+delay.set(7);  // zobrazí 5 min
+delay.set(10); // zobrazí 5 min
+delay.set(11); // zobrazí 10 min
+delay.set(5);  // prázdný flap
 ```
 
-Vlastní seznam je možné předat konstruktorem:
+Výchozí možnosti jsou exportované jako `DELAY_VALUES`. Vlastní seznam je
+možné předat konstruktorem:
 
 ```js
 const customDelay = new DelayFlapDisplay(element, ['', 1, 2, 3, 5, 10], {
@@ -353,6 +371,7 @@ const lenses = new LensDisplay(
         count: 2,
         defaultState: createDefaultLensState(2, {
             color: 'red',
+            enabled: true,
             blinking: true
         })
     }
@@ -389,7 +408,11 @@ lenses.set({
             blinkInterval: 0.2,
             blinkDelay: 0.7
         }
-    ]
+    ],
+    preDeparture: {
+        enabled: true,
+        seconds: 60
+    }
 });
 ```
 
@@ -408,7 +431,14 @@ rozsvícená a druhá má vždy fázi přesně o jeden nastavený interval pozd�
 Změna intervalu proto nemůže způsobit překryv nebo náhodné rozhození blikání.
 Komponenta používá CSS animaci, takže při běžném provozu nepotřebuje vlastní
 JavaScriptový timer. `clear()` čočky zhasne, `setImmediate()` nastaví stav bez
-čekání a `getValue()` vrací objekt `{ lenses: [...] }`.
+čekání a `getValue()` vrací objekt `{ lenses: [...], preDeparture: {...} }`.
+
+Výchozí stav čoček je vypnutý (`enabled: false`). Volitelný blok
+`preDeparture` obsahuje `enabled` a `seconds` v rozsahu `0–300` po 10
+sekundách. Je-li zapnutý, controller může čočky aktivovat až v okamžiku
+`odjezd − zobrazené zpoždění − seconds`; po aktivaci blikají až do dalšího
+nastavení tabule. Nastavení změněné v manage UI se na tabuli neposílá
+okamžitě, ale až akcí „Odeslat na tabuli“.
 
 ## Typ vlaku
 
@@ -763,6 +793,11 @@ Výchozí katalog je `NIGHT_LIGHT_DEFAULTS`. Jedna konfigurace světla má:
 Při skrytí stránky se efekty pozastaví a při `destroy()` se všechny timery
 uklidí.
 
+Výchozí parametry všech pěti žárovek jsou stejné jako u `Horní levá`
+(`enabled: true`, `variation: true`, `intensity: 100`, `speed: 45`,
+`fade: 'soft'`). Rozdíly v barvě, kuželu ani délce cyklu se proto nevytvářejí
+v CSS; pokud je potřeba rozdílné chování, nastavuje se výhradně v manage UI.
+
 Po změně režimu je potřeba synchronizovat i adapter hodin:
 
 ```js
@@ -770,6 +805,64 @@ function setNightMode(isNight) {
     lighting.setNightMode(isNight);
     clock.transitionNightMode();
 }
+```
+
+Automatické řízení používá `sunrise-sunset-js`, výchozí souřadnice Bratislavy
+a časové pásmo `Europe/Bratislava`:
+
+```js
+import {
+    BRATISLAVA_SUN_LOCATION,
+    SunSchedule
+} from './src/platform/index.js';
+
+const schedule = new SunSchedule({
+    location: BRATISLAVA_SUN_LOCATION,
+    onChange: (isNight) => {
+        lighting.setNightMode(isNight);
+        clock.transitionNightMode();
+    }
+}).start();
+
+schedule.destroy();
+```
+
+V PoC se automatika zapíná přepínačem vedle tlačítka denního/nočního režimu.
+Po zapnutí se další přepnutí provede při nejbližším východu nebo západu slunce;
+automatické řízení pracuje i při zavřené manage stránce, protože běží na
+zobrazovací stránce tabule.
+
+## Oddělená stránka tabule a manage
+
+PoC používá dvě stránky stejného originu:
+
+- `platformTable.html` pouze vykresluje tabuli a přijímá příkazy,
+- `platformTableManage.html` obsahuje formulář a nastavení.
+
+Propojení zajišťuje `BoardTransport`. Primárně používá `BroadcastChannel`,
+při jeho nedostupnosti použije `storage` event přes vlastní namespaced klíč.
+Obě stránky proto musí být otevřené ve stejném prohlížeči a na stejném originu.
+Příkazy s animovanou změnou dostávají potvrzení až po `board.isSettled()`.
+
+```js
+const transport = new BoardTransport();
+
+transport.subscribe((message) => {
+    if (message.type === 'board:ready') {
+        // Manage stránka může odeslat aktuální nastavení.
+    }
+});
+
+transport.publish('board:command', {
+    action: 'apply-board',
+    state: {
+        stations: ['PRAHA', 'BRNO'],
+        train: 'Ex',
+        delay: 12,
+        departureTime: { hours: 16, minutes: 20 },
+        lenses: { lenses: [] }
+    }
+});
 ```
 
 ## Persistence a vzdálené ovládání

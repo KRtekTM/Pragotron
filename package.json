@@ -1,0 +1,8 @@
+{
+    "name": "pragotron-platform-poc",
+    "private": true,
+    "type": "module",
+    "dependencies": {
+        "sunrise-sunset-js": "3.3.1"
+    }
+}

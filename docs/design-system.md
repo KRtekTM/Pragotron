@@ -5,8 +5,9 @@ nočního režimu je v dokumentu
 [`framework-usage.md`](./framework-usage.md).
 
 Projekt obsahuje znovupoužitelné komponenty pro retro split-flap tabule.
-`platformTable.html` je demonstrační implementace platformní tabule, nikoli
-zdroj komponent samotných.
+`platformTable.html` je zobrazovací stránka demonstrační tabule a
+`platformTableManage.html` je její ovládací stránka; ani jedna není zdrojem
+komponent samotných.
 
 ## Spuštění
 
@@ -14,13 +15,16 @@ Primární runtime používá ES modules, proto je doporučené spouštět PoC p
 HTTP origin:
 
 ```text
+npm install
 python -m http.server 8000
 ```
 
-Potom otevřít `http://localhost:8000/platformTable.html`.
+Potom otevřít `http://localhost:8000/platformTable.html` a ve druhém tabu
+`http://localhost:8000/platformTableManage.html`.
 
-Při přímém otevření přes `file://` použije `platformTableLoader.js` lokální
-kompatibilní bundle, takže funguje i bez ručního spouštění serveru.
+Při přímém otevření přes `file://` použijí stránky vlastní loader a lokální
+kompatibilní bundle. Pro ovládání musí být oba soubory otevřené ve stejném
+prohlížeči a originu.
 
 ## Vrstevnice projektu
 
@@ -29,6 +33,9 @@ kompatibilní bundle, takže funguje i bez ručního spouštění serveru.
 - `src/platform/runtime.js` — registry komponent a obecný `BoardRuntime`.
 - `src/platform/analog-clock.js` — adapter analogových hodin.
 - `src/platform/night-lighting.js` — noční režim, žárovky a lifecycle timerů.
+- `src/platform/lighting-state.js` — stavové nastavení světel bez DOM.
+- `src/platform/board-transport.js` — komunikace mezi tabulí a manage stránkou.
+- `src/platform/sun-schedule.js` — automatické řízení podle slunce.
 - `src/platform/storage.js` — volitelný adapter pro `localStorage`.
 - `src/templates/` — datové definice rozložení tabulí.
 - `src/demos/` — aplikace, formuláře a PoC-specific orchestrace.
@@ -43,13 +50,16 @@ Veřejný stav tabule je serializovatelný a vhodný pro budoucí vzdálené API
 {
     stations: ["PRAHA", "BRATISLAVA"],
     train: "Eurocity",
-    delay: "5",
+    delay: 12,
     departureTime: {
         hours: 16,
         minutes: 20
     }
 }
 ```
+
+`delay` je skutečné zpoždění v minutách. Tabule zobrazí pouze katalogovou
+hodnotu nižší než zadané zpoždění; hodnoty do 5 minut včetně zůstanou skryté.
 
 V demonstrační stránce je runtime dostupný jako `window.pragotron`:
 
@@ -105,3 +115,5 @@ const template = {
 - Stav používaný pro vzdálené řízení musí být JSON serializovatelný.
 - CSS používá tokeny z `tokens.css` a komponentové třídy; nové styly se
   nepřidávají jako další pozdější přepis stejného selektoru.
+- Automatický denní/noční režim používá `sunrise-sunset-js` a výchozí lokaci
+  Bratislava (`48.1486, 17.1077`, `Europe/Bratislava`).
