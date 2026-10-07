@@ -19,7 +19,15 @@
 
 <body>
     <div id="skrin">
-        <div id="cernyLem"><div class="ridge-outer"><div class="ridge-inner">
+        <div id="cernyLem">
+            <div class="night-lighting" aria-hidden="true">
+                <span class="night-light night-light--top-left" data-light-id="top-left"></span>
+                <span class="night-light night-light--top-center" data-light-id="top-center"></span>
+                <span class="night-light night-light--top-right night-light--dim" data-light-id="top-right"></span>
+                <span class="night-light night-light--bottom-left night-light--broken" data-light-id="bottom-left"></span>
+                <span class="night-light night-light--bottom-right" data-light-id="bottom-right"></span>
+            </div>
+            <div class="ridge-outer"><div class="ridge-inner">
         <table id="tabule" aria-label="Odjezdová tabule">
             <tr>
                 <td colspan="3" class="light">&nbsp;</td>
@@ -113,7 +121,49 @@
                 <div class="board-form-actions">
                     <button type="submit">Odeslat na tabuli</button>
                     <button id="startButton" type="button">Start/Reset</button>
+                    <button id="nightModeButton" type="button" aria-pressed="false">
+                        Noční režim
+                    </button>
                 </div>
+                <fieldset id="lampSettingsPanel" class="lamp-settings" hidden>
+                    <legend>Nastavení jednotlivých žárovek</legend>
+                    <div id="lampControls" class="lamp-controls">
+                        <fieldset id="clockLightControl" class="lamp-control clock-light-control">
+                            <legend>Osvětlení hodin</legend>
+                            <div class="clock-light-controls">
+                                <label class="lamp-control-check" for="clockLightEnabled">
+                                    <input id="clockLightEnabled" type="checkbox" checked />
+                                    Svítí
+                                </label>
+                                <label class="lamp-control-range" for="clockLightIntensity">
+                                    <span class="lamp-control-range-header">
+                                        <span>Intenzita</span>
+                                <output id="clockLightIntensityOutput">50%</output>
+                                    </span>
+                                    <input
+                                        id="clockLightIntensity"
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        step="1"
+                                value="50"
+                                    />
+                                </label>
+                            </div>
+                        </fieldset>
+                    </div>
+                    <p class="lamp-settings-help">
+                        Checkbox „Kolísá“ zapíná vybraný světelný efekt. Volba
+                        „Bez pohasínání“ udrží žárovku ve stálém svitu. Délka
+                        cyklu je skutečný čas celého efektu; vyšší hodnota
+                        znamená pomalejší změny.
+                    </p>
+                    <div class="lamp-settings-actions">
+                        <button id="resetLampSettings" type="button">
+                            Obnovit výchozí světla
+                        </button>
+                    </div>
+                </fieldset>
                 <p id="boardFormStatus" role="status" aria-live="polite"></p>
             </fieldset>
         </form>
@@ -399,6 +449,63 @@
                 foreground: '#000'
             }
         ]);
+        const NIGHT_FADE_MODES = Object.freeze([
+            { value: 'none', label: 'Bez pohasínání (stálý svit)' },
+            { value: 'soft', label: 'Jemné kolísání' },
+            { value: 'slow', label: 'Pomalé pohasínání' },
+            { value: 'flicker', label: 'Nepravidelné poblikávání' }
+        ]);
+        const NIGHT_LIGHT_DEFAULTS = Object.freeze([
+            {
+                id: 'top-left',
+                label: 'Horní levá',
+                enabled: true,
+                variation: true,
+                intensity: 100,
+                speed: 45,
+                fade: 'soft'
+            },
+            {
+                id: 'top-center',
+                label: 'Horní střed',
+                enabled: true,
+                variation: true,
+                intensity: 85,
+                speed: 60,
+                fade: 'slow'
+            },
+            {
+                id: 'top-right',
+                label: 'Horní pravá',
+                enabled: true,
+                variation: true,
+                intensity: 55,
+                speed: 45,
+                fade: 'flicker'
+            },
+            {
+                id: 'bottom-left',
+                label: 'Dolní levá',
+                enabled: false,
+                variation: false,
+                intensity: 0,
+                speed: 60,
+                fade: 'soft'
+            },
+            {
+                id: 'bottom-right',
+                label: 'Dolní pravá',
+                enabled: true,
+                variation: true,
+                intensity: 75,
+                speed: 55,
+                fade: 'slow'
+            }
+        ]);
+        const NIGHT_CLOCK_DEFAULTS = Object.freeze({
+            enabled: true,
+            intensity: 50
+        });
 
         class DelayFlapDisplay {
             constructor(element, values) {
@@ -977,7 +1084,245 @@
             boardFormStatus.classList.toggle('is-error', isError);
         };
 
+        const lightElements = new Map(
+            Array.from(document.querySelectorAll('.night-light')).map((light) => [
+                light.dataset.lightId,
+                light
+            ])
+        );
+        const lampControls = document.querySelector('#lampControls');
+        const lampSettingsPanel = document.querySelector('#lampSettingsPanel');
+        const clockLightControl = document.querySelector('#clockLightControl');
+        const resetLampSettingsButton = document.querySelector('#resetLampSettings');
+        const lightSettings = new Map(
+            NIGHT_LIGHT_DEFAULTS.map((setting) => [setting.id, { ...setting }])
+        );
+        const lampControlElements = new Map();
+        const clockBlockElement = document.querySelector('#clockBlock');
+        const clockLightEnabledInput = document.querySelector('#clockLightEnabled');
+        const clockLightIntensityInput = document.querySelector('#clockLightIntensity');
+        const clockLightIntensityOutput = document.querySelector('#clockLightIntensityOutput');
+        const clockLightSettings = { ...NIGHT_CLOCK_DEFAULTS };
+
+        const updateLampVisual = (setting) => {
+            const light = lightElements.get(setting.id);
+
+            if (!light) {
+                return;
+            }
+
+            light.style.setProperty(
+                '--lamp-opacity',
+                setting.enabled && setting.intensity > 0
+                    ? String(setting.intensity / 100)
+                    : '0'
+            );
+            light.style.setProperty('--lamp-cycle', `${setting.speed}s`);
+            light.dataset.fade = setting.fade;
+            light.classList.toggle(
+                'is-off',
+                !setting.enabled || setting.intensity === 0
+            );
+            light.classList.toggle(
+                'is-steady',
+                !setting.variation || setting.fade === 'none'
+            );
+        };
+
+        const syncLampControls = (setting) => {
+            const controls = lampControlElements.get(setting.id);
+
+            if (!controls) {
+                return;
+            }
+
+            controls.enabled.checked = setting.enabled;
+            controls.variation.checked = setting.variation;
+            controls.intensity.value = String(setting.intensity);
+            controls.intensityOutput.textContent = `${setting.intensity}%`;
+            controls.speed.value = String(setting.speed);
+            controls.speedOutput.textContent = `${setting.speed.toFixed(1)} s`;
+            controls.fade.value = setting.fade;
+        };
+
+        const updateLampSettingFromControls = (id) => {
+            const setting = lightSettings.get(id);
+            const controls = lampControlElements.get(id);
+
+            setting.enabled = controls.enabled.checked;
+            setting.variation = controls.variation.checked;
+            setting.intensity = Number(controls.intensity.value);
+            setting.speed = Number(controls.speed.value);
+            setting.fade = controls.fade.value;
+
+            syncLampControls(setting);
+            updateLampVisual(setting);
+        };
+
+        const syncClockLightControls = () => {
+            clockLightEnabledInput.checked = clockLightSettings.enabled;
+            clockLightIntensityInput.value = String(clockLightSettings.intensity);
+            clockLightIntensityOutput.textContent = `${clockLightSettings.intensity}%`;
+        };
+
+        const updateClockLightVisual = () => {
+            clockBlockElement.style.setProperty(
+                '--clock-light-intensity',
+                clockLightSettings.enabled
+                    ? String(clockLightSettings.intensity / 100)
+                    : '0'
+            );
+            clockBlockElement.style.setProperty(
+                '--clock-light-enabled',
+                clockLightSettings.enabled ? '1' : '0'
+            );
+        };
+
+        const createLampControls = () => {
+            NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
+                const panel = document.createElement('fieldset');
+                panel.className = 'lamp-control';
+
+                const legend = document.createElement('legend');
+                legend.textContent = defaultSetting.label;
+                panel.appendChild(legend);
+
+                const toggles = document.createElement('div');
+                toggles.className = 'lamp-control-toggles';
+
+                const enabledLabel = document.createElement('label');
+                enabledLabel.className = 'lamp-control-check';
+                const enabled = document.createElement('input');
+                enabled.type = 'checkbox';
+                enabled.dataset.setting = 'enabled';
+                enabledLabel.append(enabled, document.createTextNode(' Svítí'));
+
+                const variationLabel = document.createElement('label');
+                variationLabel.className = 'lamp-control-check';
+                const variation = document.createElement('input');
+                variation.type = 'checkbox';
+                variation.dataset.setting = 'variation';
+                variationLabel.append(variation, document.createTextNode(' Kolísá'));
+                toggles.append(enabledLabel, variationLabel);
+
+                const intensityLabel = document.createElement('label');
+                intensityLabel.className = 'lamp-control-range';
+                const intensityHeader = document.createElement('span');
+                intensityHeader.className = 'lamp-control-range-header';
+                intensityHeader.appendChild(document.createTextNode('Intenzita'));
+                const intensityOutput = document.createElement('output');
+                intensityHeader.appendChild(intensityOutput);
+                const intensity = document.createElement('input');
+                intensity.type = 'range';
+                intensity.min = '0';
+                intensity.max = '100';
+                intensity.step = '1';
+                intensityLabel.append(intensityHeader, intensity);
+
+                const speedLabel = document.createElement('label');
+                speedLabel.className = 'lamp-control-range';
+                const speedHeader = document.createElement('span');
+                speedHeader.className = 'lamp-control-range-header';
+                speedHeader.appendChild(document.createTextNode('Délka cyklu'));
+                const speedOutput = document.createElement('output');
+                speedHeader.appendChild(speedOutput);
+                const speed = document.createElement('input');
+                speed.type = 'range';
+                speed.min = '1';
+                speed.max = '120';
+                speed.step = '0.5';
+                speedLabel.append(speedHeader, speed);
+
+                const fadeLabel = document.createElement('label');
+                fadeLabel.className = 'lamp-control-select';
+                fadeLabel.appendChild(document.createTextNode('Pohasínání'));
+                const fade = document.createElement('select');
+                NIGHT_FADE_MODES.forEach((mode) => {
+                    const option = document.createElement('option');
+                    option.value = mode.value;
+                    option.textContent = mode.label;
+                    fade.appendChild(option);
+                });
+                fadeLabel.appendChild(fade);
+
+                panel.append(toggles, intensityLabel, speedLabel, fadeLabel);
+                lampControls.appendChild(panel);
+
+                const controls = {
+                    enabled,
+                    variation,
+                    intensity,
+                    intensityOutput,
+                    speed,
+                    speedOutput,
+                    fade
+                };
+                lampControlElements.set(defaultSetting.id, controls);
+                syncLampControls(lightSettings.get(defaultSetting.id));
+                updateLampVisual(lightSettings.get(defaultSetting.id));
+
+                [enabled, variation, intensity, speed, fade].forEach((input) => {
+                    input.addEventListener('input', () =>
+                        updateLampSettingFromControls(defaultSetting.id)
+                    );
+                    input.addEventListener('change', () =>
+                        updateLampSettingFromControls(defaultSetting.id)
+                    );
+                });
+            });
+        };
+
+        createLampControls();
+        lampControls.appendChild(clockLightControl);
+        syncClockLightControls();
+        updateClockLightVisual();
+
+        [clockLightEnabledInput, clockLightIntensityInput].forEach((input) => {
+            input.addEventListener('input', () => {
+                clockLightSettings.enabled = clockLightEnabledInput.checked;
+                clockLightSettings.intensity = Number(clockLightIntensityInput.value);
+                syncClockLightControls();
+                updateClockLightVisual();
+            });
+            input.addEventListener('change', () => {
+                clockLightSettings.enabled = clockLightEnabledInput.checked;
+                clockLightSettings.intensity = Number(clockLightIntensityInput.value);
+                syncClockLightControls();
+                updateClockLightVisual();
+            });
+        });
+
+        resetLampSettingsButton.addEventListener('click', () => {
+            NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
+                const setting = { ...defaultSetting };
+                lightSettings.set(setting.id, setting);
+                syncLampControls(setting);
+                updateLampVisual(setting);
+            });
+            clockLightSettings.enabled = NIGHT_CLOCK_DEFAULTS.enabled;
+            clockLightSettings.intensity = NIGHT_CLOCK_DEFAULTS.intensity;
+            syncClockLightControls();
+            updateClockLightVisual();
+            setBoardFormStatus('Výchozí nastavení světel obnoveno.');
+        });
+
         setFormValues(exampleState);
+
+        const screenElement = document.querySelector('#skrin');
+        const nightModeButton = document.querySelector('#nightModeButton');
+        const setNightMode = (isNight) => {
+            screenElement.classList.toggle('night-mode', isNight);
+            lampSettingsPanel.hidden = !isNight;
+            nightModeButton.textContent = isNight ? 'Denní režim' : 'Noční režim';
+            nightModeButton.setAttribute('aria-pressed', String(isNight));
+            setBoardFormStatus(
+                isNight ? 'Noční režim zapnut.' : 'Denní režim zapnut.'
+            );
+        };
+
+        nightModeButton.addEventListener('click', () => {
+            setNightMode(!screenElement.classList.contains('night-mode'));
+        });
 
         let exampleActive = false;
         const startButton = document.querySelector('#startButton');

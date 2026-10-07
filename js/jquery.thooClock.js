@@ -135,6 +135,127 @@
                 return ( Math.PI / 180 ) * deg;
             }     
 
+            function isNightMode(){
+                var screen = el.closest ? el.closest('#skrin') : null;
+                return screen !== null && screen.classList.contains('night-mode');
+            }
+
+            function isClockLightEnabled(){
+                if(!isNightMode()){
+                    return true;
+                }
+
+                return window.getComputedStyle(el)
+                    .getPropertyValue('--clock-light-enabled')
+                    .trim() !== '0';
+            }
+
+            function getClockLightIntensity(){
+                if(!isNightMode()){
+                    return 1;
+                }
+
+                if(!isClockLightEnabled()){
+                    return 0;
+                }
+
+                var intensity = parseFloat(
+                    window.getComputedStyle(el).getPropertyValue('--clock-light-intensity')
+                );
+
+                if(isNaN(intensity)){
+                    return 1;
+                }
+
+                return Math.max(0, Math.min(1, intensity));
+            }
+
+            function getNightClockColor(){
+                var intensity = getClockLightIntensity();
+                var baseClockColor = { r: 71, g: 71, b: 71 };
+                var currentFullLightColor = { r: 11, g: 27, b: 59 };
+                var newFullLightColor = { r: 0, g: 15, b: 74 };
+                var startColor;
+                var endColor;
+                var colorProgress;
+
+                if(intensity <= 0.5){
+                    startColor = baseClockColor;
+                    endColor = currentFullLightColor;
+                    colorProgress = intensity * 1.6;
+                } else {
+                    startColor = {
+                        r: baseClockColor.r
+                            + ((currentFullLightColor.r - baseClockColor.r) * 0.8),
+                        g: baseClockColor.g
+                            + ((currentFullLightColor.g - baseClockColor.g) * 0.8),
+                        b: baseClockColor.b
+                            + ((currentFullLightColor.b - baseClockColor.b) * 0.8)
+                    };
+                    endColor = newFullLightColor;
+                    colorProgress = (intensity - 0.5) * 2;
+                }
+
+                var red = Math.round(
+                    startColor.r + ((endColor.r - startColor.r) * colorProgress)
+                );
+                var green = Math.round(
+                    startColor.g + ((endColor.g - startColor.g) * colorProgress)
+                );
+                var blue = Math.round(
+                    startColor.b + ((endColor.b - startColor.b) * colorProgress)
+                );
+
+                return 'rgb(' + red + ', ' + green + ', ' + blue + ')';
+            }
+
+            function getClockLightVisualIntensity(){
+                var intensity = getClockLightIntensity();
+                return intensity <= 0.5
+                    ? intensity * 1.6
+                    : 0.8 + ((intensity - 0.5) * 1.6);
+            }
+
+            function getClockLightShadowBlur(blur){
+                var intensity = getClockLightIntensity();
+                return intensity <= 0.5
+                    ? blur
+                    : blur * (1 + ((intensity - 0.5) * 1.6));
+            }
+
+            function getClockColor(color){
+                return isNightMode() ? getNightClockColor() : color;
+            }
+
+            function setHandShadow(blur, offsetX, offsetY){
+                if(isNightMode()){
+                    var intensity = getClockLightIntensity();
+                    if(intensity === 0){
+                        clearClockShadow();
+                        return;
+                    }
+
+                    ctx.shadowColor =
+                        'rgba(0, 28, 82, ' + (0.42 * getClockLightVisualIntensity()) + ')';
+                    ctx.shadowBlur = getClockLightShadowBlur(blur);
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
+                    return;
+                }
+
+                ctx.shadowColor = 'rgba(0,0,0,.5)';
+                ctx.shadowBlur = blur;
+                ctx.shadowOffsetX = offsetX;
+                ctx.shadowOffsetY = offsetY;
+            }
+
+            function clearClockShadow(){
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+            }
+
             function drawDial(color, bgcolor){
                 var dialRadius,
                     dialBackRadius,
@@ -153,10 +274,14 @@
                     textWidth,
                     brandtextWidth,
                     brandtextWidth2;
+                var nightMode = isNightMode();
+                var clockLightIntensity = getClockLightIntensity();
+                var dialStrokeColor = getClockColor(color);
 
                 dialRadius = parseInt(radius-(el.size/50), 10);
                 dialBackRadius = radius-(el.size/400);
 
+                clearClockShadow();
                 ctx.beginPath();
                 ctx.arc(0,0,dialBackRadius,0,360,false);
                 ctx.fillStyle = bgcolor;
@@ -181,7 +306,7 @@
                         textSize = parseInt(el.size/13,10);
                         ctx.font = '100 ' + textSize + 'px ' + el.numeralFont;
                         ctx.beginPath();
-                        ctx.fillStyle = color;
+                        ctx.fillStyle = dialStrokeColor;
 
                         if(el.showNumerals && el.numerals.length > 0){
                             el.numerals.map(function(numeral){
@@ -199,16 +324,30 @@
                             sy = cang * -(dialRadius - dialRadius/15);
                             ex = sang * (dialRadius + dialRadius/50);
                             ey = cang * - (dialRadius + dialRadius/50);
+                        } else {
+                            continue;
                         }
                     }
 
                     ctx.beginPath();
-                    ctx.strokeStyle = color;
+                    ctx.strokeStyle = dialStrokeColor;
                     ctx.lineCap = "square";//"round";
                     ctx.moveTo(sx,sy);
                     ctx.lineTo(ex,ey);
+                    if(nightMode && clockLightIntensity > 0){
+                        ctx.shadowColor =
+                            'rgba(0, 28, 82, ' +
+                            (0.42 * getClockLightVisualIntensity()) + ')';
+                        ctx.shadowBlur = getClockLightShadowBlur(parseInt(el.size/48, 10));
+                        ctx.shadowOffsetX = 0;
+                        ctx.shadowOffsetY = 0;
+                    } else {
+                        clearClockShadow();
+                    }
                     ctx.stroke();
                 } 
+
+                clearClockShadow();
 
                 if(el.brandText !== undefined){
                     ctx.font = '100 ' + parseInt(el.size/28,10) + 'px ' + el.brandFont;
@@ -231,7 +370,12 @@
                     var pragotronX = -(pragotronWidth/2);
                     var pragotronY = el.size/8;
 
+                    ctx.save();
+                    if(isNightMode()){
+                        ctx.globalAlpha = 0.72;
+                    }
                     ctx.drawImage(pragotronImg, pragotronX, pragotronY, pragotronWidth, pragotronHeight);
+                    ctx.restore();
                 }
             }
 
@@ -256,14 +400,15 @@
                     ctx.save();
                     ctx.lineWidth = parseInt(el.size/150,10);
                     ctx.lineCap = "square";//"round";
-                    ctx.strokeStyle = color;
+                    ctx.strokeStyle = getClockColor(color);
 
                     ctx.rotate( toRadians((milliseconds * 0.006) + (seconds * 6)));
 
-                    ctx.shadowColor = 'rgba(0,0,0,.5)';
-                    ctx.shadowBlur = parseInt(el.size/80,10);
-                    ctx.shadowOffsetX = parseInt(el.size/200,10);
-                    ctx.shadowOffsetY = parseInt(el.size/200,10);
+                    setHandShadow(
+                        parseInt(el.size/80,10),
+                        parseInt(el.size/200,10),
+                        parseInt(el.size/200,10)
+                    );
 
                     drawHand(shlength);
 
@@ -277,7 +422,7 @@
                     //round center
                     ctx.beginPath();
                     ctx.arc(0, 0, parseInt(el.size/30,10), 0, 360, false);
-                    ctx.fillStyle = color;
+                    ctx.fillStyle = getClockColor(color);
 
                     ctx.fill();
                     ctx.restore();
@@ -289,17 +434,18 @@
                 ctx.save();
                 ctx.lineWidth = parseInt(el.size/35,10);//parseInt(el.size/50,10);
                 ctx.lineCap = "square";//"round";
-                ctx.strokeStyle = color;
+                ctx.strokeStyle = getClockColor(color);
                
                 if(!el.sweepingMinutes){
                     minutes.isInteger ? minutes : minutes = parseInt(minutes);
                 }
                 ctx.rotate( toRadians(minutes * 6));
 
-                ctx.shadowColor = 'rgba(0,0,0,.5)';
-                ctx.shadowBlur = parseInt(el.size/50,10);
-                ctx.shadowOffsetX = parseInt(el.size/250,10);
-                ctx.shadowOffsetY = parseInt(el.size/250,10);
+                setHandShadow(
+                    parseInt(el.size/50,10),
+                    parseInt(el.size/250,10),
+                    parseInt(el.size/250,10)
+                );
 
                 drawHand(mhlength);
 
@@ -318,13 +464,14 @@
                 ctx.save();
                 ctx.lineWidth = parseInt(el.size/20, 10);//parseInt(el.size/25, 10);
                 ctx.lineCap = "square";//"round";
-                ctx.strokeStyle = color;
+                ctx.strokeStyle = getClockColor(color);
                 ctx.rotate( toRadians(hours * 30));
 
-                ctx.shadowColor = 'rgba(0,0,0,.5)';
-                ctx.shadowBlur = parseInt(el.size/50, 10);
-                ctx.shadowOffsetX = parseInt(el.size/300, 10);
-                ctx.shadowOffsetY = parseInt(el.size/300, 10);
+                setHandShadow(
+                    parseInt(el.size/50, 10),
+                    parseInt(el.size/300, 10),
+                    parseInt(el.size/300, 10)
+                );
 
                 drawHand(hhlength);
                 
@@ -355,16 +502,17 @@
                 ctx.save();
                 ctx.lineWidth = parseInt(el.size/30, 10);
                 ctx.lineCap = "butt";
-                ctx.strokeStyle = color;
+                ctx.strokeStyle = getClockColor(color);
 
                 //decimal equivalent to hh:mm
                 alarm = timeToDecimal(alarm);
                 ctx.rotate( toRadians(alarm * 30));
 
-                ctx.shadowColor = 'rgba(0,0,0,.5)';
-                ctx.shadowBlur = parseInt(el.size/55, 10);
-                ctx.shadowOffsetX = parseInt(el.size/300, 10);
-                ctx.shadowOffsetY = parseInt(el.size/300, 10);  
+                setHandShadow(
+                    parseInt(el.size/55, 10),
+                    parseInt(el.size/300, 10),
+                    parseInt(el.size/300, 10)
+                );
 
                 ctx.beginPath();
                 ctx.moveTo(0,0);
@@ -372,7 +520,7 @@
                 ctx.stroke();
 
                 ctx.beginPath();
-                ctx.strokeStyle = tipcolor;
+                ctx.strokeStyle = getClockColor(tipcolor);
                 ctx.moveTo(0, (ahlength-(el.size/10)) * -1);
                 ctx.lineTo(0, (ahlength) * -1);
                 ctx.stroke();
@@ -380,7 +528,7 @@
                 //round center
                 ctx.beginPath();
                 ctx.arc(0, 0, parseInt(el.size/24, 10), 0, 360, false);
-                ctx.fillStyle = color;
+                ctx.fillStyle = getClockColor(color);
                 ctx.fill();
                 ctx.restore();
             }  
