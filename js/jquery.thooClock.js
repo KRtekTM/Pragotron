@@ -31,7 +31,10 @@
                 y,
                 pragotronImg,
                 pragotronImgReady = false,
-                pragotronImgLoading = false;
+                pragotronImgLoading = false,
+                clockTimer = null,
+                clockTimerType = null,
+                clockLoopCount = 0;
 
        defaults = {
                 size: 250,
@@ -567,15 +570,44 @@
 
             y=0;
 
-            function scheduleNextTick(callback){
-                if(pragotronImgLoading
-                    || el.secondHandEnabled
-                    || el.sweepingMinutes){
-                    window.requestAnimationFrame(callback);
+            function cancelScheduledTick(){
+                if(clockTimer === null){
                     return;
                 }
 
-                window.setTimeout(callback, 1000);
+                if(clockTimerType === 'frame'){
+                    window.cancelAnimationFrame(clockTimer);
+                } else {
+                    window.clearTimeout(clockTimer);
+                }
+
+                clockTimer = null;
+                clockTimerType = null;
+            }
+
+            function scheduleNextTick(callback){
+                if(document.hidden){
+                    return;
+                }
+
+                if(pragotronImgLoading
+                    || el.secondHandEnabled
+                    || el.sweepingMinutes){
+                    clockTimerType = 'frame';
+                    clockTimer = window.requestAnimationFrame(function(){
+                        clockTimer = null;
+                        clockTimerType = null;
+                        callback();
+                    });
+                    return;
+                }
+
+                clockTimerType = 'timeout';
+                clockTimer = window.setTimeout(function(){
+                    clockTimer = null;
+                    clockTimerType = null;
+                    callback();
+                }, 1000);
             }
 
             function getCorrectedDate(){
@@ -634,6 +666,13 @@
             };
 
             function startClock(x){
+                if(document.hidden){
+                    clockLoopCount = x;
+                    cancelScheduledTick();
+                    return;
+                }
+
+                clockLoopCount = x;
                 var frame = drawCurrentFrame(),
                     s = frame.seconds,
                     mins = frame.minutes,
@@ -665,6 +704,14 @@
                 scheduleNextTick(function(){startClock(x)});
 
             }
+
+            document.addEventListener('visibilitychange', function(){
+                if(document.hidden){
+                    cancelScheduledTick();
+                } else if(clockTimer === null){
+                    startClock(clockLoopCount);
+                }
+            });
 
             startClock(x);
 

@@ -1795,11 +1795,15 @@ img.pragotronLogo {
 }
 
 #skrin.night-mode .night-light[data-fade="flicker"] {
-    animation-name: night-lamp-flicker;
+    animation: none;
+    filter: brightness(var(--lamp-flicker-brightness, 1));
+    transition: filter var(--lamp-flicker-transition, 180ms) ease-in-out;
 }
 
 #skrin.night-mode .night-light[data-fade="flicker"]::after {
-    animation-name: night-cone-flicker;
+    animation: none;
+    opacity: var(--lamp-flicker-opacity, 1);
+    transition: opacity var(--lamp-flicker-transition, 180ms) ease-in-out;
 }
 
 #skrin.night-mode .night-light[data-fade="none"],
@@ -1825,6 +1829,11 @@ img.pragotronLogo {
 #skrin.night-mode .night-light {
     background: transparent;
     box-shadow: none;
+}
+
+#skrin.page-hidden .night-light,
+#skrin.page-hidden .night-light::after {
+    animation-play-state: paused;
 }
 
 .night-light--top-left {
@@ -1939,60 +1948,6 @@ img.pragotronLogo {
     }
 }
 
-@keyframes night-lamp-flicker {
-    0%,
-    100% {
-        filter: brightness(0.94);
-    }
-
-    26% {
-        filter: brightness(0.99);
-    }
-
-    34% {
-        filter: brightness(0.88);
-    }
-
-    48% {
-        filter: brightness(0.97);
-    }
-
-    67% {
-        filter: brightness(0.9);
-    }
-
-    74% {
-        filter: brightness(0.96);
-    }
-}
-
-@keyframes night-cone-flicker {
-    0%,
-    100% {
-        opacity: 0.46;
-    }
-
-    26% {
-        opacity: 0.62;
-    }
-
-    34% {
-        opacity: 0.36;
-    }
-
-    48% {
-        opacity: 0.54;
-    }
-
-    67% {
-        opacity: 0.38;
-    }
-
-    74% {
-        opacity: 0.5;
-    }
-}
-
 @media (prefers-reduced-motion: reduce) {
     #skrin,
     #cernyLem,
@@ -2010,5 +1965,10 @@ img.pragotronLogo {
 
     #skrin.night-mode .night-light::after {
         animation: none;
+    }
+
+    #skrin.night-mode .night-light[data-fade="flicker"],
+    #skrin.night-mode .night-light[data-fade="flicker"]::after {
+        transition: none;
     }
 }

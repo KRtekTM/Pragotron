@@ -1260,6 +1260,8 @@
         const clockLightIntensityOutput = document.querySelector('#clockLightIntensityOutput');
         const clockLightSettings = { ...NIGHT_CLOCK_DEFAULTS };
         let clockRedrawFrame = null;
+        const lampFlickerTimers = new Map();
+        const lampFlickerTokens = new Map();
         const numberInRange = (value, minimum, maximum, fallback) => {
             const numericValue = Number(value);
             return Number.isFinite(numericValue)
@@ -1323,12 +1325,6 @@
                     departureTime: departureTimeInput.value,
                     delay: delayValueInput.value
                 },
-                board: lastBoardState
-                    ? {
-                        ...lastBoardState,
-                        stations: [...lastBoardState.stations]
-                    }
-                    : null,
                 lamps,
                 clockLight: { ...clockLightSettings },
                 nightMode: screenElement.classList.contains('night-mode')
@@ -1343,6 +1339,91 @@
                 // localStorage can be unavailable in private/restricted contexts.
             }
         };
+
+        const randomBetween = (minimum, maximum) =>
+            minimum + Math.random() * (maximum - minimum);
+
+        const stopLampFlicker = (light) => {
+            const lightId = light.dataset.lightId;
+            const timer = lampFlickerTimers.get(lightId);
+            lampFlickerTokens.set(lightId, (lampFlickerTokens.get(lightId) || 0) + 1);
+            if (timer !== undefined) {
+                window.clearTimeout(timer);
+                lampFlickerTimers.delete(lightId);
+            }
+
+            light.style.removeProperty('--lamp-flicker-brightness');
+            light.style.removeProperty('--lamp-flicker-opacity');
+            light.style.removeProperty('--lamp-flicker-transition');
+        };
+
+        const updateLampFlicker = (setting) => {
+            const light = lightElements.get(setting.id);
+
+            if (!light) {
+                return;
+            }
+
+            stopLampFlicker(light);
+
+            if (document.hidden
+                || !screenElement.classList.contains('night-mode')
+                || !setting.enabled
+                || setting.intensity <= 0
+                || !setting.variation
+                || setting.fade !== 'flicker'
+                || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                return;
+            }
+
+            const token = (lampFlickerTokens.get(setting.id) || 0) + 1;
+            lampFlickerTokens.set(setting.id, token);
+
+            const flicker = () => {
+                if (lampFlickerTokens.get(setting.id) !== token) {
+                    return;
+                }
+
+                const isDip = Math.random() < 0.24;
+                light.style.setProperty(
+                    '--lamp-flicker-brightness',
+                    String(isDip
+                        ? randomBetween(0.72, 0.88)
+                        : randomBetween(0.94, 1.03))
+                );
+                light.style.setProperty(
+                    '--lamp-flicker-opacity',
+                    String(isDip
+                        ? randomBetween(0.28, 0.46)
+                        : randomBetween(0.48, 0.66))
+                );
+                light.style.setProperty(
+                    '--lamp-flicker-transition',
+                    `${randomBetween(90, 360).toFixed(0)}ms`
+                );
+
+                const cycleDuration = Math.max(1, Number(setting.speed) || 1) * 1000;
+                const delay = cycleDuration * randomBetween(0.08, 0.22);
+                lampFlickerTimers.set(
+                    setting.id,
+                    window.setTimeout(flicker, Math.max(220, delay))
+                );
+            };
+
+            flicker();
+        };
+
+        const syncLampFlicker = () => {
+            lightSettings.forEach((setting) => updateLampFlicker(setting));
+        };
+
+        const handleVisibilityChange = () => {
+            screenElement.classList.toggle('page-hidden', document.hidden);
+            syncLampFlicker();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        handleVisibilityChange();
 
         const updateLampVisual = (setting) => {
             const light = lightElements.get(setting.id);
@@ -1367,6 +1448,7 @@
                 'is-steady',
                 !setting.variation || setting.fade === 'none'
             );
+            updateLampFlicker(setting);
         };
 
         const syncLampControls = (setting) => {
@@ -1573,6 +1655,7 @@
         const nightModeButton = document.querySelector('#nightModeButton');
         const setNightMode = (isNight) => {
             screenElement.classList.toggle('night-mode', isNight);
+            syncLampFlicker();
             lampSettingsPanel.hidden = !isNight;
             nightModeButton.textContent = isNight ? 'Denní režim' : 'Noční režim';
             nightModeButton.setAttribute('aria-pressed', String(isNight));
@@ -1693,76 +1776,22 @@
             startButton.setAttribute('aria-pressed', String(showExample));
         };
 
+        splitFlapDisplays.forEach((display) => display.setImmediate(''));
+        delayFlapDisplay.setImmediate('');
+        trainFlapDisplay.setImmediate('');
+        departureTimeDisplay.clearImmediate();
+        lastBoardState = {
+            active: false,
+            stations: ['', ''],
+            train: '',
+            delay: '',
+            hours: 0,
+            minutes: 0
+        };
+        exampleActive = false;
         startButton.textContent = 'Načíst příklad';
         startButton.setAttribute('aria-pressed', 'false');
 
-        const restoreLastBoardState = () => {
-            const savedBoard = savedState && savedState.board;
-            if (!savedBoard || typeof savedBoard !== 'object') {
-                return;
-            }
-
-            if (savedBoard.active !== true) {
-                splitFlapDisplays.forEach((display) => display.setImmediate(''));
-                delayFlapDisplay.setImmediate('');
-                trainFlapDisplay.setImmediate('');
-                departureTimeDisplay.clearImmediate();
-                lastBoardState = {
-                    active: false,
-                    stations: ['', ''],
-                    train: '',
-                    delay: '',
-                    hours: 0,
-                    minutes: 0
-                };
-                return;
-            }
-
-            const stations = Array.isArray(savedBoard.stations)
-                ? savedBoard.stations.map((station) =>
-                    typeof station === 'string'
-                        ? station.slice(0, STATION_CHARACTER_COUNT)
-                        : ''
-                ).slice(0, 2)
-                : [];
-            while (stations.length < 2) {
-                stations.push('');
-            }
-
-            const train = TRAIN_TYPES.some((type) => type.name === savedBoard.train)
-                ? savedBoard.train
-                : '';
-            const delay = savedBoard.delay === '' || DELAY_VALUES.some(
-                (value) => String(value) === String(savedBoard.delay)
-            )
-                ? String(savedBoard.delay)
-                : '';
-            const hours = Number(savedBoard.hours);
-            const minutes = Number(savedBoard.minutes);
-
-            if (!Number.isInteger(hours) || hours < 0 || hours > 23
-                || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
-                return;
-            }
-
-            splitFlapDisplays.forEach((display, index) => display.setImmediate(stations[index]));
-            delayFlapDisplay.setImmediate(delay);
-            trainFlapDisplay.setImmediate(train);
-            departureTimeDisplay.setImmediate(hours, minutes);
-            lastBoardState = {
-                active: true,
-                stations,
-                train,
-                delay,
-                hours,
-                minutes
-            };
-            exampleActive = true;
-            startButton.textContent = 'Resetovat tabuli';
-            startButton.setAttribute('aria-pressed', 'true');
-        };
-
-        restoreLastBoardState();
         if (savedState && savedState.nightMode === true) {
             setNightMode(true);
         }
