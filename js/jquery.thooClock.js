@@ -28,7 +28,9 @@
                 alarmHandTipColor,
                 timeCorrection,
                 x,
-                y;
+                y,
+                pragotronImg,
+                pragotronImgReady = false;
 
        defaults = {
                 size: 250,
@@ -115,6 +117,19 @@
             radius = parseInt(el.size/2, 10);
             //translate 0,0 to center of circle:
             ctx.translate(radius, radius); 
+
+            if((el.brandText === undefined || el.brandText === "")
+                && (el.brandText2 === undefined || el.brandText2 === "")) {
+                pragotronImg = new Image();
+                pragotronImg.onload = function() {
+                    pragotronImgReady = true;
+                };
+                pragotronImg.onerror = function() {
+                    pragotronImgReady = false;
+                    console.error('Failed to load the SVG file.');
+                };
+                pragotronImg.src = 'images/pragotron.svg';
+            }
 
             function toRadians(deg){
                 return ( Math.PI / 180 ) * deg;
@@ -208,32 +223,15 @@
                     ctx.fillText(el.brandText2,-(brandtextWidth2/2),(el.size/5)); 
                 }
 
-                // Check if both texts are not defined or empty
-                if((el.brandText === undefined || el.brandText === "") && (el.brandText2 === undefined || el.brandText2 === "")) {
-                    // Create a new Image object
-                    let pragotronImg = new Image();
-                    pragotronImg.src = 'images/pragotron.svg';
-
-                    pragotronImg.onload = function() {
-                        // Ensure canvas and context are defined
-                        if (!ctx) {
-                            console.error('Canvas context (ctx) is not defined.');
-                            return;
-                        }
-                    };
-
-                    // Draw the image onto the canvas
-                    let pragotronWidth = (pragotronImg.width*0.8);
-                    let pragotronHeight = (pragotronImg.height*0.8);
-                    let pragotronX = -(pragotronWidth/2);
-                    let pragotronY = el.size/8;
-                        
+                // Draw the already loaded logo. Creating an Image on every
+                // animation frame makes the logo disappear while it reloads.
+                if(pragotronImgReady) {
+                    var pragotronWidth = ((pragotronImg.naturalWidth || pragotronImg.width) * 0.8);
+                    var pragotronHeight = ((pragotronImg.naturalHeight || pragotronImg.height) * 0.8);
+                    var pragotronX = -(pragotronWidth/2);
+                    var pragotronY = el.size/8;
 
                     ctx.drawImage(pragotronImg, pragotronX, pragotronY, pragotronWidth, pragotronHeight);
-
-                    pragotronImg.onerror = function() {
-                        console.error('Failed to load the SVG file.');
-                    };
                 }
             }
 
