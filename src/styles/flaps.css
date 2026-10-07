@@ -1,0 +1,464 @@
+#tabule .flap-display,
+#tabule .time-flap-value,
+#tabule .delay-flap-number,
+#tabule .train-flap-text {
+    font-family: "Roboto Condensed", "Arial Narrow", sans-serif;
+}
+
+#tabule .flap-display {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.12rem;
+    min-width: 0;
+    height: 5rem;
+    overflow: visible;
+    color: var(--flap-foreground);
+    font-size: 3rem;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+#tabule .destinationCell .flap-display {
+    justify-content: flex-start;
+}
+
+#tabule .trainCell .flap-display,
+#tabule .timeCell .flap-display,
+#tabule .delayCell .flap-display {
+    justify-content: flex-start;
+}
+
+#tabule .flap-character {
+    position: relative;
+    display: block;
+    flex: 0 0 3.3rem;
+    width: 3.3rem;
+    height: 5rem;
+    overflow: hidden;
+    perspective: 8em;
+    transform-style: preserve-3d;
+}
+
+#tabule .flap-half,
+#tabule .time-flap-half {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.42);
+    color: var(--flap-foreground);
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+}
+
+#tabule .flap-half--top-current,
+#tabule .flap-half--top-next,
+#tabule .time-flap-half--top-current,
+#tabule .time-flap-half--top-next {
+    top: 0;
+    background: var(--flap-background);
+    transform-origin: center bottom;
+}
+
+#tabule .flap-half--bottom-current,
+#tabule .flap-half--bottom-next,
+#tabule .time-flap-half--bottom-current,
+#tabule .time-flap-half--bottom-next {
+    top: 50%;
+    background: var(--flap-background);
+    transform-origin: center top;
+}
+
+#tabule .flap-half--top-current,
+#tabule .time-flap-half--top-current {
+    z-index: 4;
+}
+
+#tabule .flap-half--top-next,
+#tabule .time-flap-half--top-next {
+    z-index: 3;
+}
+
+#tabule .flap-half--bottom-current,
+#tabule .time-flap-half--bottom-current {
+    z-index: 2;
+}
+
+#tabule .flap-half--bottom-next,
+#tabule .time-flap-half--bottom-next {
+    z-index: 5;
+    transform: rotateX(90deg);
+}
+
+#tabule .flap-glyph,
+#tabule .time-flap-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 200%;
+    white-space: pre;
+    line-height: 1;
+}
+
+#tabule .flap-half--bottom-current .flap-glyph,
+#tabule .flap-half--bottom-next .flap-glyph,
+#tabule .time-flap-half--bottom-current .time-flap-content,
+#tabule .time-flap-half--bottom-next .time-flap-content {
+    top: -100%;
+}
+
+#tabule .flap-glyph,
+#tabule .time-flap-value,
+#tabule .delay-flap-number {
+    font-size: 4.6rem;
+    font-weight: 400;
+    line-height: 1;
+}
+
+#tabule .flap-glyph-text,
+#tabule .time-flap-value,
+#tabule .delay-flap-number {
+    display: inline-block;
+    transform: scaleX(.9);
+    transform-origin: center;
+    padding-top: 10px;
+}
+
+#tabule .flap-character::after,
+#tabule .time-flap::after,
+#tabule .train-flap-display::after,
+#tabule .delay-flap-display::after {
+    position: absolute;
+    top: calc(50% - 1px);
+    right: 0;
+    left: 0;
+    z-index: 10;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.62);
+    content: "";
+    pointer-events: none;
+}
+
+#tabule .train-flap-display,
+#tabule .delay-flap-display {
+    position: relative;
+    display: inline-block;
+    width: 16rem;
+    height: 5rem;
+    margin: -2em 0;
+    overflow: hidden;
+    box-sizing: border-box;
+    background: var(--flap-background);
+    perspective: 8em;
+    transform-style: preserve-3d;
+    vertical-align: middle;
+}
+
+#tabule .train-flap-half,
+#tabule .delay-flap-half {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.42);
+    color: var(--train-flap-foreground, var(--flap-foreground));
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+}
+
+#tabule .train-flap-half--top-current,
+#tabule .train-flap-half--top-next,
+#tabule .delay-flap-half--top-current,
+#tabule .delay-flap-half--top-next {
+    top: 0;
+    background: var(--train-flap-background, var(--flap-background));
+    transform-origin: center bottom;
+}
+
+#tabule .train-flap-half--bottom-current,
+#tabule .train-flap-half--bottom-next,
+#tabule .delay-flap-half--bottom-current,
+#tabule .delay-flap-half--bottom-next {
+    top: 50%;
+    background: var(--train-flap-background, var(--flap-background));
+    transform-origin: center top;
+}
+
+#tabule .train-flap-half--top-current,
+#tabule .delay-flap-half--top-current {
+    z-index: 4;
+}
+
+#tabule .train-flap-half--top-next,
+#tabule .delay-flap-half--top-next {
+    z-index: 3;
+}
+
+#tabule .train-flap-half--bottom-current,
+#tabule .delay-flap-half--bottom-current {
+    z-index: 2;
+}
+
+#tabule .train-flap-half--bottom-next,
+#tabule .delay-flap-half--bottom-next {
+    z-index: 5;
+    transform: rotateX(90deg);
+}
+
+#tabule .train-flap-half img {
+    position: absolute;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: 200%;
+    max-width: none;
+    object-fit: fill;
+}
+
+#tabule .train-flap-half--top-current img,
+#tabule .train-flap-half--top-next img {
+    top: 0;
+}
+
+#tabule .train-flap-half--bottom-current img,
+#tabule .train-flap-half--bottom-next img {
+    top: -100%;
+}
+
+#tabule .train-flap-content,
+#tabule .delay-flap-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 200%;
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+
+#tabule .train-flap-half--bottom-current .train-flap-content,
+#tabule .train-flap-half--bottom-next .train-flap-content,
+#tabule .delay-flap-half--bottom-current .delay-flap-content,
+#tabule .delay-flap-half--bottom-next .delay-flap-content {
+    top: -100%;
+}
+
+#tabule .train-flap-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1;
+}
+
+#tabule .train-flap-main {
+    font-size: 4.6rem;
+    line-height: 1;
+}
+
+#tabule .train-flap-suffix,
+#tabule .delay-flap-unit {
+    margin-top: 1.2em;
+    margin-left: 0.7em;
+    font-size: 2rem;
+    line-height: 1;
+}
+
+#tabule .delay-flap-content {
+    justify-content: flex-start;
+    padding-left: 1em;
+}
+
+#tabule .delay-flap-number {
+    line-height: 1;
+}
+
+#tabule .departure-time-display {
+    display: inline-flex;
+    flex: 0 0 16rem;
+    align-items: center;
+    justify-content: space-between;
+    width: 16rem;
+    height: 5rem;
+    gap: 0;
+    color: #fff;
+    font-size: 3rem;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+#tabule .time-separator {
+    display: inline-block;
+    width: 0.25em;
+    color: #fff;
+    font-size: 1em;
+    line-height: 1;
+    text-align: center;
+}
+
+#tabule .time-flap {
+    position: relative;
+    display: inline-block;
+    flex: 0 0 3.3rem;
+    width: 3.3rem;
+    height: 5rem;
+    margin: 0;
+    overflow: hidden;
+    background: var(--flap-background);
+    font-size: 1em;
+    perspective: 8em;
+    transform-style: preserve-3d;
+}
+
+#tabule .time-hour-flap {
+    flex-basis: 6.6rem;
+    width: 6.6rem;
+}
+
+#tabule .time-minute-group {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.12rem;
+    height: 5rem;
+}
+
+@keyframes flap-top {
+    from {
+        transform: rotateX(0deg);
+    }
+
+    to {
+        transform: rotateX(-90deg);
+    }
+}
+
+@keyframes flap-bottom {
+    from {
+        transform: rotateX(90deg);
+    }
+
+    to {
+        transform: rotateX(0deg);
+    }
+}
+
+#tabule .flap-character.is-flipping .flap-half--top-current,
+#tabule .train-flap-display.is-flipping .train-flap-half--top-current,
+#tabule .delay-flap-display.is-flipping .delay-flap-half--top-current {
+    animation: flap-top var(--flap-half-duration, 80ms) ease-in forwards;
+    animation-delay: 0s;
+}
+
+#tabule .flap-character.is-flipping .flap-half--bottom-next,
+#tabule .train-flap-display.is-flipping .train-flap-half--bottom-next,
+#tabule .delay-flap-display.is-flipping .delay-flap-half--bottom-next {
+    animation: flap-bottom var(--flap-half-duration, 80ms) ease-out forwards;
+    animation-delay: var(--flap-half-duration, 80ms);
+}
+
+#tabule .time-flap.is-flipping .time-flap-half--top-current {
+    animation: flap-top var(--flap-half-duration, 80ms) ease-in forwards;
+}
+
+#tabule .time-flap.is-flipping .time-flap-half--bottom-next {
+    animation: flap-bottom var(--flap-half-duration, 80ms) ease-out
+        var(--flap-half-duration, 80ms) forwards;
+}
+
+@media (max-width: 700px) {
+    #tabule .flap-display {
+        gap: 0.045em;
+        font-size: clamp(0.78rem, 4.2vw, 1.6rem);
+    }
+
+    #tabule .destinationCell .flap-display {
+        font-size: clamp(0.85rem, 5.8vw, 2rem);
+    }
+
+    #tabule .trainCell .flap-display {
+        font-size: clamp(0.95rem, 4.8vw, 1.8rem);
+    }
+
+    #tabule .timeCell .flap-display {
+        font-size: clamp(0.72rem, 3.7vw, 1.35rem);
+    }
+
+    #tabule .delayCell .flap-display,
+    #tabule .delayLabelCell .flap-display {
+        font-size: clamp(0.5rem, 2.4vw, 0.95rem);
+    }
+
+    #tabule .flap-character {
+        flex-basis: 1.1em;
+        width: 1.1em;
+        height: 1.6em;
+    }
+
+    #tabule .train-flap-display,
+    #tabule .delay-flap-display,
+    #tabule .departure-time-display {
+        width: 8rem;
+        flex-basis: 8rem;
+        height: 3rem;
+    }
+
+    #tabule .time-flap {
+        width: 1.6rem;
+        flex-basis: 1.6rem;
+        height: 3rem;
+    }
+
+    #tabule .time-hour-flap {
+        width: 3.2rem;
+        flex-basis: 3.2rem;
+    }
+
+    #tabule .time-minute-group {
+        height: 3rem;
+    }
+
+    #tabule .flap-glyph,
+    #tabule .time-flap-value,
+    #tabule .delay-flap-number,
+    #tabule .train-flap-main {
+        font-size: clamp(1.4rem, 7vw, 2.7rem);
+    }
+
+    #tabule .train-flap-suffix,
+    #tabule .delay-flap-unit {
+        font-size: 0.9rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #tabule .flap-half--top-current,
+    #tabule .flap-half--bottom-next,
+    #tabule .train-flap-half--top-current,
+    #tabule .train-flap-half--bottom-next,
+    #tabule .delay-flap-half--top-current,
+    #tabule .delay-flap-half--bottom-next,
+    #tabule .time-flap-half--top-current,
+    #tabule .time-flap-half--bottom-next {
+        animation: none !important;
+        transform: none !important;
+    }
+}

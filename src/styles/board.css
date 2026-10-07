@@ -1,0 +1,220 @@
+#skrin {
+    position: relative;
+    isolation: isolate;
+    padding: var(--cabinet-padding) var(--cabinet-padding) 0;
+    background: var(--cabinet-day-background);
+    transition: background-color 0.6s ease;
+}
+
+#cernyLem {
+    position: relative;
+    padding: 1em;
+    overflow: hidden;
+    border-radius: 3em;
+    background: #000;
+    transition: background-color 0.6s ease, box-shadow 0.6s ease;
+}
+
+.ridge-outer {
+    position: relative;
+    z-index: 1;
+    border: 0.25em solid var(--ridge-outer-color);
+    border-radius: 2em;
+    transition: border-color 0.6s ease, box-shadow 0.6s ease;
+}
+
+.ridge-inner {
+    overflow: hidden;
+    border: 0.2em solid var(--ridge-inner-color);
+    border-radius: 1.8em;
+}
+
+#tabule {
+    width: 100%;
+    border-radius: 1em;
+    overflow: hidden;
+    border-collapse: collapse;
+    border-spacing: 0;
+    table-layout: auto;
+    color: var(--flap-foreground);
+}
+
+#tabule tr {
+    height: auto;
+    padding: 0;
+    border-top: 0.5em solid var(--ridge-outer-color);
+}
+
+#tabule tr:first-of-type {
+    height: 2em;
+    border-top: 0;
+}
+
+#tabule tr:first-of-type td {
+    border-top-left-radius: 1.5em;
+    border-top-right-radius: 1.5em;
+}
+
+#tabule tr + tr td {
+    border-top: 0;
+}
+
+#tabule td {
+    width: 1px;
+    padding: 0 2em;
+    vertical-align: middle;
+    background: var(--flap-background);
+}
+
+#tabule td:first-of-type {
+    width: auto;
+}
+
+#tabule td.bottomLeft {
+    border-bottom-left-radius: 1.5em;
+}
+
+#tabule td.displayCell {
+    padding-top: 0.8em;
+    padding-bottom: 0.8em;
+}
+
+#tabule td.destinationCell,
+#tabule td.trainCell,
+#tabule td.timeCell,
+#tabule td.delayCell {
+    background: var(--flap-background);
+}
+
+#tabule td.light {
+    background: #ccc;
+    color: #000;
+    text-transform: uppercase;
+}
+
+#tabule .delay-label-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 1rem;
+}
+
+#tabule .staticLabel {
+    display: inline;
+    font-size: 3em;
+    line-height: normal;
+    white-space: nowrap;
+}
+
+#tabule td#clockBlock {
+    padding: 0 32px;
+}
+
+#tabule tr:not(:first-of-type) {
+    height: 7.5rem;
+}
+
+#tabule tr:not(:first-of-type) > td:not(#clockBlock) {
+    padding-top: 0.8em;
+    padding-bottom: 0.8em;
+}
+
+#clockBlock {
+    position: relative;
+    zoom: 50%;
+    overflow: visible;
+    background: var(--flap-background) !important;
+    border-bottom-right-radius: 3em;
+}
+
+#pragotronAnalogClock {
+    width: 512px;
+    height: 512px;
+    margin: 0;
+    padding: 4em 2em 2em;
+    border-radius: 512px;
+    filter: invert(1);
+    transition: filter 0.6s ease, box-shadow 0.6s ease;
+}
+
+#pragotronAnalogClock canvas {
+    display: inline;
+    width: 512px;
+    height: 512px;
+    transition: filter 0.6s ease;
+}
+
+#clockBlock div.label {
+    padding: 0.25em 0;
+    color: #fff;
+    font-size: 3.5em;
+    line-height: normal;
+    text-align: center;
+    text-transform: uppercase;
+    transition: color 0.6s ease;
+}
+
+div.logo {
+    height: 24px;
+    line-height: 24px;
+}
+
+img.pragotronLogo {
+    height: 24px;
+    margin: 0 1em 0 0;
+}
+
+.textRight {
+    text-align: right;
+}
+
+@media (max-width: 700px) {
+    #skrin {
+        padding: 10px 10px 0;
+    }
+
+    #cernyLem {
+        padding: 0.55em;
+        border-radius: 1.5em;
+    }
+
+    #tabule td {
+        padding-right: 0.35em;
+        padding-left: 0.35em;
+    }
+
+    #tabule td.displayCell {
+        padding-top: 0.55em;
+        padding-bottom: 0.55em;
+    }
+
+    #tabule .staticLabel {
+        font-size: clamp(0.5rem, 2.1vw, 0.85rem);
+    }
+
+    #tabule .delay-label-content {
+        gap: 0.35rem;
+    }
+
+    #clockBlock {
+        zoom: 50%;
+    }
+
+    #pragotronAnalogClock {
+        width: 256px;
+        height: 256px;
+        padding: 2em 1em 1em;
+        border-radius: 256px;
+    }
+
+    #pragotronAnalogClock canvas {
+        width: 256px;
+        height: 256px;
+    }
+
+    #clockBlock div.label {
+        font-size: 1.75em;
+        line-height: 1.1;
+    }
+}

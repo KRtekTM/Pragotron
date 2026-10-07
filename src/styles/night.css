@@ -1,0 +1,319 @@
+#skrin.night-mode {
+    background-color: var(--cabinet-night-background);
+}
+
+#skrin.night-mode #cernyLem {
+    background-color: #020305;
+    box-shadow:
+        0 0 2.5rem rgba(0, 0, 0, 0.9),
+        0 0 4rem rgba(0, 0, 0, 0.45);
+}
+
+#skrin > .logo {
+    transition: opacity 0.6s ease, filter 0.6s ease;
+}
+
+#skrin.night-mode > .logo {
+    opacity: 0.55;
+    filter: brightness(0.72) saturate(0.85);
+}
+
+#skrin.night-mode #cernyLem > .ridge-outer {
+    z-index: auto;
+    border-color: rgba(42, 44, 42, 0.98);
+    box-shadow: none;
+}
+
+#skrin.night-mode #cernyLem > .ridge-outer > .ridge-inner {
+    border-color: rgba(20, 22, 21, 0.98);
+}
+
+#skrin.night-mode #clockBlock {
+    position: relative;
+    z-index: auto;
+    background: transparent !important;
+}
+
+#skrin.night-mode #clockBlock::before {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    background: var(--flap-background);
+    filter: brightness(0.78) saturate(0.92);
+    content: "";
+    pointer-events: none;
+}
+
+#skrin.night-mode #clockBlock > * {
+    position: relative;
+    z-index: 3;
+}
+
+#skrin.night-mode #clockBlock div.label {
+    color: rgb(184, 184, 184);
+}
+
+#skrin.night-mode #tabule {
+    box-shadow: 0 0 1.4rem rgba(0, 0, 0, 0.68);
+}
+
+#skrin.night-mode #tabule tr {
+    border-top-color: #4a4c4a;
+}
+
+#skrin.night-mode #tabule td:not(#clockBlock) {
+    filter: brightness(0.78) saturate(0.92);
+}
+
+#skrin.night-mode #tabule td.light {
+    background: #70716e;
+}
+
+#skrin.night-mode #pragotronAnalogClock {
+    filter: invert(1);
+    box-shadow: none;
+}
+
+#skrin.night-mode #pragotronAnalogClock canvas {
+    filter: none;
+}
+
+.night-lighting {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+}
+
+.night-light {
+    --lamp-core: #fff2b0;
+    --lamp-glow: rgba(255, 204, 112, 0.22);
+    --lamp-halo: rgba(255, 184, 78, 0.05);
+    position: absolute;
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle at 35% 30%,
+        #fffce5 0%,
+        var(--lamp-core) 32%,
+        rgba(255, 190, 82, 0.75) 58%,
+        rgba(255, 190, 82, 0) 78%
+    );
+    box-shadow:
+        0 0 0.45rem rgba(255, 225, 146, 0.9),
+        0 0 1.1rem var(--lamp-glow);
+    opacity: 0;
+}
+
+.night-light::after {
+    position: absolute;
+    top: 0.25rem;
+    left: 50%;
+    width: clamp(32rem, 90vw, 90rem);
+    height: clamp(24rem, 100vw, 72rem);
+    border-radius: 50%;
+    background: radial-gradient(
+        ellipse at 50% 0%,
+        var(--lamp-glow) 0%,
+        var(--lamp-halo) 36%,
+        rgba(255, 174, 67, 0.012) 68%,
+        transparent 100%
+    );
+    content: "";
+    filter: blur(3rem);
+    opacity: 0;
+    transform: translateX(-50%);
+    transform-origin: 50% 0;
+}
+
+#skrin.night-mode .night-lighting {
+    clip-path: inset(1.5rem 1.5rem 1.5rem 1.5rem round 1.5rem);
+    opacity: 1;
+}
+
+#skrin.night-mode:not(.night-lighting-ready) .night-lighting {
+    opacity: 0;
+}
+
+#skrin.night-mode .night-light {
+    opacity: var(--lamp-opacity, 1);
+    animation: night-lamp-pulse var(--lamp-cycle, 5.4s) ease-in-out infinite;
+}
+
+#skrin.night-mode .night-light::after {
+    opacity: 1;
+    animation: night-cone-pulse var(--lamp-cycle, 5.4s) ease-in-out infinite;
+}
+
+#skrin.night-mode .night-light[data-fade="slow"] {
+    animation-name: night-lamp-slow;
+}
+
+#skrin.night-mode .night-light[data-fade="slow"]::after {
+    animation-name: night-cone-slow;
+}
+
+#skrin.night-mode .night-light[data-fade="flicker"] {
+    animation: none;
+    filter: brightness(var(--lamp-flicker-brightness, 1));
+    transition: filter var(--lamp-flicker-transition, 180ms) ease-in-out;
+}
+
+#skrin.night-mode .night-light[data-fade="flicker"]::after {
+    animation: none;
+    opacity: var(--lamp-flicker-opacity, 1);
+    transition: opacity var(--lamp-flicker-transition, 180ms) ease-in-out;
+}
+
+#skrin.night-mode .night-light[data-fade="none"],
+#skrin.night-mode .night-light[data-fade="none"]::after,
+#skrin.night-mode .night-light.is-steady,
+#skrin.night-mode .night-light.is-steady::after {
+    animation: none;
+}
+
+#skrin.night-mode .night-light.is-off {
+    opacity: 0;
+    animation: none;
+}
+
+#skrin.night-mode .night-light.is-off::after {
+    display: none;
+    animation: none;
+}
+
+#skrin.night-mode .night-light {
+    background: transparent;
+    box-shadow: none;
+}
+
+#skrin.page-hidden .night-light,
+#skrin.page-hidden .night-light::after {
+    animation-play-state: paused;
+}
+
+.night-light--top-left {
+    --lamp-cycle: 45s;
+    left: 13%;
+    top: 1.5%;
+}
+
+.night-light--top-center {
+    --lamp-core: #ffe59a;
+    --lamp-glow: rgba(255, 193, 87, 0.18);
+    --lamp-halo: rgba(255, 175, 62, 0.04);
+    --lamp-cycle: 60s;
+    left: 50%;
+    top: 1%;
+    transform: translateX(-50%);
+}
+
+.night-light--top-right {
+    --lamp-cycle: 45s;
+    right: 13%;
+    top: 1.5%;
+}
+
+.night-light--bottom-left {
+    --lamp-cycle: 60s;
+    --lamp-glow: rgba(255, 207, 122, 0.3);
+    --lamp-halo: rgba(190, 139, 48, 0.1);
+    bottom: 2.5%;
+    left: 14%;
+}
+
+.night-light--bottom-left::after,
+.night-light--bottom-right::after {
+    top: auto;
+    bottom: 0.25rem;
+    background: radial-gradient(
+        ellipse at 50% 100%,
+        var(--lamp-glow) 0%,
+        var(--lamp-halo) 36%,
+        rgba(255, 174, 67, 0.012) 68%,
+        transparent 100%
+    );
+    transform: translateX(-50%);
+}
+
+.night-light--bottom-right {
+    --lamp-core: #ffedaf;
+    --lamp-glow: rgba(255, 214, 121, 0.2);
+    --lamp-cycle: 55s;
+    right: 14%;
+    bottom: 2.5%;
+}
+
+.night-light--dim {
+    --lamp-core: #d8b96d;
+    --lamp-glow: rgba(188, 142, 56, 0.27);
+    --lamp-halo: rgba(166, 111, 32, 0.07);
+}
+
+@keyframes night-lamp-pulse {
+    0%,
+    100% {
+        filter: brightness(0.97);
+    }
+
+    50% {
+        filter: brightness(1.01);
+    }
+}
+
+@keyframes night-cone-pulse {
+    0%,
+    100% {
+        opacity: 0.54;
+    }
+
+    50% {
+        opacity: 0.64;
+    }
+}
+
+@keyframes night-lamp-slow {
+    0%,
+    100% {
+        filter: brightness(0.98);
+    }
+
+    50% {
+        filter: brightness(1.005);
+    }
+}
+
+@keyframes night-cone-slow {
+    0%,
+    100% {
+        opacity: 0.5;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #skrin,
+    #cernyLem,
+    #cernyLem > .ridge-outer,
+    .night-lighting,
+    #pragotronAnalogClock,
+    #pragotronAnalogClock canvas,
+    #skrin > .logo {
+        transition: none;
+    }
+
+    #skrin.night-mode .night-light,
+    #skrin.night-mode .night-light::after,
+    #skrin.night-mode .night-light[data-fade="flicker"],
+    #skrin.night-mode .night-light[data-fade="flicker"]::after {
+        animation: none;
+        transition: none;
+    }
+}

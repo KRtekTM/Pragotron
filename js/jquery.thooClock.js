@@ -34,7 +34,15 @@
                 pragotronImgLoading = false,
                 clockTimer = null,
                 clockTimerType = null,
-                clockLoopCount = 0;
+                clockLoopCount = 0,
+                destroyed = false,
+                nightModeProgress = 0,
+                nightModeTarget = 0,
+                nightModeTransitionFrom = 0,
+                nightModeTransitionStart = null,
+                nightModeTransitionFrame = null,
+                nightModeTransitionFrameType = null,
+                nightModeTransitionDuration = 600;
 
        defaults = {
                 size: 250,
@@ -151,21 +159,84 @@
                 return screen !== null && screen.classList.contains('night-mode');
             }
 
-            function isClockLightEnabled(){
-                if(!isNightMode()){
-                    return true;
+            function getCurrentTime(){
+                return new Date().getTime();
+            }
+
+            function updateNightModeProgress(){
+                if(nightModeTransitionStart === null){
+                    return;
                 }
 
+                var elapsed = getCurrentTime() - nightModeTransitionStart,
+                    linearProgress = Math.max(
+                        0,
+                        Math.min(1, elapsed / nightModeTransitionDuration)
+                    ),
+                    easedProgress = linearProgress * linearProgress
+                        * (3 - (2 * linearProgress));
+
+                nightModeProgress = nightModeTransitionFrom
+                    + ((nightModeTarget - nightModeTransitionFrom) * easedProgress);
+
+                if(linearProgress >= 1){
+                    nightModeProgress = nightModeTarget;
+                    nightModeTransitionStart = null;
+                }
+            }
+
+            function scheduleNightModeTransitionFrame(){
+                if(destroyed
+                    || document.hidden
+                    || nightModeTransitionFrame !== null
+                    || nightModeTransitionStart === null){
+                    return;
+                }
+
+                var callback = function(){
+                    nightModeTransitionFrame = null;
+                    nightModeTransitionFrameType = null;
+                    updateNightModeProgress();
+                    drawCurrentFrame();
+                    scheduleNightModeTransitionFrame();
+                };
+
+                if(typeof window.requestAnimationFrame === 'function'){
+                    nightModeTransitionFrameType = 'frame';
+                    nightModeTransitionFrame = window.requestAnimationFrame(callback);
+                } else {
+                    nightModeTransitionFrameType = 'timeout';
+                    nightModeTransitionFrame = window.setTimeout(callback, 16);
+                }
+            }
+
+            function getNightModeProgress(){
+                var target = isNightMode() ? 1 : 0;
+
+                if(target !== nightModeTarget){
+                    updateNightModeProgress();
+                    nightModeTransitionFrom = nightModeProgress;
+                    nightModeTarget = target;
+                    nightModeTransitionStart = getCurrentTime();
+                    scheduleNightModeTransitionFrame();
+                }
+
+                updateNightModeProgress();
+                scheduleNightModeTransitionFrame();
+                return nightModeProgress;
+            }
+
+            nightModeTarget = isNightMode() ? 1 : 0;
+            nightModeProgress = nightModeTarget;
+            nightModeTransitionFrom = nightModeTarget;
+
+            function isClockLightEnabled(){
                 return window.getComputedStyle(el)
                     .getPropertyValue('--clock-light-enabled')
                     .trim() !== '0';
             }
 
-            function getClockLightIntensity(){
-                if(!isNightMode()){
-                    return 1;
-                }
-
+            function getNightClockIntensity(){
                 if(!isClockLightEnabled()){
                     return 0;
                 }
@@ -181,8 +252,15 @@
                 return Math.max(0, Math.min(1, intensity));
             }
 
+            function getClockLightIntensity(){
+                var progress = getNightModeProgress(),
+                    nightIntensity = getNightClockIntensity();
+
+                return 1 + ((nightIntensity - 1) * progress);
+            }
+
             function getNightClockColor(){
-                var intensity = getClockLightIntensity();
+                var intensity = getNightClockIntensity();
                 var baseClockColor = { r: 71, g: 71, b: 71 };
                 var currentFullLightColor = { r: 11, g: 27, b: 59 };
                 var newFullLightColor = { r: 0, g: 15, b: 74 };
@@ -220,6 +298,52 @@
                 return 'rgb(' + red + ', ' + green + ', ' + blue + ')';
             }
 
+            function parseColor(color){
+                var value = String(color || '').trim(),
+                    hexMatch = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i),
+                    rgbMatch = value.match(
+                        /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i
+                    ),
+                    hex;
+
+                if(hexMatch){
+                    hex = hexMatch[1];
+                    if(hex.length === 3){
+                        hex = hex.replace(/(.)/g, '$1$1');
+                    }
+
+                    return {
+                        r: parseInt(hex.substring(0, 2), 16),
+                        g: parseInt(hex.substring(2, 4), 16),
+                        b: parseInt(hex.substring(4, 6), 16)
+                    };
+                }
+
+                if(rgbMatch){
+                    return {
+                        r: Number(rgbMatch[1]),
+                        g: Number(rgbMatch[2]),
+                        b: Number(rgbMatch[3])
+                    };
+                }
+
+                return null;
+            }
+
+            function blendColors(dayColor, nightColor, progress){
+                var day = parseColor(dayColor),
+                    night = parseColor(nightColor);
+
+                if(!day || !night){
+                    return progress < 0.5 ? dayColor : nightColor;
+                }
+
+                return 'rgb('
+                    + Math.round(day.r + ((night.r - day.r) * progress)) + ', '
+                    + Math.round(day.g + ((night.g - day.g) * progress)) + ', '
+                    + Math.round(day.b + ((night.b - day.b) * progress)) + ')';
+            }
+
             function getClockLightVisualIntensity(){
                 var intensity = getClockLightIntensity();
                 return intensity <= 0.5
@@ -235,27 +359,18 @@
             }
 
             function getClockColor(color){
-                return isNightMode() ? getNightClockColor() : color;
+                var progress = getNightModeProgress();
+                return progress === 0
+                    ? color
+                    : blendColors(color, getNightClockColor(), progress);
             }
 
             function setHandShadow(blur, offsetX, offsetY){
-                if(isNightMode()){
-                    var intensity = getClockLightIntensity();
-                    if(intensity === 0){
-                        clearClockShadow();
-                        return;
-                    }
-
-                    ctx.shadowColor =
-                        'rgba(0, 28, 82, ' + (0.42 * getClockLightVisualIntensity()) + ')';
-                    ctx.shadowBlur = getClockLightShadowBlur(blur);
-                    ctx.shadowOffsetX = 0;
-                    ctx.shadowOffsetY = 0;
-                    return;
-                }
-
-                ctx.shadowColor = 'rgba(0,0,0,.5)';
-                ctx.shadowBlur = blur;
+                // The whole clock is rendered through invert(1). A white,
+                // low-opacity source shadow therefore becomes a subtle dark
+                // shadow on the visible clock instead of a bright halo.
+                ctx.shadowColor = 'rgba(255,255,255,.24)';
+                ctx.shadowBlur = Math.max(1, blur * 0.6);
                 ctx.shadowOffsetX = offsetX;
                 ctx.shadowOffsetY = offsetY;
             }
@@ -285,7 +400,8 @@
                     textWidth,
                     brandtextWidth,
                     brandtextWidth2;
-                var nightMode = isNightMode();
+                var nightModeProgress = getNightModeProgress();
+                var nightMode = nightModeProgress > 0;
                 var clockLightIntensity = getClockLightIntensity();
                 var dialStrokeColor = getClockColor(color);
 
@@ -348,7 +464,8 @@
                     if(nightMode && clockLightIntensity > 0){
                         ctx.shadowColor =
                             'rgba(0, 28, 82, ' +
-                            (0.42 * getClockLightVisualIntensity()) + ')';
+                            (0.42 * getClockLightVisualIntensity() * nightModeProgress)
+                            + ')';
                         ctx.shadowBlur = getClockLightShadowBlur(parseInt(el.size/48, 10));
                         ctx.shadowOffsetX = 0;
                         ctx.shadowOffsetY = 0;
@@ -382,9 +499,7 @@
                     var pragotronY = el.size/8;
 
                     ctx.save();
-                    if(isNightMode()){
-                        ctx.globalAlpha = 0.72;
-                    }
+                    ctx.globalAlpha = 1 - (0.28 * getNightModeProgress());
                     ctx.drawImage(pragotronImg, pragotronX, pragotronY, pragotronWidth, pragotronHeight);
                     ctx.restore();
                 }
@@ -544,30 +659,6 @@
                 ctx.restore();
             }  
 
-            //listener
-            if(el.onAlarm !== undefined){
-            	$(el).on('onAlarm', function(e){
-                	el.onAlarm();
-                	e.preventDefault();
-                	e.stopPropagation();
-            	});
-            }
-
-            if(el.onEverySecond !== undefined){
-                $(el).on('onEverySecond', function(e){
-                    el.onEverySecond();
-                    e.preventDefault();
-                });
-            }
-
-            if(el.offAlarm !== undefined){
-	            $(el).on('offAlarm', function(e){
-    	            el.offAlarm();
-        	        e.stopPropagation();
-            	    e.preventDefault();
-           		});
-			}
-
             y=0;
 
             function cancelScheduledTick(){
@@ -586,7 +677,7 @@
             }
 
             function scheduleNextTick(callback){
-                if(document.hidden){
+                if(destroyed || document.hidden){
                     return;
                 }
 
@@ -661,12 +752,32 @@
                 };
             }
 
+            function transitionNightMode(){
+                var target = isNightMode() ? 1 : 0;
+
+                updateNightModeProgress();
+                nightModeTransitionFrom = nightModeProgress;
+                nightModeTarget = target;
+
+                if(nightModeTransitionFrom === nightModeTarget){
+                    nightModeTransitionStart = null;
+                    drawCurrentFrame();
+                    return;
+                }
+
+                nightModeTransitionStart = getCurrentTime();
+                drawCurrentFrame();
+                scheduleNightModeTransitionFrame();
+            }
+
             el.redraw = function(){
                 drawCurrentFrame();
             };
 
+            el.transitionNightMode = transitionNightMode;
+
             function startClock(x){
-                if(document.hidden){
+                if(destroyed || document.hidden){
                     clockLoopCount = x;
                     cancelScheduledTick();
                     return;
@@ -705,13 +816,69 @@
 
             }
 
-            document.addEventListener('visibilitychange', function(){
+            function handleVisibilityChange(){
                 if(document.hidden){
                     cancelScheduledTick();
                 } else if(clockTimer === null){
                     startClock(clockLoopCount);
                 }
+            }
+
+            function destroyClock(){
+                if(destroyed){
+                    return;
+                }
+
+                destroyed = true;
+                cancelScheduledTick();
+                if(nightModeTransitionFrame !== null){
+                    if(nightModeTransitionFrameType === 'frame'
+                        && typeof window.cancelAnimationFrame === 'function'){
+                        window.cancelAnimationFrame(nightModeTransitionFrame);
+                    } else {
+                        window.clearTimeout(nightModeTransitionFrame);
+                    }
+                    nightModeTransitionFrame = null;
+                    nightModeTransitionFrameType = null;
+                }
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+                $(el).off('.thooClock');
+                if(pragotronImg){
+                    pragotronImg.onload = null;
+                    pragotronImg.onerror = null;
+                    pragotronImg = null;
+                }
+                el.replaceChildren();
+                delete el.redraw;
+                delete el.transitionNightMode;
+                delete el.destroy;
+            }
+
+            $(el).on('onAlarm.thooClock', function(e){
+                if(el.onAlarm !== undefined){
+                    el.onAlarm();
+                }
+                e.preventDefault();
+                e.stopPropagation();
             });
+
+            $(el).on('onEverySecond.thooClock', function(e){
+                if(el.onEverySecond !== undefined){
+                    el.onEverySecond();
+                }
+                e.preventDefault();
+            });
+
+            $(el).on('offAlarm.thooClock', function(e){
+                if(el.offAlarm !== undefined){
+                    el.offAlarm();
+                }
+                e.stopPropagation();
+                e.preventDefault();
+            });
+
+            el.destroy = destroyClock;
+            document.addEventListener('visibilitychange', handleVisibilityChange);
 
             startClock(x);
 

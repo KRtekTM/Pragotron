@@ -1,0 +1,318 @@
+#manage {
+    margin-top: 5em;
+    padding: 1.25rem 20px 2rem;
+    color: #fff;
+}
+
+#boardForm {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+#boardForm fieldset {
+    margin: 0;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 1rem;
+    background: #222;
+}
+
+#boardForm legend {
+    margin-bottom: 1em;
+    padding: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.board-form-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.8rem;
+}
+
+.board-form-field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.95rem;
+}
+
+.board-form-field input,
+.board-form-field select {
+    width: 100%;
+    min-height: 2.4rem;
+    padding: 0.45rem 0.6rem;
+    box-sizing: border-box;
+    border: 1px solid #999;
+    border-radius: var(--control-radius);
+    background: #fff;
+    color: #111;
+    font: inherit;
+}
+
+.board-form-field input:focus,
+.board-form-field select:focus,
+#boardForm button:focus-visible {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 2px;
+}
+
+.board-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 1rem;
+}
+
+#boardForm button {
+    padding: 0.55rem 0.9rem;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+#boardForm button:hover {
+    background: #fff;
+}
+
+#boardForm button:disabled,
+#boardForm.is-updating .board-form-actions button {
+    cursor: wait;
+    opacity: 0.48;
+    pointer-events: none;
+}
+
+#boardForm .lens-settings {
+    margin-top: 1rem;
+    padding: 0.9rem;
+    border-color: rgba(255, 255, 255, 0.28);
+    background: #181818;
+}
+
+#boardForm .lens-settings > legend {
+    margin-bottom: 0.7rem;
+    font-size: 1rem;
+}
+
+.lens-component-controls {
+    display: grid;
+    grid-template-columns:
+        max-content
+        minmax(9rem, 1fr)
+        minmax(9rem, 1fr)
+        minmax(14rem, 1.5fr);
+    align-items: end;
+    gap: 0.65rem 1rem;
+}
+
+.lens-component-controls .lamp-control-toggles,
+.lens-component-controls .lamp-control-range,
+.lens-component-controls .lamp-control-select {
+    margin-top: 0;
+}
+
+.lens-component-controls .lamp-control-toggles {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 0;
+}
+
+#boardFormStatus {
+    min-height: 1.2em;
+    margin: 0.75rem 0 0;
+    color: #bfe8c5;
+}
+
+#boardFormStatus.is-error {
+    color: #ff9b9b;
+}
+
+#boardForm .lamp-settings {
+    margin-top: 1rem;
+    padding: 0.9rem;
+    border-color: rgba(255, 255, 255, 0.28);
+    background: #181818;
+}
+
+#boardForm .lamp-settings > legend {
+    margin-bottom: 0.7rem;
+    font-size: 1rem;
+}
+
+.lamp-controls {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.65rem;
+}
+
+.clock-light-controls {
+    display: grid;
+    grid-template-columns: minmax(8rem, max-content) minmax(14rem, 1fr);
+    align-items: end;
+    gap: 1rem;
+    max-width: 34rem;
+}
+
+.clock-light-control .clock-light-controls {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+}
+
+.clock-light-control .lamp-control-range {
+    margin-top: 0.55rem;
+}
+
+#boardForm .lamp-control {
+    min-width: 0;
+    padding: 0.7rem;
+    border-color: rgba(255, 255, 255, 0.22);
+    border-radius: 0.55rem;
+    background: #252525;
+}
+
+#boardForm .lamp-control legend {
+    margin-bottom: 0.45rem;
+    padding: 0 0.25rem;
+    font-size: 0.95rem;
+}
+
+.lamp-control-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.65rem;
+}
+
+.lamp-control-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+}
+
+.lamp-control-check input,
+.lamp-control-range input[type="range"] {
+    accent-color: var(--control-focus);
+}
+
+.lamp-control-range,
+.lamp-control-select {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.55rem;
+    font-size: 0.8rem;
+}
+
+.lamp-control-range-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.lamp-control-range output {
+    color: var(--control-focus);
+    font-variant-numeric: tabular-nums;
+}
+
+.lamp-control-range input[type="range"] {
+    width: 100%;
+}
+
+.lamp-control-select select {
+    min-height: 2rem;
+    padding: 0.25rem 0.35rem;
+    border: 1px solid #888;
+    border-radius: 0.3rem;
+    background: #fff;
+    color: #111;
+    font: inherit;
+}
+
+.lamp-settings-actions {
+    margin-top: 0.8rem;
+}
+
+.lamp-settings-help {
+    margin: 0.75rem 0 0;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.82rem;
+}
+
+#skrin.night-mode ~ #manage {
+    color: #d9dde1;
+    color-scheme: dark;
+}
+
+#skrin.night-mode ~ #manage #boardForm > fieldset,
+#skrin.night-mode ~ #manage #boardForm .lamp-settings {
+    border-color: #3f464d;
+    background: #171a1e;
+}
+
+#skrin.night-mode ~ #manage #boardForm .lamp-control {
+    border-color: #3a424a;
+    background: #20252a;
+}
+
+#skrin.night-mode ~ #manage #boardForm .lens-settings {
+    border-color: #3f464d;
+    background: #171a1e;
+}
+
+#skrin.night-mode ~ #manage #boardForm .board-form-field input,
+#skrin.night-mode ~ #manage #boardForm .board-form-field select,
+#skrin.night-mode ~ #manage #boardForm .lamp-control-select select,
+#skrin.night-mode ~ #manage #boardForm .lens-settings select {
+    border-color: #59636d;
+    background: #272d33;
+    color: #f0f2f4;
+    color-scheme: dark;
+}
+
+#skrin.night-mode ~ #manage #boardForm button {
+    border-color: #626d77;
+    background: #30363d;
+    color: #f0f2f4;
+}
+
+#skrin.night-mode ~ #manage #boardForm button:hover {
+    background: #424b54;
+}
+
+#skrin.night-mode ~ #manage #boardForm .lamp-settings-help {
+    color: #aeb5bc;
+}
+
+@media (max-width: 900px) {
+    .board-form-grid,
+    .lamp-controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .lens-component-controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 700px) {
+    #manage {
+        padding-right: 10px;
+        padding-left: 10px;
+    }
+
+    .board-form-grid,
+    .lamp-controls,
+    .lens-component-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .clock-light-controls {
+        grid-template-columns: 1fr;
+    }
+}

@@ -1,0 +1,107 @@
+.lens-display {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 6.4rem;
+    height: 3.4rem;
+    padding: 0.35rem 0.5rem;
+    box-sizing: border-box;
+    vertical-align: middle;
+}
+
+.lens {
+    position: relative;
+    display: block;
+    flex: 0 0 1.45rem;
+    width: 1.45rem;
+    height: 1.45rem;
+    overflow: visible;
+    border: 0.12rem solid rgba(12, 14, 16, 0.86);
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            ellipse at 30% 22%,
+            rgba(255, 255, 255, 0.24) 0%,
+            rgba(255, 255, 255, 0.07) 14%,
+            transparent 30%
+        ),
+        radial-gradient(
+            circle at 50% 58%,
+            rgba(0, 0, 0, 0.12) 0%,
+            transparent 68%
+        ),
+        var(--lens-glass-color);
+    box-shadow:
+        inset 0 0.08rem 0.14rem rgba(255, 255, 255, 0.18),
+        inset 0 -0.18rem 0.3rem rgba(0, 0, 0, 0.64),
+        0 0.04rem 0.08rem rgba(0, 0, 0, 0.44);
+}
+
+.lens-light {
+    position: absolute;
+    inset: 6%;
+    border-radius: 50%;
+    background:
+        radial-gradient(
+            circle at 37% 30%,
+            var(--lens-light-core-color) 0%,
+            var(--lens-light-core-color) 20%,
+            var(--lens-light-color) 48%,
+            transparent 100%
+        );
+    box-shadow:
+        0 0 0.25rem var(--lens-light-color),
+        0 0 0.65rem var(--lens-light-color),
+        0 0 1.2rem var(--lens-light-color),
+        0 0 1.8rem var(--lens-light-color);
+    opacity: 0;
+    transform: scale(0.72);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.lens.is-on .lens-light {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.lens.is-on.is-blinking .lens-light {
+    animation: lens-blink var(--lens-blink-duration, 0.4s) steps(1, end) infinite;
+    animation-delay: calc(-1 * var(--lens-blink-delay, 0s));
+    animation-fill-mode: both;
+}
+
+@keyframes lens-blink {
+    0%,
+    49.999% {
+        opacity: 0.95;
+        transform: scale(1);
+    }
+
+    50%,
+    100% {
+        opacity: 0;
+        transform: scale(0.72);
+    }
+}
+
+@media (max-width: 700px) {
+    .lens-display {
+        width: 4.8rem;
+        height: 2.8rem;
+        gap: 0.45rem;
+        padding: 0.25rem 0.35rem;
+    }
+
+    .lens {
+        flex-basis: 1.1rem;
+        width: 1.1rem;
+        height: 1.1rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lens.is-on.is-blinking .lens-light {
+        animation: none;
+    }
+}

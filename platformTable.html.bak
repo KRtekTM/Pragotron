@@ -1574,7 +1574,7 @@
         const setNightMode = (isNight) => {
             screenElement.classList.toggle('night-mode', isNight);
             lampSettingsPanel.hidden = !isNight;
-            nightModeButton.textContent = isNight ? 'Denní režim' : 'Noční režim';
+            nightModeButton.textContent = isNight ? '☀️ Denní režim' : '🌙 Noční režim';
             nightModeButton.setAttribute('aria-pressed', String(isNight));
             setBoardFormStatus(
                 isNight ? 'Noční režim zapnut.' : 'Denní režim zapnut.'
