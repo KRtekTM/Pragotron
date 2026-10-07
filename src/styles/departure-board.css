@@ -1,0 +1,457 @@
+body.departure-board-page {
+    min-width: 0;
+    background: #111;
+}
+
+#skrin.departure-board-screen {
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+
+#tabule.departure-board {
+    --departure-flap-height: clamp(3rem, 5vw, 5rem);
+    --departure-flap-font-size: clamp(1.05rem, 2.6vw, 3.2rem);
+    --departure-flap-gap: 0.04rem;
+    --departure-group-gap: 0.9%;
+    table-layout: fixed;
+    background: #000;
+    color: var(--flap-foreground);
+}
+
+#tabule.departure-board col.departure-col-lenses {
+    width: 5.70%;
+}
+
+#tabule.departure-board col.departure-col-train {
+    width: 9.61%;
+}
+
+#tabule.departure-board col.departure-col-number {
+    width: 7.01%;
+}
+
+#tabule.departure-board col.departure-col-station {
+    width: 20.02%;
+}
+
+#tabule.departure-board col.departure-col-via {
+    width: 20.02%;
+}
+
+#tabule.departure-board col.departure-col-time {
+    width: 8.31%;
+}
+
+#tabule.departure-board col.departure-col-delay {
+    width: 9.61%;
+}
+
+#tabule.departure-board col.departure-col-platform {
+    width: 5.70%;
+}
+
+#tabule.departure-board col.departure-col-track {
+    width: 5.70%;
+}
+
+#tabule.departure-board col.departure-col-sector {
+    width: 8.31%;
+}
+
+#tabule.departure-board thead tr {
+    height: 2.4rem;
+    border-top: 0;
+    background: #1e3c69;
+}
+
+#tabule.departure-board thead th {
+    padding: 0.25rem 0.85rem;
+    color: #fff;
+    font-size: clamp(0.58rem, 1.25vw, 1.05rem);
+    font-weight: 700;
+    line-height: 1;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+#tabule.departure-board .cdlogo img {
+    height: 48px;
+    width: auto;
+}
+
+#tabule.departure-board .departsmall {
+    font-size: 2rem;
+}
+
+#tabule.departure-board .cdlogo {
+    padding-left: 1.5rem;
+}
+
+#tabule.departure-board .right {
+    text-align: right;
+    padding-right: 1.5rem;
+}
+
+#tabule.departure-board .departbig {
+    font-size: 4rem;
+    text-align: center;
+}
+
+#tabule.departure-board .departure-board-header th {
+    padding-top: 2rem;
+    padding-bottom: 1rem;
+    line-height: 4rem;
+    vertical-align: text-bottom;
+}
+
+#tabule.departure-board tbody tr {
+    height: var(--departure-flap-height) !important;
+    min-height: var(--departure-flap-height) !important;
+    border-top: 0.16rem solid #606060;
+}
+
+#tabule.departure-board tbody td {
+    width: auto;
+    min-width: 0;
+    height: var(--departure-flap-height) !important;
+    padding: 1.0rem var(--departure-group-gap) !important;
+    padding-block: 0;
+    overflow: hidden;
+    vertical-align: middle;
+}
+
+#tabule.departure-board tbody tr:first-child {
+    border-top: 0;
+}
+
+#tabule.departure-board tbody tr:first-child td {
+    border-radius: 0;
+}
+
+#tabule.departure-board .departure-row-lenses {
+    width: 100%;
+    height: var(--departure-flap-height);
+    gap: 0.35rem;
+    padding: 0;
+}
+
+#tabule.departure-board .departure-row-lenses .lens {
+    flex-basis: 1.05rem;
+    width: 1.05rem;
+    height: 1.05rem;
+}
+
+#tabule.departure-board .flap-display {
+    display: flex;
+    width: 100%;
+    height: var(--departure-flap-height);
+    gap: var(--departure-flap-gap);
+    overflow: hidden;
+    font-size: var(--departure-flap-font-size);
+    vertical-align: middle;
+}
+
+#tabule.departure-board .flap-character {
+    flex: 1 1 0;
+    width: 100%;
+    height: var(--departure-flap-height);
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+#tabule.departure-board
+    [data-departure-slot="platform"].flap-display {
+    flex: 1 1 auto;
+    width: 100%;
+}
+
+#tabule.departure-board .flap-glyph,
+#tabule.departure-board .time-flap-value,
+#tabule.departure-board .delay-flap-number {
+    font-size: var(--departure-flap-font-size);
+}
+
+#tabule.departure-board .train-number-display .catalog-flap-content {
+    font-size: var(--departure-flap-font-size);
+}
+
+#tabule.departure-board .flap-glyph-text,
+#tabule.departure-board .time-flap-value,
+#tabule.departure-board .delay-flap-number {
+    padding-block: 0;
+    transform: scaleX(.9) scaleY(1.2);
+    transform-origin: center;
+}
+
+#tabule.departure-board .flap-display,
+#tabule.departure-board .flap-character,
+#tabule.departure-board .flap-half,
+#tabule.departure-board .flap-glyph,
+#tabule.departure-board .flap-glyph-text,
+#tabule.departure-board .time-flap,
+#tabule.departure-board .time-flap-half,
+#tabule.departure-board .time-flap-content,
+#tabule.departure-board .time-flap-value,
+#tabule.departure-board .train-flap-display,
+#tabule.departure-board .train-flap-half,
+#tabule.departure-board .train-flap-content,
+#tabule.departure-board .train-flap-text,
+#tabule.departure-board .train-flap-main,
+#tabule.departure-board .delay-flap-display,
+#tabule.departure-board .delay-flap-half,
+#tabule.departure-board .delay-flap-content,
+#tabule.departure-board .delay-flap-number,
+#tabule.departure-board .catalog-flap,
+#tabule.departure-board .catalog-flap-half,
+#tabule.departure-board .catalog-flap-content {
+    padding-block: 0;
+}
+
+#tabule.departure-board .train-flap-display,
+#tabule.departure-board .delay-flap-display {
+    width: 100%;
+    height: var(--departure-flap-height);
+    margin: 0;
+}
+
+#tabule.departure-board .train-flap-text {
+    font-size: var(--departure-flap-font-size);
+    transform: scaleY(1.2);
+    transform-origin: center;
+}
+
+#tabule.departure-board .train-flap-main {
+    font-size: var(--departure-flap-font-size);
+}
+
+#tabule.departure-board .train-flap-suffix,
+#tabule.departure-board .delay-flap-unit {
+    margin-top: 1.4em;
+    margin-left: 0.25em;
+    font-size: 20px;
+}
+
+#tabule.departure-board .delay-flap-content {
+    justify-content: center;
+    padding-left: 0;
+}
+
+#tabule.departure-board .departure-time-display {
+    display: grid;
+    grid-template-columns: repeat(
+        5,
+        minmax(0, 1fr)
+    );
+    grid-template-areas: "hour hour separator minute minute";
+    align-items: center;
+    width: 100%;
+    height: var(--departure-flap-height);
+    margin-right: auto;
+    margin-left: auto;
+    gap: var(--departure-flap-gap);
+}
+
+#tabule.departure-board .time-flap {
+    flex: none;
+    width: 100%;
+    height: var(--departure-flap-height);
+}
+
+#tabule.departure-board .time-hour-flap {
+    grid-area: hour;
+}
+
+#tabule.departure-board .time-separator {
+    grid-area: separator;
+    width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+
+#tabule.departure-board .time-minute-group {
+    display: grid;
+    grid-area: minute;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    height: var(--departure-flap-height);
+    width: 100%;
+    gap: var(--departure-flap-gap);
+}
+
+#tabule.departure-board .train-number-display {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--departure-flap-gap);
+    width: 100%;
+    height: var(--departure-flap-height);
+}
+
+#tabule.departure-board .train-number-slot {
+    display: block;
+    width: 100%;
+    height: var(--departure-flap-height);
+    min-width: 0;
+}
+
+#tabule.departure-board .catalog-flap {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: var(--departure-flap-height);
+    overflow: hidden;
+    background: var(--flap-dark-background);
+    perspective: 8em;
+    transform-style: preserve-3d;
+}
+
+#tabule.departure-board
+    [data-departure-slot="track"].catalog-flap,
+#tabule.departure-board
+    [data-departure-slot="sector"].catalog-flap {
+    flex: 1 1 auto;
+    max-width: 100%;
+}
+
+#tabule.departure-board .catalog-flap-half {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.42);
+    background: var(--catalog-flap-background, var(--flap-dark-background));
+    color: var(--catalog-flap-foreground, var(--flap-foreground));
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+}
+
+#tabule.departure-board .catalog-flap-half--top-current,
+#tabule.departure-board .catalog-flap-half--top-next {
+    top: 0;
+    transform-origin: center bottom;
+}
+
+#tabule.departure-board .catalog-flap-half--bottom-current,
+#tabule.departure-board .catalog-flap-half--bottom-next {
+    top: 50%;
+    transform-origin: center top;
+}
+
+#tabule.departure-board .catalog-flap-half--top-current {
+    z-index: 4;
+}
+
+#tabule.departure-board .catalog-flap-half--top-next {
+    z-index: 3;
+}
+
+#tabule.departure-board .catalog-flap-half--bottom-current {
+    z-index: 2;
+}
+
+#tabule.departure-board .catalog-flap-half--bottom-next {
+    z-index: 5;
+    transform: rotateX(90deg);
+}
+
+#tabule.departure-board .catalog-flap-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 200%;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 0;
+    font-family: "Roboto Condensed", "Arial Narrow", sans-serif;
+    font-size: var(--departure-flap-font-size);
+    line-height: 1;
+    white-space: nowrap;
+    transform: scaleY(1.2);
+    transform-origin: center;
+}
+
+#tabule.departure-board .catalog-flap-half--bottom-current
+    .catalog-flap-content,
+#tabule.departure-board .catalog-flap-half--bottom-next
+    .catalog-flap-content {
+    top: -100%;
+}
+
+#tabule.departure-board .catalog-flap::after {
+    position: absolute;
+    top: calc(50% - 1px);
+    right: 0;
+    left: 0;
+    z-index: 10;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.62);
+    content: "";
+    pointer-events: none;
+}
+
+#tabule.departure-board .catalog-flap.is-flipping
+    .catalog-flap-half--top-current {
+    animation: departure-flap-top
+        var(--flap-half-duration, 80ms) ease-in forwards;
+}
+
+#tabule.departure-board .catalog-flap.is-flipping
+    .catalog-flap-half--bottom-next {
+    animation: departure-flap-bottom
+        var(--flap-half-duration, 80ms) ease-out
+        var(--flap-half-duration, 80ms) forwards;
+}
+
+@keyframes departure-flap-top {
+    from {
+        transform: rotateX(0deg);
+    }
+
+    to {
+        transform: rotateX(-90deg);
+    }
+}
+
+@keyframes departure-flap-bottom {
+    from {
+        transform: rotateX(90deg);
+    }
+
+    to {
+        transform: rotateX(0deg);
+    }
+}
+
+#tabule.departure-board td:nth-child(9),
+#tabule.departure-board td:nth-child(10) {
+    text-align: center;
+}
+
+@media (max-width: 700px) {
+    #tabule.departure-board thead th {
+        padding-right: 0.18rem;
+        padding-left: 0.18rem;
+        font-size: 0.52rem;
+    }
+
+    #tabule.departure-board tbody td {
+        padding-right: var(--departure-group-gap);
+        padding-left: var(--departure-group-gap);
+    }
+
+    #tabule.departure-board .departure-row-lenses .lens {
+        flex-basis: 0.7rem;
+        width: 0.7rem;
+        height: 0.7rem;
+    }
+
+    #tabule.departure-board .departure-row-lenses {
+        gap: 0.12rem;
+    }
+}

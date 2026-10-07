@@ -33,7 +33,7 @@ export const LENS_COLORS = Object.freeze({
 
 export const LENS_DEFAULTS = Object.freeze({
     color: 'green',
-    enabled: false,
+    enabled: true,
     blinking: true,
     blinkInterval: 0.4,
     blinkDelay: 0
@@ -45,8 +45,8 @@ export const LENS_PREDEPARTURE_SECONDS_MIN = 0;
 export const LENS_PREDEPARTURE_SECONDS_MAX = 300;
 export const LENS_PREDEPARTURE_SECONDS_STEP = 10;
 export const LENS_PREDEPARTURE_DEFAULTS = Object.freeze({
-    enabled: false,
-    seconds: 60
+    enabled: true,
+    seconds: 90
 });
 
 const resolveBlinkInterval = (setting, fallback) => {
@@ -71,6 +71,65 @@ const resolveColor = (setting, fallback) => {
     return candidates.find((value) =>
         typeof value === 'string' && LENS_COLORS[value]
     ) || fallback;
+};
+
+const positiveModulo = (value, divisor) =>
+    ((value % divisor) + divisor) % divisor;
+
+const LENS_CLOCK_INTERVAL_MS = 40;
+const activeLensDisplays = new Set();
+let lensClockTimer = null;
+
+const scheduleLensClock = () => {
+    if (lensClockTimer !== null || activeLensDisplays.size === 0) {
+        return;
+    }
+
+    lensClockTimer = window.setTimeout(() => {
+        lensClockTimer = null;
+        const now = Date.now();
+        activeLensDisplays.forEach((display) => {
+            display.applyBlinkPhase(now);
+        });
+        scheduleLensClock();
+    }, LENS_CLOCK_INTERVAL_MS);
+};
+
+const registerLensDisplay = (display) => {
+    activeLensDisplays.add(display);
+    scheduleLensClock();
+};
+
+const unregisterLensDisplay = (display) => {
+    activeLensDisplays.delete(display);
+    if (activeLensDisplays.size === 0 && lensClockTimer !== null) {
+        window.clearTimeout(lensClockTimer);
+        lensClockTimer = null;
+    }
+};
+
+/**
+ * Return the phase that should be used for a lens animation at this instant.
+ *
+ * The phase is based on the wall clock instead of the time at which a
+ * particular row happened to render. That keeps all rows (and the Manage
+ * preview) on the same interval even though rows are updated sequentially.
+ */
+export const getLensBlinkPhase = ({
+    now = Date.now(),
+    lensIndex = 0,
+    rowIndex = 0,
+    synchronizeRows = true
+} = {}) => {
+    const interval = LENS_DEFAULTS.blinkInterval;
+    const period = interval * 2;
+    const globalPhase = positiveModulo(Number(now) / 1000, period);
+    const lensOffset = Math.abs(Number(lensIndex) || 0) * interval;
+    const rowOffset = synchronizeRows
+        ? 0
+        : (Math.abs(Number(rowIndex) || 0) % 2) * interval;
+
+    return positiveModulo(globalPhase + lensOffset + rowOffset, period);
 };
 
 const normalizePreDeparture = (setting = {}) => {
@@ -111,10 +170,10 @@ export const createDefaultLensState = (count = 2, overrides = {}) => {
     delete normalizedOverrides.lightColor;
     delete normalizedOverrides.blinkPeriod;
     delete normalizedOverrides.blinkInterval;
-    const blinkInterval = resolveBlinkInterval(
-        sharedOverrides,
-        LENS_DEFAULTS.blinkInterval
-    );
+    delete normalizedOverrides.synchronizeRows;
+    // Lens pairs are one component. Their interval is intentionally fixed so
+    // every departure row can share the same physical-looking phase.
+    const blinkInterval = LENS_DEFAULTS.blinkInterval;
 
     return {
         lenses: Array.from({ length: numericCount }, (_, index) => ({
@@ -123,9 +182,21 @@ export const createDefaultLensState = (count = 2, overrides = {}) => {
             blinkInterval,
             blinkDelay: index * blinkInterval
         })),
-        preDeparture
+        preDeparture,
+        synchronizeRows: sharedOverrides.synchronizeRows !== false
     };
 };
+
+export const createEmptyLensState = (count = 2) => createDefaultLensState(
+    count,
+    {
+        enabled: false,
+        preDeparture: {
+            enabled: false,
+            seconds: LENS_PREDEPARTURE_DEFAULTS.seconds
+        }
+    }
+);
 
 const clamp = (value, minimum, maximum, fallback) => {
     const number = Number(value);
@@ -152,8 +223,7 @@ const cloneLens = (setting, fallback, index) => ({
 });
 
 const synchronizeLensTiming = (lenses) => {
-    const blinkInterval =
-        lenses[0]?.blinkInterval || LENS_DEFAULTS.blinkInterval;
+    const blinkInterval = LENS_DEFAULTS.blinkInterval;
 
     return lenses.map((lens, index) => ({
         ...lens,
@@ -166,6 +236,7 @@ export class LensDisplay {
     constructor(element, {
         count = 2,
         defaultState,
+        rowIndex = 0,
         ...defaults
     } = {}) {
         if (!element) {
@@ -174,6 +245,7 @@ export class LensDisplay {
 
         this.element = element;
         this.count = Math.max(1, Math.floor(Number(count) || 2));
+        this.rowIndex = Math.max(0, Math.floor(Number(rowIndex) || 0));
         this.defaults = {
             ...LENS_DEFAULTS,
             ...defaults,
@@ -194,6 +266,7 @@ export class LensDisplay {
             || createDefaultLensState(this.count, defaultOverrides);
         this.state = this.normalize(this.defaultState);
         this.preDepartureActive = true;
+        this.clockRegistered = false;
         this.render();
     }
 
@@ -213,7 +286,11 @@ export class LensDisplay {
                         )
                     )
                 ),
-                preDeparture: normalizePreDeparture()
+                preDeparture: normalizePreDeparture({
+                    enabled: false,
+                    seconds: LENS_PREDEPARTURE_DEFAULTS.seconds
+                }),
+                synchronizeRows: true
             };
         }
 
@@ -234,11 +311,12 @@ export class LensDisplay {
                     )
                 )
             ),
-            preDeparture: normalizePreDeparture(source)
+            preDeparture: normalizePreDeparture(source),
+            synchronizeRows: source?.synchronizeRows !== false
         };
     }
 
-    renderLens(setting, index) {
+    renderLens(setting, index, now = Date.now()) {
         const lens = document.createElement('span');
         const color = LENS_COLORS[setting.color];
 
@@ -252,7 +330,15 @@ export class LensDisplay {
             '--lens-blink-duration',
             `${setting.blinkInterval * 2}s`
         );
-        lens.style.setProperty('--lens-blink-delay', `${setting.blinkDelay}s`);
+        lens.style.setProperty(
+            '--lens-blink-delay',
+            `${-getLensBlinkPhase({
+                now,
+                lensIndex: index,
+                rowIndex: this.rowIndex,
+                synchronizeRows: this.state.synchronizeRows
+            })}s`
+        );
         const preDepartureActive = !this.state.preDeparture.enabled
             || this.preDepartureActive;
         lens.classList.toggle(
@@ -266,15 +352,80 @@ export class LensDisplay {
 
         const lightElement = document.createElement('span');
         lightElement.className = 'lens-light';
+        if (setting.enabled && setting.blinking && preDepartureActive) {
+            lightElement.classList.toggle(
+                'is-phase-on',
+                getLensBlinkPhase({
+                    now,
+                    lensIndex: index,
+                    rowIndex: this.rowIndex,
+                    synchronizeRows: this.state.synchronizeRows
+                }) < setting.blinkInterval
+            );
+            lightElement.classList.toggle(
+                'is-phase-off',
+                !lightElement.classList.contains('is-phase-on')
+            );
+        }
         lens.appendChild(lightElement);
 
         return lens;
     }
 
+    hasActiveBlinking() {
+        return this.element.isConnected !== false
+            && this.state.lenses.some((setting) =>
+                setting.enabled
+                && setting.blinking
+                && (
+                    !this.state.preDeparture.enabled
+                    || this.preDepartureActive
+                )
+            );
+    }
+
+    syncClockRegistration() {
+        const shouldRegister = this.hasActiveBlinking();
+        if (shouldRegister && !this.clockRegistered) {
+            this.clockRegistered = true;
+            registerLensDisplay(this);
+        } else if (!shouldRegister && this.clockRegistered) {
+            this.clockRegistered = false;
+            unregisterLensDisplay(this);
+        }
+    }
+
+    applyBlinkPhase(now = Date.now()) {
+        if (!this.clockRegistered) {
+            return;
+        }
+
+        this.element.querySelectorAll('.lens').forEach((lens, index) => {
+            const setting = this.state.lenses[index];
+            const isBlinking = setting?.enabled
+                && setting.blinking
+                && (
+                    !this.state.preDeparture.enabled
+                    || this.preDepartureActive
+                );
+            const isOn = isBlinking
+                && getLensBlinkPhase({
+                    now,
+                    lensIndex: index,
+                    rowIndex: this.rowIndex,
+                    synchronizeRows: this.state.synchronizeRows
+                }) < setting.blinkInterval;
+            const light = lens.querySelector('.lens-light');
+            light?.classList.toggle('is-phase-on', isOn);
+            light?.classList.toggle('is-phase-off', isBlinking && !isOn);
+        });
+    }
+
     render() {
+        const now = Date.now();
         this.element.replaceChildren(
             ...this.state.lenses.map((setting, index) =>
-                this.renderLens(setting, index))
+                this.renderLens(setting, index, now))
         );
         this.element.classList.add('lens-display');
         this.element.setAttribute('role', 'img');
@@ -282,6 +433,8 @@ export class LensDisplay {
             'aria-label',
             `${this.state.lenses.length} signalizačních čoček`
         );
+        this.applyBlinkPhase(now);
+        this.syncClockRegistration();
     }
 
     set(value) {
@@ -307,7 +460,8 @@ export class LensDisplay {
     getValue() {
         return {
             lenses: this.state.lenses.map((setting) => ({ ...setting })),
-            preDeparture: { ...this.state.preDeparture }
+            preDeparture: { ...this.state.preDeparture },
+            synchronizeRows: this.state.synchronizeRows
         };
     }
 
@@ -316,6 +470,10 @@ export class LensDisplay {
     }
 
     destroy() {
+        if (this.clockRegistered) {
+            this.clockRegistered = false;
+            unregisterLensDisplay(this);
+        }
         this.element.replaceChildren();
         this.element.removeAttribute('aria-label');
     }

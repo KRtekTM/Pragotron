@@ -66,9 +66,17 @@
 }
 
 .lens.is-on.is-blinking .lens-light {
-    animation: lens-blink var(--lens-blink-duration, 0.4s) steps(1, end) infinite;
-    animation-delay: calc(-1 * var(--lens-blink-delay, 0s));
-    animation-fill-mode: both;
+    animation: none;
+}
+
+.lens.is-on.is-blinking .lens-light.is-phase-on {
+    opacity: 0.95;
+    transform: scale(1);
+}
+
+.lens.is-on.is-blinking .lens-light.is-phase-off {
+    opacity: 0;
+    transform: scale(0.72);
 }
 
 @keyframes lens-blink {

@@ -8,6 +8,8 @@ Projekt obsahuje znovupoužitelné komponenty pro retro split-flap tabule.
 `platformTable.html` je zobrazovací stránka demonstrační tabule a
 `platformTableManage.html` je její ovládací stránka; ani jedna není zdrojem
 komponent samotných.
+`departureBoard.html` je samostatná odjezdová tabule s nastavitelným počtem
+řádků, která používá stejný manage a transport.
 
 ## Spuštění
 
@@ -19,8 +21,20 @@ npm install
 python -m http.server 8000
 ```
 
+Pro režim živých odjezdů spusťte:
+
+```text
+npm run serve
+```
+
+Vestavěný server obsluhuje stránky i proxy endpoint
+`/api/live-departures` na `http://127.0.0.1:4787`, protože zdrojová tabule
+Správy železnic nemá CORS. Port 8787 na Windows často spadne do
+zakázaného rozsahu, proto je výchozí 4787.
+
 Potom otevřít `http://localhost:8000/platformTable.html` a ve druhém tabu
-`http://localhost:8000/platformTableManage.html`.
+`http://localhost:8000/platformTableManage.html`; odjezdová tabule je na
+`http://localhost:8000/departureBoard.html`.
 
 Při přímém otevření přes `file://` použijí stránky vlastní loader a lokální
 kompatibilní bundle. Pro ovládání musí být oba soubory otevřené ve stejném
@@ -30,6 +44,8 @@ prohlížeči a originu.
 
 - `src/platform/data.js` — katalogy, znaková sada, timing a výchozí nastavení.
 - `src/platform/displays.js` — komponenty split-flap, zpoždění, vlaku a času.
+- `src/platform/departure-board.js` — katalogové flapy, číslo vlaku a řádková
+  odjezdová tabule.
 - `src/platform/runtime.js` — registry komponent a obecný `BoardRuntime`.
 - `src/platform/analog-clock.js` — adapter analogových hodin.
 - `src/platform/night-lighting.js` — noční režim, žárovky a lifecycle timerů.
@@ -42,6 +58,25 @@ prohlížeči a originu.
 - `src/demos/` — aplikace, formuláře a PoC-specific orchestrace.
 - `src/styles/` — tokeny a kanonické vrstvy design systému.
 - `style.css` — jediný stylesheet entry point, který vrstvy importuje.
+
+## Odjezdová tabule
+
+Stránka `departureBoard.html` neobsahuje manage UI. Po otevření se připojí ke
+stejnému `BoardTransport` kanálu jako `platformTableManage.html`, načte jeho
+uložené odjezdy a reaguje na zprávy `manage:departures`. Odjezdy se zobrazí
+v pořadí podle času odjezdu, maximálně v osmi řádcích. Změny jsou řazeny po
+celých řádcích a při uvolnění řádku shora mají jednosekundovou pauzu před
+posunem.
+
+Pro kolej a sektor se používají katalogy `DEPARTURE_TRACK_VALUES` a
+`DEPARTURE_SECTOR_VALUES`. Číslo vlaku používá `TRAIN_NUMBER_FLAP_CARDS`;
+výběr barevné sekvence vychází z typu vlaku. Katalogové komponenty stejně jako
+standardní split-flap postupují výhradně dopředným směrem podle fyzického
+pořadí karet.
+
+Při vložení stejného `platform/track/sector` do manage se aktualizuje jeden
+existující odjezd, takže se aktualizuje i řádek odjezdové tabule místo
+vytvoření duplicity.
 
 ## Board state
 
@@ -59,8 +94,10 @@ Veřejný stav tabule je serializovatelný a vhodný pro budoucí vzdálené API
 }
 ```
 
-`delay` je skutečné zpoždění v minutách. Tabule zobrazí pouze katalogovou
-hodnotu nižší než zadané zpoždění; hodnoty do 5 minut včetně zůstanou skryté.
+`delay` je skutečné zpoždění v minutách. Ve výchozím stavu se od zpoždění nic
+neodečítá a tabule mapuje na katalog včetně zadané hodnoty. Po zapnutí offsetu
+zobrazí katalogovou hodnotu nižší než zadané zpoždění a hodnoty do 5 minut
+včetně skryje.
 
 V demonstrační stránce je runtime dostupný jako `window.pragotron`:
 

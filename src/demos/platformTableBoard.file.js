@@ -80,9 +80,142 @@
     "#",
     "'"
   ]);
-  var STATION_FLIP_DURATION = 175;
-  var FLAP_TIMING_VARIATION_MS = 10;
-  var getFlapDuration = () => STATION_FLIP_DURATION + Math.floor(Math.random() * (FLAP_TIMING_VARIATION_MS * 2 + 1)) - FLAP_TIMING_VARIATION_MS;
+  var STATION_NAME_VOWELS = Object.freeze(/* @__PURE__ */ new Set([
+    "A",
+    "\xC1",
+    "\xC4",
+    "E",
+    "\xC9",
+    "\u011A",
+    "\xCB",
+    "I",
+    "\xCD",
+    "\xCF",
+    "O",
+    "\xD3",
+    "\xD6",
+    "U",
+    "\xDA",
+    "\u016E",
+    "\xDC",
+    "Y",
+    "\xDD",
+    "\u0178"
+  ]));
+  var stationNameChars = (value) => Array.from(String(value ?? ""));
+  var stationNameLength = (value) => stationNameChars(value).length;
+  var sliceStationName = (value, start, end) => stationNameChars(value).slice(start, end).join("");
+  var abbreviateStationConnectors = (value) => {
+    const words = String(value).split(" ").filter(Boolean);
+    const result = [];
+    for (let index = 0; index < words.length; index += 1) {
+      if (words[index] === "NAD" && words[index + 1]) {
+        result.push(`N/${words[index + 1]}`);
+        index += 1;
+        continue;
+      }
+      result.push(words[index]);
+    }
+    return result.join(" ");
+  };
+  var fillStationName = (value, width) => {
+    const words = String(value).split(" ").filter(Boolean);
+    let result = "";
+    for (const word of words) {
+      if (!result) {
+        result = stationNameLength(word) <= width ? word : sliceStationName(word, 0, width);
+        continue;
+      }
+      const remaining = width - stationNameLength(result);
+      const next = ` ${word}`;
+      if (stationNameLength(next) <= remaining) {
+        result += next;
+        continue;
+      }
+      if (remaining <= 1) {
+        break;
+      }
+      result += ` ${sliceStationName(word, 0, remaining - 1)}`;
+      break;
+    }
+    return result.replace(/ +$/g, "");
+  };
+  var stripTrailingVowels = (value) => {
+    const chars = stationNameChars(value);
+    while (chars.length > 1 && STATION_NAME_VOWELS.has(chars[chars.length - 1])) {
+      chars.pop();
+    }
+    return chars.join("");
+  };
+  var nextKeptLetter = (value) => {
+    for (const character of stationNameChars(value)) {
+      if (character !== " " && character !== ".") {
+        return character;
+      }
+    }
+    return "";
+  };
+  var formatStationName = (value, {
+    maxLength = STATION_CHARACTER_COUNT,
+    sequence = STATION_FLAP_SEQUENCE
+  } = {}) => {
+    const cleaned = stationNameChars(
+      String(value ?? "").replace(/[–—−]/g, "-").toLocaleUpperCase("cs-CZ")
+    ).map((character) => sequence.includes(character) ? character : " ").join("").replace(/\s+/g, " ").trim();
+    if (!cleaned || maxLength <= 0) {
+      return "";
+    }
+    const abbreviated = abbreviateStationConnectors(cleaned);
+    if (stationNameLength(abbreviated) <= maxLength) {
+      return abbreviated;
+    }
+    if (maxLength === 1) {
+      return ".";
+    }
+    const filled = fillStationName(abbreviated, maxLength - 1);
+    const remaining = sliceStationName(abbreviated, stationNameLength(filled));
+    if (filled.endsWith(".")) {
+      const extra = nextKeptLetter(remaining);
+      const combined = `${filled}${extra}`;
+      return stationNameLength(combined) <= maxLength ? combined : sliceStationName(combined, 0, maxLength);
+    }
+    return `${stripTrailingVowels(filled)}.`;
+  };
+  var STATION_FLIP_DURATION = 190;
+  var FLAP_TIMING_VARIATION_MS = 1;
+  var FLAP_TIMING_DURATION_MIN = 150;
+  var FLAP_TIMING_DURATION_MAX = 500;
+  var FLAP_TIMING_VARIATION_MIN = 0;
+  var FLAP_TIMING_VARIATION_MAX = 10;
+  var FLAP_TIMING_DEFAULTS = Object.freeze({
+    duration: STATION_FLIP_DURATION,
+    variation: FLAP_TIMING_VARIATION_MS
+  });
+  var clampInteger = (value, minimum, maximum, fallback) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, Math.round(number))) : fallback;
+  };
+  var normalizeFlapTiming = (value = {}) => {
+    const source = value && typeof value === "object" ? value : {};
+    return {
+      duration: clampInteger(
+        source.duration,
+        FLAP_TIMING_DURATION_MIN,
+        FLAP_TIMING_DURATION_MAX,
+        FLAP_TIMING_DEFAULTS.duration
+      ),
+      variation: clampInteger(
+        source.variation,
+        FLAP_TIMING_VARIATION_MIN,
+        FLAP_TIMING_VARIATION_MAX,
+        FLAP_TIMING_DEFAULTS.variation
+      )
+    };
+  };
+  var getFlapDuration = (timing = FLAP_TIMING_DEFAULTS) => {
+    const normalized = normalizeFlapTiming(timing);
+    return normalized.duration + Math.floor(Math.random() * (normalized.variation * 2 + 1)) - normalized.variation;
+  };
   var DELAY_VALUES = Object.freeze([
     "",
     5,
@@ -114,6 +247,8 @@
     390
   ]);
   var DELAY_DISPLAY_THRESHOLD = 5;
+  var DELAY_OFFSET_DEFAULT = false;
+  var normalizeDelayOffset = (value) => value === true;
   var parseDelayMinutes = (value) => {
     if (value === "" || value === null || value === void 0) {
       return "";
@@ -123,15 +258,41 @@
     const numericValue = Number(match ? match[1].replace(",", ".") : value);
     return Number.isFinite(numericValue) && numericValue >= 0 ? Math.floor(numericValue) : null;
   };
-  var getDisplayedDelay = (value, values = DELAY_VALUES) => {
+  var getDisplayedDelay = (value, values = DELAY_VALUES, applyOffset = DELAY_OFFSET_DEFAULT) => {
     const minutes = parseDelayMinutes(value);
-    if (minutes === "" || minutes === null || minutes <= DELAY_DISPLAY_THRESHOLD) {
+    if (minutes === "" || minutes === null) {
+      return "";
+    }
+    const offsetEnabled = normalizeDelayOffset(applyOffset);
+    if (offsetEnabled && minutes <= DELAY_DISPLAY_THRESHOLD) {
       return "";
     }
     const availableValues = values.filter(
-      (candidate) => Number.isFinite(Number(candidate)) && Number(candidate) > 0 && Number(candidate) < minutes
+      (candidate) => Number.isFinite(Number(candidate)) && Number(candidate) > 0 && (offsetEnabled ? Number(candidate) < minutes : Number(candidate) <= minutes)
     );
     return availableValues.length ? availableValues[availableValues.length - 1] : "";
+  };
+  var getEffectiveDepartureDate = (departureTime, delay, now = /* @__PURE__ */ new Date(), applyOffset = DELAY_OFFSET_DEFAULT) => {
+    const hours = Number(departureTime?.hours);
+    const minutes = Number(departureTime?.minutes);
+    if (!Number.isInteger(hours) || hours < 0 || hours > 23 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+      return null;
+    }
+    const reference = now instanceof Date ? now : new Date(now);
+    if (Number.isNaN(reference.getTime())) {
+      return null;
+    }
+    const date = new Date(reference.getTime());
+    date.setSeconds(0, 0);
+    date.setHours(hours, minutes, 0, 0);
+    const displayedDelay = getDisplayedDelay(delay, DELAY_VALUES, applyOffset);
+    if (displayedDelay !== "") {
+      date.setMinutes(date.getMinutes() + Number(displayedDelay));
+    }
+    if (date.getTime() < reference.getTime()) {
+      date.setDate(date.getDate() + 1);
+    }
+    return date;
   };
   var TRAIN_TYPES = Object.freeze([
     {
@@ -183,16 +344,135 @@
     },
     {
       name: "Intercity",
-      source: "images/InterCity_Austria.svg",
+      source: "images/intercity.svg",
+      label: "Intercity (IC)",
       background: "#fff",
-      foreground: "#D80300"
+      foreground: "#CC3333"
     },
     {
       name: "Eurocity",
       source: "images/EuroCity_Logo.svg",
+      label: "Eurocity (EC)",
       background: "#fff",
       foreground: "#000"
+    },
+    {
+      name: "rj",
+      source: "images/railjet.svg",
+      label: "Railjet (rj)",
+      background: "#D80300",
+      foreground: "#fff"
+    },
+    {
+      name: "RJ",
+      source: "images/regiojet.svg",
+      label: "RegioJet (RJ)",
+      background: "#F1B504",
+      foreground: "#000"
+    },
+    {
+      name: "EuroNight",
+      text: "EN",
+      label: "EuroNight (EN)",
+      background: "var(--flap-background)",
+      foreground: "#fff"
+    },
+    {
+      name: "nj",
+      source: "images/nightjet.svg",
+      label: "NightJet (nj)",
+      background: "#1e3c69",
+      foreground: "#fff"
+    },
+    {
+      name: "SuperCity",
+      source: "images/supercity.svg",
+      label: "SuperCity (SC)",
+      background: "#fff",
+      foreground: "#F1B504"
     }
+  ]);
+  var DEPARTURE_TRACK_VALUES = Object.freeze([
+    "",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "6a",
+    "11a",
+    "701"
+  ]);
+  var DEPARTURE_PLATFORM_VALUES = Object.freeze([
+    "",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
+  ]);
+  var DEPARTURE_SECTOR_VALUES = Object.freeze([
+    "",
+    "A",
+    "A-B",
+    "A-C",
+    "A-D",
+    "B",
+    "B-C",
+    "B-D",
+    "B-E",
+    "C",
+    "C-D",
+    "C-E",
+    "D",
+    "D-E",
+    "E",
+    "Sever",
+    "Jih"
+  ]);
+  var TRAIN_NUMBER_CARD_STYLES = Object.freeze({
+    default: Object.freeze({
+      background: "var(--flap-background)",
+      foreground: "var(--flap-foreground)"
+    }),
+    intercity: Object.freeze({
+      background: "#fff",
+      foreground: "#000"
+    }),
+    sp: Object.freeze({
+      background: "#1e3c69",
+      foreground: "#fff"
+    }),
+    red: Object.freeze({
+      background: "#D80300",
+      foreground: "#fff"
+    })
+  });
+  var createTrainNumberCard = (key, value, style) => Object.freeze({
+    key,
+    value,
+    ...TRAIN_NUMBER_CARD_STYLES[style],
+    style
+  });
+  var createTrainNumberDigitCards = (style) => Array.from(
+    { length: 10 },
+    (_, digit) => createTrainNumberCard(`${style}-${digit}`, String(digit), style)
+  );
+  var TRAIN_NUMBER_FLAP_CARDS = Object.freeze([
+    createTrainNumberCard("blank", "", "default"),
+    ...createTrainNumberDigitCards("default"),
+    ...createTrainNumberDigitCards("intercity"),
+    ...createTrainNumberDigitCards("sp"),
+    ...createTrainNumberDigitCards("red")
   ]);
   var NIGHT_FADE_MODES = Object.freeze([
     { value: "none", label: "Bez pohas\xEDn\xE1n\xED (st\xE1l\xFD svit)" },
@@ -401,24 +681,33 @@
     constructor(element, {
       audio: audio2 = new SplitFlapAudio(),
       maxLength = STATION_CHARACTER_COUNT,
-      sequence = STATION_FLAP_SEQUENCE
+      sequence = STATION_FLAP_SEQUENCE,
+      timing = FLAP_TIMING_DEFAULTS
     } = {}) {
       this.element = element;
       this.audio = audio2;
       this.ownsAudio = audio2 instanceof SplitFlapAudio;
       this.maxLength = maxLength;
       this.sequence = sequence;
+      this.timing = normalizeFlapTiming(timing);
       this.characters = [];
       this.defaultValue = element.dataset.text || "";
       this.value = "";
       this.reducedMotion = prefersReducedMotion();
       this.initialize("");
     }
+    setTiming(timing) {
+      this.timing = normalizeFlapTiming(timing);
+      return { ...this.timing };
+    }
     normalize(value) {
       return String(value ?? "").toLocaleUpperCase("cs-CZ");
     }
     charactersFor(value) {
-      return Array.from(this.normalize(value).slice(0, this.maxLength)).map((character) => this.sequence.includes(character) ? character : " ").concat(Array(this.maxLength).fill(" ")).slice(0, this.maxLength);
+      return Array.from(formatStationName(value, {
+        maxLength: this.maxLength,
+        sequence: this.sequence
+      })).concat(Array(this.maxLength).fill(" ")).slice(0, this.maxLength);
     }
     glyphFor(character) {
       return character === " " ? "\xA0" : character;
@@ -456,7 +745,7 @@
       this.value = target.join("").trim();
       this.characters = [];
       this.element.replaceChildren();
-      target.forEach((character, index) => {
+      target.forEach((character) => {
         const element = this.createCharacter(" ", " ");
         const state = {
           element,
@@ -470,7 +759,7 @@
           this.renderCharacter(element, character, character);
           state.value = character;
         } else {
-          scheduleFrame(() => this.flip(state, character, index * 55));
+          this.flip(state, character);
         }
       });
       this.updateLabel();
@@ -499,8 +788,8 @@
       if (sequence !== state.sequence || state.value === target) {
         return;
       }
-      state.timer = window.setTimeout(() => {
-        if (sequence !== state.sequence) {
+      const startStep = () => {
+        if (sequence !== state.sequence || state.value === target) {
           return;
         }
         const current = state.value;
@@ -514,7 +803,7 @@
           this.advance(state, target, sequence);
           return;
         }
-        const flipDuration = getFlapDuration();
+        const flipDuration = getFlapDuration(this.timing);
         applyFlipTiming(state.element, flipDuration);
         this.audio.play();
         state.element.classList.add("is-flipping");
@@ -528,14 +817,19 @@
           state.timer = null;
           this.advance(state, target, sequence);
         }, flipDuration);
-      }, delay);
+      };
+      if (delay > 0) {
+        state.timer = window.setTimeout(startStep, delay);
+        return;
+      }
+      startStep();
     }
     set(value) {
       const target = this.charactersFor(value);
       this.value = target.join("").trim();
       this.updateLabel();
       this.characters.forEach((state, index) => {
-        this.flip(state, target[index], index * 55);
+        this.flip(state, target[index]);
       });
       return this.value;
     }
@@ -574,11 +868,18 @@
     }
   };
   var DelayFlapDisplay = class {
-    constructor(element, values = DELAY_VALUES, { audio: audio2 = new SplitFlapAudio() } = {}) {
+    constructor(element, values = DELAY_VALUES, {
+      audio: audio2 = new SplitFlapAudio(),
+      timing = FLAP_TIMING_DEFAULTS,
+      applyDelayOffset = DELAY_OFFSET_DEFAULT
+    } = {}) {
       this.element = element;
       this.values = values;
       this.audio = audio2;
       this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.timing = normalizeFlapTiming(timing);
+      this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
+      this.sourceValue = "";
       this.defaultValue = element.dataset.delay || "";
       this.currentValue = "";
       this.targetValue = "";
@@ -587,6 +888,10 @@
       this.reducedMotion = prefersReducedMotion();
       this.render("", "");
       this.updateLabel();
+    }
+    setTiming(timing) {
+      this.timing = normalizeFlapTiming(timing);
+      return { ...this.timing };
     }
     parse(value) {
       if (value === "" || value === null || value === void 0) {
@@ -598,7 +903,20 @@
           `Neplatn\xE9 zpo\u017Ed\u011Bn\xED "${value}". Zadejte nez\xE1porn\xE9 minuty.`
         );
       }
-      return getDisplayedDelay(numericValue, this.values);
+      return getDisplayedDelay(
+        numericValue,
+        this.values,
+        this.applyDelayOffset
+      );
+    }
+    setDelayOffset(enabled) {
+      const nextValue = normalizeDelayOffset(enabled);
+      if (nextValue === this.applyDelayOffset) {
+        return this.applyDelayOffset;
+      }
+      this.applyDelayOffset = nextValue;
+      this.set(this.sourceValue);
+      return this.applyDelayOffset;
     }
     createHalf(className, value) {
       const half = document.createElement("span");
@@ -632,6 +950,7 @@
       );
     }
     set(value) {
+      this.sourceValue = value;
       const next = this.parse(value);
       const sequence = ++this.sequence;
       this.targetValue = next;
@@ -648,6 +967,7 @@
       return this.targetValue;
     }
     setImmediate(value) {
+      this.sourceValue = value;
       const next = this.parse(value);
       this.sequence += 1;
       clearTimer(this, "timer");
@@ -678,7 +998,7 @@
         scheduleFrame(() => this.advance(sequence));
         return;
       }
-      const flipDuration = getFlapDuration();
+      const flipDuration = getFlapDuration(this.timing);
       applyFlipTiming(this.element, flipDuration);
       this.audio.play();
       this.element.classList.add("is-flipping");
@@ -709,11 +1029,15 @@
     }
   };
   var TrainFlapDisplay = class {
-    constructor(element, types = TRAIN_TYPES, { audio: audio2 = new SplitFlapAudio() } = {}) {
+    constructor(element, types = TRAIN_TYPES, {
+      audio: audio2 = new SplitFlapAudio(),
+      timing = FLAP_TIMING_DEFAULTS
+    } = {}) {
       this.element = element;
       this.types = types;
       this.audio = audio2;
       this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.timing = normalizeFlapTiming(timing);
       this.defaultValue = element.dataset.type || element.dataset.src || "";
       this.defaultSource = element.dataset.src || this.defaultValue;
       this.currentIndex = 0;
@@ -724,6 +1048,10 @@
       this.reducedMotion = prefersReducedMotion();
       this.render(this.types[0], this.types[0]);
       this.updateLabel();
+    }
+    setTiming(timing) {
+      this.timing = normalizeFlapTiming(timing);
+      return { ...this.timing };
     }
     indexFor(value) {
       if (value === "" || value === null || value === void 0) {
@@ -803,7 +1131,7 @@
         scheduleFrame(() => this.advance(sequence));
         return;
       }
-      const flipDuration = getFlapDuration();
+      const flipDuration = getFlapDuration(this.timing);
       applyFlipTiming(this.element, flipDuration);
       this.audio.play();
       this.element.classList.add("is-flipping");
@@ -862,18 +1190,26 @@
     }
   };
   var SequentialNumericFlap = class {
-    constructor(element, minimum, maximum, { audio: audio2 = new SplitFlapAudio() } = {}) {
+    constructor(element, minimum, maximum, {
+      audio: audio2 = new SplitFlapAudio(),
+      timing = FLAP_TIMING_DEFAULTS
+    } = {}) {
       this.element = element;
       this.minimum = minimum;
       this.maximum = maximum;
       this.audio = audio2;
       this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.timing = normalizeFlapTiming(timing);
       this.currentValue = "";
       this.targetValue = "";
       this.timer = null;
       this.sequence = 0;
       this.reducedMotion = prefersReducedMotion();
       this.render(this.currentValue, this.currentValue);
+    }
+    setTiming(timing) {
+      this.timing = normalizeFlapTiming(timing);
+      return { ...this.timing };
     }
     parse(value) {
       const numericValue = Number(value);
@@ -959,7 +1295,7 @@
         scheduleFrame(() => this.advance(sequence));
         return;
       }
-      const flipDuration = getFlapDuration();
+      const flipDuration = getFlapDuration(this.timing);
       applyFlipTiming(this.element, flipDuration);
       this.audio.play();
       this.element.classList.add("is-flipping");
@@ -990,7 +1326,10 @@
     }
   };
   var DepartureTimeDisplay = class {
-    constructor(element, { audio: audio2 = new SplitFlapAudio() } = {}) {
+    constructor(element, {
+      audio: audio2 = new SplitFlapAudio(),
+      timing = FLAP_TIMING_DEFAULTS
+    } = {}) {
       this.element = element;
       this.defaultHours = Number(element.dataset.hours);
       this.defaultMinutes = Number(element.dataset.minutes);
@@ -998,21 +1337,28 @@
         element.querySelector(".time-hour-flap"),
         0,
         23,
-        { audio: audio2 }
+        { audio: audio2, timing }
       );
       this.minuteTens = new SequentialNumericFlap(
         element.querySelectorAll(".time-minute-flap")[0],
         0,
         5,
-        { audio: audio2 }
+        { audio: audio2, timing }
       );
       this.minuteOnes = new SequentialNumericFlap(
         element.querySelectorAll(".time-minute-flap")[1],
         0,
         9,
-        { audio: audio2 }
+        { audio: audio2, timing }
       );
       this.element.setAttribute("aria-label", "Odjezd");
+    }
+    setTiming(timing) {
+      const normalized = normalizeFlapTiming(timing);
+      this.hour.setTiming(normalized);
+      this.minuteTens.setTiming(normalized);
+      this.minuteOnes.setTiming(normalized);
+      return normalized;
     }
     parseTime(hours, minutes) {
       if (minutes === void 0 && typeof hours === "string") {
@@ -1123,7 +1469,7 @@
   });
   var LENS_DEFAULTS = Object.freeze({
     color: "green",
-    enabled: false,
+    enabled: true,
     blinking: true,
     blinkInterval: 0.4,
     blinkDelay: 0
@@ -1134,8 +1480,8 @@
   var LENS_PREDEPARTURE_SECONDS_MAX = 300;
   var LENS_PREDEPARTURE_SECONDS_STEP = 10;
   var LENS_PREDEPARTURE_DEFAULTS = Object.freeze({
-    enabled: false,
-    seconds: 60
+    enabled: true,
+    seconds: 90
   });
   var resolveBlinkInterval = (setting, fallback) => {
     const value = Number.isFinite(Number(setting?.blinkInterval)) ? Number(setting.blinkInterval) : Number(setting?.blinkPeriod);
@@ -1153,6 +1499,47 @@
     return candidates.find(
       (value) => typeof value === "string" && LENS_COLORS[value]
     ) || fallback;
+  };
+  var positiveModulo = (value, divisor) => (value % divisor + divisor) % divisor;
+  var LENS_CLOCK_INTERVAL_MS = 40;
+  var activeLensDisplays = /* @__PURE__ */ new Set();
+  var lensClockTimer = null;
+  var scheduleLensClock = () => {
+    if (lensClockTimer !== null || activeLensDisplays.size === 0) {
+      return;
+    }
+    lensClockTimer = window.setTimeout(() => {
+      lensClockTimer = null;
+      const now = Date.now();
+      activeLensDisplays.forEach((display) => {
+        display.applyBlinkPhase(now);
+      });
+      scheduleLensClock();
+    }, LENS_CLOCK_INTERVAL_MS);
+  };
+  var registerLensDisplay = (display) => {
+    activeLensDisplays.add(display);
+    scheduleLensClock();
+  };
+  var unregisterLensDisplay = (display) => {
+    activeLensDisplays.delete(display);
+    if (activeLensDisplays.size === 0 && lensClockTimer !== null) {
+      window.clearTimeout(lensClockTimer);
+      lensClockTimer = null;
+    }
+  };
+  var getLensBlinkPhase = ({
+    now = Date.now(),
+    lensIndex = 0,
+    rowIndex = 0,
+    synchronizeRows = true
+  } = {}) => {
+    const interval = LENS_DEFAULTS.blinkInterval;
+    const period = interval * 2;
+    const globalPhase = positiveModulo(Number(now) / 1e3, period);
+    const lensOffset = Math.abs(Number(lensIndex) || 0) * interval;
+    const rowOffset = synchronizeRows ? 0 : Math.abs(Number(rowIndex) || 0) % 2 * interval;
+    return positiveModulo(globalPhase + lensOffset + rowOffset, period);
   };
   var normalizePreDeparture = (setting = {}) => {
     const source = setting?.preDeparture || setting;
@@ -1182,10 +1569,8 @@
     delete normalizedOverrides.lightColor;
     delete normalizedOverrides.blinkPeriod;
     delete normalizedOverrides.blinkInterval;
-    const blinkInterval = resolveBlinkInterval(
-      sharedOverrides,
-      LENS_DEFAULTS.blinkInterval
-    );
+    delete normalizedOverrides.synchronizeRows;
+    const blinkInterval = LENS_DEFAULTS.blinkInterval;
     return {
       lenses: Array.from({ length: numericCount }, (_, index) => ({
         ...LENS_DEFAULTS,
@@ -1193,9 +1578,20 @@
         blinkInterval,
         blinkDelay: index * blinkInterval
       })),
-      preDeparture
+      preDeparture,
+      synchronizeRows: sharedOverrides.synchronizeRows !== false
     };
   };
+  var createEmptyLensState = (count = 2) => createDefaultLensState(
+    count,
+    {
+      enabled: false,
+      preDeparture: {
+        enabled: false,
+        seconds: LENS_PREDEPARTURE_DEFAULTS.seconds
+      }
+    }
+  );
   var clamp = (value, minimum, maximum, fallback) => {
     const number = Number(value);
     return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
@@ -1213,7 +1609,7 @@
     )
   });
   var synchronizeLensTiming = (lenses) => {
-    const blinkInterval = lenses[0]?.blinkInterval || LENS_DEFAULTS.blinkInterval;
+    const blinkInterval = LENS_DEFAULTS.blinkInterval;
     return lenses.map((lens, index) => ({
       ...lens,
       blinkInterval,
@@ -1224,6 +1620,7 @@
     constructor(element, {
       count = 2,
       defaultState,
+      rowIndex = 0,
       ...defaults
     } = {}) {
       if (!element) {
@@ -1231,6 +1628,7 @@
       }
       this.element = element;
       this.count = Math.max(1, Math.floor(Number(count) || 2));
+      this.rowIndex = Math.max(0, Math.floor(Number(rowIndex) || 0));
       this.defaults = {
         ...LENS_DEFAULTS,
         ...defaults,
@@ -1250,6 +1648,7 @@
       this.defaultState = defaultState || createDefaultLensState(this.count, defaultOverrides);
       this.state = this.normalize(this.defaultState);
       this.preDepartureActive = true;
+      this.clockRegistered = false;
       this.render();
     }
     normalize(value) {
@@ -1269,7 +1668,11 @@
               )
             )
           ),
-          preDeparture: normalizePreDeparture()
+          preDeparture: normalizePreDeparture({
+            enabled: false,
+            seconds: LENS_PREDEPARTURE_DEFAULTS.seconds
+          }),
+          synchronizeRows: true
         };
       }
       const source = Array.isArray(value) ? { lenses: value } : value;
@@ -1285,10 +1688,11 @@
             )
           )
         ),
-        preDeparture: normalizePreDeparture(source)
+        preDeparture: normalizePreDeparture(source),
+        synchronizeRows: source?.synchronizeRows !== false
       };
     }
-    renderLens(setting, index) {
+    renderLens(setting, index, now = Date.now()) {
       const lens = document.createElement("span");
       const color = LENS_COLORS[setting.color];
       lens.className = "lens";
@@ -1301,7 +1705,15 @@
         "--lens-blink-duration",
         `${setting.blinkInterval * 2}s`
       );
-      lens.style.setProperty("--lens-blink-delay", `${setting.blinkDelay}s`);
+      lens.style.setProperty(
+        "--lens-blink-delay",
+        `${-getLensBlinkPhase({
+          now,
+          lensIndex: index,
+          rowIndex: this.rowIndex,
+          synchronizeRows: this.state.synchronizeRows
+        })}s`
+      );
       const preDepartureActive = !this.state.preDeparture.enabled || this.preDepartureActive;
       lens.classList.toggle(
         "is-on",
@@ -1313,12 +1725,61 @@
       );
       const lightElement = document.createElement("span");
       lightElement.className = "lens-light";
+      if (setting.enabled && setting.blinking && preDepartureActive) {
+        lightElement.classList.toggle(
+          "is-phase-on",
+          getLensBlinkPhase({
+            now,
+            lensIndex: index,
+            rowIndex: this.rowIndex,
+            synchronizeRows: this.state.synchronizeRows
+          }) < setting.blinkInterval
+        );
+        lightElement.classList.toggle(
+          "is-phase-off",
+          !lightElement.classList.contains("is-phase-on")
+        );
+      }
       lens.appendChild(lightElement);
       return lens;
     }
+    hasActiveBlinking() {
+      return this.element.isConnected !== false && this.state.lenses.some(
+        (setting) => setting.enabled && setting.blinking && (!this.state.preDeparture.enabled || this.preDepartureActive)
+      );
+    }
+    syncClockRegistration() {
+      const shouldRegister = this.hasActiveBlinking();
+      if (shouldRegister && !this.clockRegistered) {
+        this.clockRegistered = true;
+        registerLensDisplay(this);
+      } else if (!shouldRegister && this.clockRegistered) {
+        this.clockRegistered = false;
+        unregisterLensDisplay(this);
+      }
+    }
+    applyBlinkPhase(now = Date.now()) {
+      if (!this.clockRegistered) {
+        return;
+      }
+      this.element.querySelectorAll(".lens").forEach((lens, index) => {
+        const setting = this.state.lenses[index];
+        const isBlinking = setting?.enabled && setting.blinking && (!this.state.preDeparture.enabled || this.preDepartureActive);
+        const isOn = isBlinking && getLensBlinkPhase({
+          now,
+          lensIndex: index,
+          rowIndex: this.rowIndex,
+          synchronizeRows: this.state.synchronizeRows
+        }) < setting.blinkInterval;
+        const light = lens.querySelector(".lens-light");
+        light?.classList.toggle("is-phase-on", isOn);
+        light?.classList.toggle("is-phase-off", isBlinking && !isOn);
+      });
+    }
     render() {
+      const now = Date.now();
       this.element.replaceChildren(
-        ...this.state.lenses.map((setting, index) => this.renderLens(setting, index))
+        ...this.state.lenses.map((setting, index) => this.renderLens(setting, index, now))
       );
       this.element.classList.add("lens-display");
       this.element.setAttribute("role", "img");
@@ -1326,6 +1787,8 @@
         "aria-label",
         `${this.state.lenses.length} signaliza\u010Dn\xEDch \u010Do\u010Dek`
       );
+      this.applyBlinkPhase(now);
+      this.syncClockRegistration();
     }
     set(value) {
       this.state = this.normalize(value);
@@ -1346,17 +1809,33 @@
     getValue() {
       return {
         lenses: this.state.lenses.map((setting) => ({ ...setting })),
-        preDeparture: { ...this.state.preDeparture }
+        preDeparture: { ...this.state.preDeparture },
+        synchronizeRows: this.state.synchronizeRows
       };
     }
     isSettled() {
       return true;
     }
     destroy() {
+      if (this.clockRegistered) {
+        this.clockRegistered = false;
+        unregisterLensDisplay(this);
+      }
       this.element.replaceChildren();
       this.element.removeAttribute("aria-label");
     }
   };
+
+  // src/platform/departure-board.js
+  var createCatalogCards = (values) => values.map((value) => ({
+    key: value || "blank",
+    value,
+    background: "var(--flap-background)",
+    foreground: "var(--flap-foreground)"
+  }));
+  var TRACK_CARDS = createCatalogCards(DEPARTURE_TRACK_VALUES);
+  var PLATFORM_CARDS = createCatalogCards(DEPARTURE_PLATFORM_VALUES);
+  var SECTOR_CARDS = createCatalogCards(DEPARTURE_SECTOR_VALUES);
 
   // src/platform/runtime.js
   var readPath = (state, path) => {
@@ -1406,7 +1885,8 @@
       root,
       slots,
       registry = createDefaultRegistry(),
-      initialState = createEmptyBoardState()
+      initialState = createEmptyBoardState(),
+      flapTiming = FLAP_TIMING_DEFAULTS
     }) {
       if (!root) {
         throw new TypeError("BoardRuntime vy\u017Eaduje root element.");
@@ -1415,6 +1895,7 @@
       this.slots = slots;
       this.registry = registry;
       this.initialState = cloneBoardState(initialState);
+      this.flapTiming = normalizeFlapTiming(flapTiming);
       this.components = /* @__PURE__ */ new Map();
       this.listeners = /* @__PURE__ */ new Set();
       this.mounted = false;
@@ -1431,7 +1912,10 @@
         const component = this.registry.create(
           definition.type,
           element,
-          definition.options || {}
+          definition.type === "lens-display" ? definition.options || {} : {
+            ...definition.options || {},
+            timing: this.flapTiming
+          }
         );
         this.components.set(definition.id, component);
       });
@@ -1501,6 +1985,22 @@
     }
     getComponent(id) {
       return this.components.get(id);
+    }
+    setFlapTiming(timing) {
+      this.flapTiming = normalizeFlapTiming(timing);
+      this.components.forEach((component) => {
+        component.setTiming?.(this.flapTiming);
+      });
+      return { ...this.flapTiming };
+    }
+    setDelayOffset(enabled) {
+      this.components.forEach((component) => {
+        component.setDelayOffset?.(enabled);
+      });
+      return normalizeDelayOffset(enabled);
+    }
+    getFlapTiming() {
+      return { ...this.flapTiming };
     }
     subscribe(listener) {
       if (typeof listener !== "function") {
@@ -4674,6 +5174,62 @@
     }
   };
 
+  // src/platform/live-departures.js
+  var LIVE_SOURCE_ORIGIN = "https://provoz.spravazeleznic.cz";
+  var LIVE_SOURCE_PATH = "/tabule/Pages/StationTable.aspx";
+  var LIVE_STATION_DEFAULTS = Object.freeze({
+    name: "Brno hlavn\xED n\xE1dra\u017E\xED",
+    key: "455",
+    sourceUrl: `${LIVE_SOURCE_ORIGIN}${LIVE_SOURCE_PATH}?Key=455`
+  });
+  var LIVE_SERVER_DEFAULT_PORT = 4787;
+  var LIVE_SERVER_FALLBACK_PORTS = Object.freeze([
+    LIVE_SERVER_DEFAULT_PORT,
+    5174,
+    3847,
+    18787
+  ]);
+  var SOURCE_TRAIN_TYPES = Object.freeze([
+    "Mim. Os",
+    "Mim. R",
+    "\u010CEDOK",
+    "Eurocity",
+    "Intercity",
+    "SuperCity",
+    "NightJet",
+    "Nightjet",
+    "Ex l\xF4\u017Ek.",
+    "Ex miest.",
+    "EuroNight",
+    "railjet",
+    "Railjet",
+    "regiojet",
+    "RegioJet",
+    "Ex",
+    "rj",
+    "RJ",
+    "EC",
+    "IC",
+    "EN",
+    "NJ",
+    "nj",
+    "SC",
+    "sc",
+    "Os",
+    "Sp",
+    "R miest.",
+    "ROH",
+    "R"
+  ]);
+  var HTML_ENTITIES = Object.freeze({
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: " ",
+    quot: '"'
+  });
+
   // src/templates/platformTable.js
   var PLATFORM_TABLE_TEMPLATE = Object.freeze({
     id: "pragotron-platform-table",
@@ -4743,11 +5299,14 @@
   });
   var appliedRevision = 0;
   var automaticNightMode = savedSettings?.autoNightMode === true;
+  var delayOffset = normalizeDelayOffset(
+    savedSettings?.delayOffset ?? DELAY_OFFSET_DEFAULT
+  );
   var heartbeatTimer = null;
   var commandQueue = Promise.resolve();
   var createEmptyDisplayState = () => ({
     ...createEmptyBoardState(),
-    lenses: createDefaultLensState()
+    lenses: createEmptyLensState()
   });
   var normalizeIncomingBoardState = (state) => {
     const source = state && typeof state === "object" ? state : {};
@@ -4770,7 +5329,8 @@
     root: documentRef.querySelector(PLATFORM_TABLE_TEMPLATE.rootSelector),
     slots: PLATFORM_TABLE_TEMPLATE.slots,
     registry: createDefaultRegistry({ audio }),
-    initialState: createEmptyDisplayState()
+    initialState: createEmptyDisplayState(),
+    flapTiming: normalizeFlapTiming(savedSettings?.flapTiming)
   });
   var lensDisplay = board.getComponent("lenses");
   var lensActivationTimer = null;
@@ -4792,21 +5352,12 @@
     lensDisplay.setPreDepartureActive(isActive);
     lensAnimationStartedAt = Date.now();
   };
-  var getEffectiveDeparture = (state) => {
-    const departureTime = state?.departureTime;
-    const hours = Number(departureTime?.hours);
-    const minutes = Number(departureTime?.minutes);
-    if (!Number.isInteger(hours) || hours < 0 || hours > 23 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
-      return null;
-    }
-    const departure = /* @__PURE__ */ new Date();
-    departure.setHours(hours, minutes, 0, 0);
-    const displayedDelay = getDisplayedDelay(state.delay);
-    if (displayedDelay !== "") {
-      departure.setMinutes(departure.getMinutes() + displayedDelay);
-    }
-    return departure;
-  };
+  var getEffectiveDeparture = (state) => getEffectiveDepartureDate(
+    state?.departureTime,
+    state?.delay,
+    /* @__PURE__ */ new Date(),
+    delayOffset
+  );
   var scheduleLensActivation = (state) => {
     cancelLensActivation();
     const lensState = lensDisplay.getValue();
@@ -4839,14 +5390,27 @@
       publishHeartbeat();
     }, activationTime - Date.now());
   };
-  var cloneLensState = (value) => ({
-    lenses: Array.isArray(value?.lenses) ? value.lenses.map((lens) => ({ ...lens })) : createDefaultLensState().lenses,
-    preDeparture: {
-      ...value?.preDeparture || {}
-    }
-  });
+  var cloneLensState = (value) => {
+    const fallback = createDefaultLensState();
+    return {
+      lenses: Array.isArray(value?.lenses) ? value.lenses.map((lens, index) => {
+        const fallbackLens = fallback.lenses[index] || fallback.lenses[0];
+        return {
+          ...fallbackLens,
+          ...lens,
+          blinkInterval: fallbackLens.blinkInterval,
+          blinkDelay: index * fallbackLens.blinkInterval
+        };
+      }) : fallback.lenses.map((lens) => ({ ...lens })),
+      preDeparture: {
+        ...fallback.preDeparture,
+        ...value?.preDeparture || {}
+      },
+      synchronizeRows: value?.synchronizeRows !== false
+    };
+  };
   var applyIdentificationLensState = () => {
-    const source = normalLensState || currentDisplayState.lenses || createDefaultLensState();
+    const source = normalLensState || currentDisplayState.lenses || createEmptyLensState();
     lensDisplay.set({
       lenses: source.lenses.map((lens) => ({
         ...lens,
@@ -4879,7 +5443,7 @@
     }
     identificationActive = false;
     lensDisplay.set(
-      normalLensState || currentDisplayState.lenses || createDefaultLensState()
+      normalLensState || currentDisplayState.lenses || createEmptyLensState()
     );
     normalLensState = null;
     scheduleLensActivation(currentDisplayState);
@@ -4890,7 +5454,7 @@
     const nextState = state || createEmptyDisplayState();
     currentDisplayState = nextState;
     if (identificationActive) {
-      normalLensState = nextState.lenses || createDefaultLensState();
+      normalLensState = nextState.lenses || createEmptyLensState();
     }
     const result = board.setState(nextState, options);
     scheduleLensActivation(nextState);
@@ -4950,12 +5514,39 @@
       publishBoardMode();
     }
   });
+  var syncAutomaticNightMode = () => {
+    if (!automaticNightMode) {
+      sunSchedule.stop();
+      return;
+    }
+    if (sunSchedule.running) {
+      sunSchedule.update();
+      return;
+    }
+    sunSchedule.start();
+  };
+  var handleVisibilityChange = () => {
+    if (!documentRef.hidden) {
+      syncAutomaticNightMode();
+    }
+  };
+  documentRef.addEventListener("visibilitychange", handleVisibilityChange);
   var applySettings = ({
     lamps,
     clockLight,
     nightMode,
-    autoNightMode
+    autoNightMode,
+    flapTiming,
+    delayOffset: nextDelayOffset
   } = {}) => {
+    if (flapTiming) {
+      board.setFlapTiming(flapTiming);
+    }
+    if (typeof nextDelayOffset === "boolean") {
+      delayOffset = normalizeDelayOffset(nextDelayOffset);
+      board.setDelayOffset(delayOffset);
+      scheduleLensActivation(currentDisplayState);
+    }
     if (lamps) {
       nightLighting.setLampSettings(lamps);
     }
@@ -4964,16 +5555,11 @@
     }
     if (typeof autoNightMode === "boolean") {
       automaticNightMode = autoNightMode;
-      if (!automaticNightMode) {
-        sunSchedule.stop();
-      }
     }
     if (typeof nightMode === "boolean" && !automaticNightMode) {
       setNightMode(nightMode);
     }
-    if (automaticNightMode) {
-      sunSchedule.start();
-    }
+    syncAutomaticNightMode();
   };
   var waitForBoardToSettle = () => new Promise((resolve) => {
     const check = () => {
@@ -5131,7 +5717,9 @@
   });
   applySettings({
     nightMode: savedSettings?.nightMode === true,
-    autoNightMode: automaticNightMode
+    autoNightMode: automaticNightMode,
+    flapTiming: savedSettings?.flapTiming,
+    delayOffset
   });
   publishReady();
   heartbeatTimer = window.setInterval(publishHeartbeat, 4e3);
@@ -5164,6 +5752,7 @@
     },
     destroy: () => {
       cancelLensActivation();
+      documentRef.removeEventListener("visibilitychange", handleVisibilityChange);
       sunSchedule.destroy();
       window.clearInterval(heartbeatTimer);
       heartbeatTimer = null;

@@ -24,6 +24,33 @@ npm install
 python -m http.server 8000
 ```
 
+Pokud chcete používat živé odjezdy z tabule Správy železnic, spusťte místo
+jednoduchého statického serveru vestavěný server:
+
+```text
+npm run serve
+```
+
+Ten kromě statických souborů poskytuje endpoint
+`/api/live-departures`, který jednou za minutu serverově načte zdrojovou
+ASP.NET tabuli a předá manage stránce zparsované odjezdy. Zdrojová stránka
+nemá CORS hlavičku, proto ji nelze načítat přímo z prohlížeče. Výchozí
+adresa scraperu je `http://127.0.0.1:4787/api/live-departures`. Manage
+stránka pak použije:
+
+```text
+http://127.0.0.1:4787/platformTableManage.html
+```
+
+Odjezdovou tabuli otevřete ve stejném originu:
+
+```text
+http://127.0.0.1:4787/departureBoard.html
+```
+
+`localhost` a `127.0.0.1` jsou pro prohlížeč různé originy, tabule se
+proto v manage neobjeví. Obě stránky musí běžet na `127.0.0.1`.
+
 Potom otevřete:
 
 ```text
@@ -36,10 +63,22 @@ Ovládání otevřete ve druhém tabu stejného originu:
 http://localhost:8000/platformTableManage.html
 ```
 
+Samostatnou odjezdovou tabuli otevřete jako další zobrazovací stránku:
+
+```text
+http://localhost:8000/departureBoard.html
+```
+
+Odjezdová tabule používá stejné `platformTableManage.html` a stejný
+`localStorage`/transport. Po odeslání odjezdu seřadí odjezdy podle času
+a začne je zobrazovat od horního řádku. Počet řádků se nastavuje v manage
+(výchozí 8) nebo parametrem `departureBoard.html?rows=12`.
+
 Při otevření přes `file://` použijí stránky vlastní loader a fallback bundle:
 
 - `platformTableBoardLoader.js` → `platformTableBoard.file.js`,
-- `platformTableManageLoader.js` → `platformTableManage.file.js`.
+- `platformTableManageLoader.js` → `platformTableManage.file.js`,
+- `departureBoardLoader.js` → `departureBoard.file.js`.
 
 ## Struktura frameworku
 
@@ -48,6 +87,7 @@ src/
 ├─ platform/
 │  ├─ data.js             katalogy, znaková sada a timing
 │  ├─ displays.js         display komponenty
+│  ├─ departure-board.js   řádky a orchestrátor odjezdové tabule
 │  ├─ runtime.js          registry a BoardRuntime
 │  ├─ audio.js            zvuk jednotlivých flipů
 │  ├─ lenses.js           komponenta barevných signalizačních čoček
@@ -56,6 +96,7 @@ src/
 │  ├─ lighting-state.js   stavové nastavení světel bez DOM
 │  ├─ board-transport.js  komunikace mezi tabulí a manage stránkou
 │  ├─ sun-schedule.js     výpočet východu/západu a automatický režim
+│  ├─ live-departures.js  parser a API klient živých odjezdů
 │  ├─ storage.js          localStorage adapter
 │  └─ index.js            veřejné API
 ├─ templates/             definice layoutů tabulí
@@ -89,8 +130,23 @@ Používají tento společný kontrakt:
 měl před dalším odesláním dat počkat na `board.isSettled()`.
 
 `set()` a `clear()` používají skutečnou animaci, zvuk `split-flap.wav` a
-náhodnou mechanickou odchylku `175 ± 10 ms`. Odchylka se aplikuje na každý
-jednotlivý flip, tedy i na každou číslici času, vlakový typ a zpoždění.
+náhodnou mechanickou odchylku `190 ± 1 ms`. Všechny klapky jednoho slova
+nebo řádku začínají flipovat naráz; odchylka mění jen délku jednotlivých
+flipů, ne jejich start. Platí to i pro číslice času, typ vlaku a zpoždění.
+
+Timing lze pro konkrétní `BoardRuntime` změnit bez zásahu do komponent:
+
+```js
+board.setFlapTiming({
+    duration: 220,
+    variation: 4
+});
+```
+
+`duration` je délka jednoho flapu v milisekundách a podporovaný rozsah je
+`150–500`. `variation` určuje náhodnou odchylku na každém flapu v rozsahu
+`0–10 ms`. Výchozí hodnoty jsou `190` a `1`; hodnoty se zaokrouhlí a omezí
+na povolený rozsah.
 
 ## Znaková sada split-flapu
 
@@ -131,8 +187,15 @@ pokud ji fyzický kotouč má.
 `SplitFlapDisplay`:
 
 - převádí vstup na velká písmena pomocí `toLocaleUpperCase('cs-CZ')`,
-- ořízne text na `maxLength`,
 - nepodporovaný znak nahradí mezerou,
+- slovo `nad` zkrátí na `n/` a přilepí k následujícímu slovu
+  (`Suchdol nad Odrou` → `SUCHDOL N/ODROU`); spojky `u`, `na` a `pod`
+  nechává s mezerou (`Hustopeče u Brna`, `Slavkov u Brna`),
+- delší název zkrátí po slovech, uříznuté slovo nenechá končit samohláskou
+  (`Uherské Hradiště` → `UHERSKÉ HRAD.`, `Brno-h.Heršpice` → `BRNO-H.HERŠP.`)
+  a tečku nepřidá, když už zkrácený tvar tečkou končí — místo toho vezme
+  další písmeno (`Pardubice hl.n.` → `PARDUBICE HL.N`),
+- zkrácený název smí být kratší než `maxLength`,
 - kratší text doplní mezerami zprava,
 - výchozí délka je `STATION_CHARACTER_COUNT`, tedy 14 znaků.
 
@@ -328,14 +391,20 @@ delay.setImmediate(30);
 delay.clear();
 ```
 
-`DelayFlapDisplay` přijímá skutečné nezáporné zpoždění v minutách. Hodnoty do
-5 minut včetně skryje; u vyšších hodnot vybere nejbližší nižší položku z
-`DELAY_VALUES` (tedy 7 → 5, 10 → 5, 11 → 10, 15 → 10):
+`DelayFlapDisplay` přijímá skutečné nezáporné zpoždění v minutách. Výchozí
+stav (`DELAY_OFFSET_DEFAULT = false`) od zpoždění nic neodečítá a mapuje
+na katalog včetně zadané hodnoty (7 → 5, 10 → 10, 5 → 5). V manage se offset
+ovládá checkboxem „Odečíst 5 minut“, který je ve výchozím stavu vypnutý.
+Po zapnutí hodnoty do 5 minut včetně skryje a vyšší zaokrouhlí na nižší
+položku z `DELAY_VALUES` (7 → 5, 10 → 5, 11 → 10):
 
 ```js
 delay.set(7);  // zobrazí 5 min
-delay.set(10); // zobrazí 5 min
+delay.set(10); // zobrazí 10 min
 delay.set(11); // zobrazí 10 min
+delay.set(5);  // zobrazí 5 min
+delay.setDelayOffset(true);
+delay.set(10); // zobrazí 5 min
 delay.set(5);  // prázdný flap
 ```
 
@@ -417,7 +486,7 @@ lenses.set({
     ],
     preDeparture: {
         enabled: true,
-        seconds: 60
+        seconds: 90
     }
 });
 ```
@@ -439,12 +508,15 @@ Komponenta používá CSS animaci, takže při běžném provozu nepotřebuje vl
 JavaScriptový timer. `clear()` čočky zhasne, `setImmediate()` nastaví stav bez
 čekání a `getValue()` vrací objekt `{ lenses: [...], preDeparture: {...} }`.
 
-Výchozí stav čoček je vypnutý (`enabled: false`). Volitelný blok
-`preDeparture` obsahuje `enabled` a `seconds` v rozsahu `0–300` po 10
-sekundách. Je-li zapnutý, controller může čočky aktivovat až v okamžiku
-`odjezd − zobrazené zpoždění − seconds`; po aktivaci blikají až do dalšího
-nastavení tabule. Nastavení změněné v manage UI se na tabuli neposílá
-okamžitě, ale až akcí „Odeslat na tabuli“.
+Výchozí stav čoček v manage nastavení je zapnutý (`enabled: true`) včetně
+volby `Rozblikat před odjezdem`. Prázdná tabule bez odjezdu zůstává
+zhasnutá. Blok `preDeparture` obsahuje `enabled` a `seconds` v rozsahu
+`0–300` po 10 sekundách, výchozí hodnota je `90`. Je-li zapnutý, controller aktivuje čočky až
+v okamžiku `odjezd − zobrazené zpoždění − seconds`; po aktivaci blikají
+až do dalšího nastavení tabule. Odjezd, jehož čas (včetně zobrazeného
+zpoždění) už dnes uplynul, se bere jako zítřejší, aby noční spoje po
+půlnoci nerozsvítily čočky večer předem. Nastavení změněné v manage UI
+se na tabuli neposílá okamžitě, ale až akcí „Odeslat na tabuli“.
 
 ## Typ vlaku
 
@@ -511,6 +583,91 @@ customTrain.set('IC');
 
 `source` je relativní k dokumentu, stejně jako `src` u běžného HTML obrázku.
 Pokud použijete obrázek, musí být dostupný v HTTP i ve fallback/file režimu.
+
+## Odjezdová tabule
+
+`DepartureBoardDisplay` je šablonová komponenta pro odjezdovou tabuli
+s nastavitelným počtem řádků (výchozí 8, rozsah 1–24).
+Každý řádek (`DepartureBoardRow`) obsahuje čočky, typ vlaku, číslo vlaku,
+dvě stanice, čas, zpoždění, nástupiště, kolej a sektor. Controlleru stačí
+předat pole odjezdů:
+
+```js
+import {
+    DepartureBoardDisplay,
+    SplitFlapAudio
+} from './src/platform/index.js';
+
+const board = new DepartureBoardDisplay(
+    document.querySelector('#departureBoard'),
+    { audio: new SplitFlapAudio() }
+);
+
+board.update([
+    {
+        id: '1/6a/Jih',
+        stations: ['PRAHA', 'BRATISLAVA'],
+        train: 'Eurocity',
+        trainNumber: '372',
+        delay: 12,
+        departureTime: { hours: 11, minutes: 0 },
+        target: { platform: '1', track: '6a', sector: 'Jih' },
+        lenses: {
+            lenses: [
+                { color: 'green', enabled: true, blinking: true },
+                { color: 'green', enabled: true, blinking: true }
+            ],
+            preDeparture: { enabled: false, seconds: 60 }
+        }
+    }
+]);
+```
+
+Tabule vždy zobrazí nejvýše tolik platných odjezdů, kolik má řádků,
+a seřadí je podle času. Noční spoje po půlnoci, které už dnes nemají
+skutečné zpoždění, se řadí až za dnešní večerní odjezdy — stejně v
+manage tabulce (řazení podle času) i na odjezdové tabuli. Offset
+zpoždění mění jen zobrazenou hodnotu na flapu, ne to, zda odjezd
+vůbec zůstane v seznamu. Počet řádků
+změní `board.setRowCount(12)` nebo nastavení v manage.
+Odjezdy se zpracovávají frontou po celých řádcích: současně se mění nejvýše
+jeden řádek a další začne až po jeho dokončení. Pokud se odjezd odstraní a
+ostatní řádky se musí posunout nahoru, vloží se před posun jednosekundová
+pauza; řádky, které se nemění, se znovu neanimují.
+
+HTML řádek musí obsahovat sloty s atributem `data-departure-slot`:
+
+```html
+<tr data-departure-row>
+    <td><div data-departure-slot="lenses" class="lens-display"></div></td>
+    <td><div data-departure-slot="train" class="train-flap-display"></div></td>
+    <td><div data-departure-slot="trainNumber"></div></td>
+    <td><div data-departure-slot="stationOne" class="flap-display"></div></td>
+    <td><div data-departure-slot="stationTwo" class="flap-display"></div></td>
+    <!-- time, delay, platform, track, sector -->
+</tr>
+```
+
+Číslo vlaku je čtyřslotová komponenta `TrainNumberDisplay`. Zarovnává
+číslice vpravo a používá fyzický katalog karet:
+
+- prázdná karta a `0–9` s výchozím pozadím,
+- `0–9` s bílým pozadím a černým textem pro Intercity, Eurocity, IC, EC
+  a SuperCity,
+- `0–9` s modrým pozadím pro `Sp` a NightJet (`nj`),
+- `0–9` s červeným pozadím pro `R`, railjet (`rj`), regiojet (`RJ`), `Ex`,
+  `ČEDOK` a `ROH`.
+
+`CatalogFlapDisplay` je vhodný pro hodnoty, které nejsou běžný text. PoC jej
+využívá pro kolej (`'', 1, 2, 3, 4, 5, 6, 6a, 11a`) a sektor
+(`'', Sever, Jih`). Katalog je vždy cyklický a komponenta postupuje pouze
+dopředu; při změně z `5` na `4` proto projde přes `6`, `7`, `8`, `9`, prázdnou
+kartu, `0`, …, `4`. Stejné pravidlo musí dodržovat každý nový katalog.
+
+`departureBoard.html` a `src/demos/departureBoard.js` jsou hotový příklad
+zapojení. Přes `BoardTransport` poslouchají zprávy `manage:departures` a
+`board:settings`; při startu si vezmou poslední odjezdy a timing z uloženého
+stavu. Správa zůstává výhradně na `platformTableManage.html`.
 
 ## Audio
 
@@ -843,9 +1000,10 @@ schedule.destroy();
 ```
 
 V PoC se automatika zapíná přepínačem vedle tlačítka denního/nočního režimu.
-Po zapnutí se další přepnutí provede při nejbližším východu nebo západu slunce;
-automatické řízení pracuje i při zavřené manage stránce, protože běží na
-zobrazovací stránce tabule.
+Po zapnutí se hned nastaví denní nebo noční režim podle aktuálního východu
+a západu slunce; další přepnutí přijde při nejbližší hranici. Manage stránka
+i zobrazovací stránka tabule počítají slunce samostatně, takže automatika
+funguje i když je otevřená jen jedna z nich.
 
 ## Oddělená stránka tabule a manage
 
@@ -883,11 +1041,64 @@ koleje, zatímco vyplněný sektor se doručí pouze přesné shodě.
 
 U každé aktivní tabule je v manage stránce také administrátorské tlačítko
 `Identifikovat čočky`. Cíleně rozsvítí všechny čočky dané instance bez
-blikání. Druhé stisknutí obnoví původní stav podle právě platného odjezdu;
+blikání. Na odjezdové tabuli se rozsvítí všechny čočky na všech řádcích.
+Druhé stisknutí obnoví původní stav podle právě platných odjezdů;
 identifikace proto nemění uložené nastavení ani odjezd.
 
 V manage editoru je volba `Bliká` záměrně pouze informativní a zůstává vždy
 zaškrtnutá; blikání čoček je součástí jejich komponentového chování.
+
+## Živé odjezdy ze stanice
+
+Manage stránka obsahuje tlačítko `Spustit live odjezdy`. Po jeho aktivaci
+každou minutu načte zvolenou tabuli Správy železnic přes
+`/api/live-departures`. Výchozí zdroj je Brno hlavní nádraží
+(`StationTable.aspx?Key=455`), v manage jde URL změnit na jinou stanici
+se stejným formátem. Vedle popisku `Adresa tabule SŽ` parser doplní název
+stanice z `LStationName` jako odkaz na právě použitou URL. Nový snapshot:
+
+- používá pravidelný čas jako `departureTime`,
+- z rozdílu pravidelného a aktuálního času vypočítá skutečné zpoždění,
+- z čísla vlaku ponechá nejvýše čtyři číslice zprava (interní `liveKey`
+  si ale drží celé zdrojové číslo),
+- uloží první zastávku ze sloupce `Přes` a názvy stanic zkrátí na 14 znaků
+  (`nad` → `n/`, `u` zůstane s mezerou, uříznuté slovo nekončí samohláskou),
+- rozloží vlak na typ, číslo a dopravce; dopravce zůstává jen ve sloupci
+  manage tabulky,
+- `IC` mapuje na Intercity, `EC` na Eurocity, `SC` na SuperCity,
+  `EN` na EuroNight, `nj`/`NJ`/`NightJet` na NightJet,
+- `rj` s dopravcem ČD je railjet a `rj`/`RJ` s dopravcem RegioJet je
+  regiojet; parser bere kód i bez mezery (`nj456`) a velikost písmen
+  z tabule SŽ (`rj` vs `RJ`); Intercity, SuperCity mají bílé pozadí a logo, railjet červené
+  `#D80300`, regiojet žluté `#F1B504` a NightJet modré `#1e3c69`,
+- rozliší odjezdy podle dne a čísla vlaku, takže změna zpoždění nebo
+  doplnění nástupiště/koleje/sektoru aktualizuje stejný záznam,
+- odebere živé záznamy, které už ve zdrojové tabuli nejsou.
+
+Změna nástupiště, koleje nebo sektoru proto upraví stejný řádek podle
+`liveKey`; nevzniká nový odjezd. Odjezdy bez přiděleného nástupiště nebo koleje
+zůstávají v manage i na odjezdové tabuli, ale nemohou být směrovány na
+konkrétní nástupištní tabuli. Při změně cílové identity controller nejprve
+resetuje starou tabuli a potom odešle nový stav na novou identitu.
+
+Parser je samostatně použitelný:
+
+```js
+import {
+    extractStationName,
+    LIVE_STATION_DEFAULTS,
+    parseStationTable
+} from './src/platform/index.js';
+
+const station = extractStationName(html) || LIVE_STATION_DEFAULTS.name;
+const departures = parseStationTable(html).map((departure) => ({
+    ...departure,
+    source: station
+}));
+```
+
+Serverová implementace je v `scripts/live-departures-server.mjs`; zdrojová
+stránka nemá CORS hlavičku, proto live režim nepoužívá přímý browser fetch.
 
 ```js
 const transport = new BoardTransport();
@@ -922,8 +1133,9 @@ unikátní podle kombinace `platform + track + sector`. Odeslání stejné
 kombinace řádek nahradí. Nově připojená tabule s odpovídající identitou dostane
 automaticky poslední uložený stav; reset ukládá i explicitní prázdný stav, aby
 se po reconnectu neobnovil starý odjezd. Číselné zpoždění zůstává skutečnou
-hodnotou, ale zobrazovací komponenta používá katalog nejbližší nižší hodnoty
-podle pravidla do 5 minut včetně skrytě.
+hodnotou, ale zobrazovací komponenta používá katalog nejbližší nižší hodnoty.
+Ve výchozím stavu (offset vypnutý) se od zpoždění nic neodečítá; po
+zapnutí offsetu v manage hodnoty do 5 minut včetně skryje.
 
 Manage může u odjezdu evidovat také volitelné číslo vlaku o délce nejvýše
 čtyř číslic. Zobrazuje se a řadí v manage tabulce, ale aktuální nástupištní

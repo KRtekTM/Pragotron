@@ -11,13 +11,179 @@ export const STATION_FLAP_SEQUENCE = Object.freeze([
     '!', '?', '%', '&', '#', "'"
 ]);
 
-export const STATION_FLIP_DURATION = 175;
-export const FLAP_TIMING_VARIATION_MS = 10;
+const STATION_NAME_VOWELS = Object.freeze(new Set([
+    'A', 'Á', 'Ä', 'E', 'É', 'Ě', 'Ë', 'I', 'Í', 'Ï',
+    'O', 'Ó', 'Ö', 'U', 'Ú', 'Ů', 'Ü', 'Y', 'Ý', 'Ÿ'
+]));
 
-export const getFlapDuration = () =>
-    STATION_FLIP_DURATION
-    + Math.floor(Math.random() * (FLAP_TIMING_VARIATION_MS * 2 + 1))
-    - FLAP_TIMING_VARIATION_MS;
+const stationNameChars = (value) => Array.from(String(value ?? ''));
+
+const stationNameLength = (value) => stationNameChars(value).length;
+
+const sliceStationName = (value, start, end) =>
+    stationNameChars(value).slice(start, end).join('');
+
+const abbreviateStationConnectors = (value) => {
+    const words = String(value).split(' ').filter(Boolean);
+    const result = [];
+
+    for (let index = 0; index < words.length; index += 1) {
+        if (words[index] === 'NAD' && words[index + 1]) {
+            result.push(`N/${words[index + 1]}`);
+            index += 1;
+            continue;
+        }
+        result.push(words[index]);
+    }
+
+    return result.join(' ');
+};
+
+const fillStationName = (value, width) => {
+    const words = String(value).split(' ').filter(Boolean);
+    let result = '';
+
+    for (const word of words) {
+        if (!result) {
+            result = stationNameLength(word) <= width
+                ? word
+                : sliceStationName(word, 0, width);
+            continue;
+        }
+
+        const remaining = width - stationNameLength(result);
+        const next = ` ${word}`;
+        if (stationNameLength(next) <= remaining) {
+            result += next;
+            continue;
+        }
+        if (remaining <= 1) {
+            break;
+        }
+
+        result += ` ${sliceStationName(word, 0, remaining - 1)}`;
+        break;
+    }
+
+    return result.replace(/ +$/g, '');
+};
+
+const stripTrailingVowels = (value) => {
+    const chars = stationNameChars(value);
+    while (chars.length > 1 && STATION_NAME_VOWELS.has(chars[chars.length - 1])) {
+        chars.pop();
+    }
+    return chars.join('');
+};
+
+const nextKeptLetter = (value) => {
+    for (const character of stationNameChars(value)) {
+        if (character !== ' ' && character !== '.') {
+            return character;
+        }
+    }
+    return '';
+};
+
+export const formatStationName = (
+    value,
+    {
+        maxLength = STATION_CHARACTER_COUNT,
+        sequence = STATION_FLAP_SEQUENCE
+    } = {}
+) => {
+    const cleaned = stationNameChars(
+        String(value ?? '')
+            .replace(/[–—−]/g, '-')
+            .toLocaleUpperCase('cs-CZ')
+    )
+        .map((character) => (sequence.includes(character) ? character : ' '))
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!cleaned || maxLength <= 0) {
+        return '';
+    }
+
+    const abbreviated = abbreviateStationConnectors(cleaned);
+    if (stationNameLength(abbreviated) <= maxLength) {
+        return abbreviated;
+    }
+
+    if (maxLength === 1) {
+        return '.';
+    }
+
+    const filled = fillStationName(abbreviated, maxLength - 1);
+    const remaining = sliceStationName(abbreviated, stationNameLength(filled));
+
+    if (filled.endsWith('.')) {
+        const extra = nextKeptLetter(remaining);
+        const combined = `${filled}${extra}`;
+        return stationNameLength(combined) <= maxLength
+            ? combined
+            : sliceStationName(combined, 0, maxLength);
+    }
+
+    return `${stripTrailingVowels(filled)}.`;
+};
+
+export const STATION_FLIP_DURATION = 190;
+export const FLAP_TIMING_VARIATION_MS = 1;
+
+export const FLAP_TIMING_DURATION_MIN = 150;
+export const FLAP_TIMING_DURATION_MAX = 500;
+export const FLAP_TIMING_VARIATION_MIN = 0;
+export const FLAP_TIMING_VARIATION_MAX = 10;
+export const FLAP_TIMING_DEFAULTS = Object.freeze({
+    duration: STATION_FLIP_DURATION,
+    variation: FLAP_TIMING_VARIATION_MS
+});
+
+export const DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 8;
+export const DEPARTURE_BOARD_ROW_COUNT_MIN = 1;
+export const DEPARTURE_BOARD_ROW_COUNT_MAX = 24;
+
+export const normalizeDepartureBoardRowCount = (value) => clampInteger(
+    value,
+    DEPARTURE_BOARD_ROW_COUNT_MIN,
+    DEPARTURE_BOARD_ROW_COUNT_MAX,
+    DEPARTURE_BOARD_ROW_COUNT_DEFAULT
+);
+
+const clampInteger = (value, minimum, maximum, fallback) => {
+    const number = Number(value);
+    return Number.isFinite(number)
+        ? Math.min(maximum, Math.max(minimum, Math.round(number)))
+        : fallback;
+};
+
+export const normalizeFlapTiming = (value = {}) => {
+    const source = value && typeof value === 'object' ? value : {};
+
+    return {
+        duration: clampInteger(
+            source.duration,
+            FLAP_TIMING_DURATION_MIN,
+            FLAP_TIMING_DURATION_MAX,
+            FLAP_TIMING_DEFAULTS.duration
+        ),
+        variation: clampInteger(
+            source.variation,
+            FLAP_TIMING_VARIATION_MIN,
+            FLAP_TIMING_VARIATION_MAX,
+            FLAP_TIMING_DEFAULTS.variation
+        )
+    };
+};
+
+export const getFlapDuration = (timing = FLAP_TIMING_DEFAULTS) => {
+    const normalized = normalizeFlapTiming(timing);
+    return normalized.duration
+        + Math.floor(Math.random() * (normalized.variation * 2 + 1))
+        - normalized.variation;
+};
 
 export const DELAY_VALUES = Object.freeze([
     '',
@@ -27,6 +193,9 @@ export const DELAY_VALUES = Object.freeze([
 ]);
 
 export const DELAY_DISPLAY_THRESHOLD = 5;
+export const DELAY_OFFSET_DEFAULT = false;
+
+export const normalizeDelayOffset = (value) => value === true;
 
 export const parseDelayMinutes = (value) => {
     if (value === '' || value === null || value === undefined) {
@@ -44,24 +213,129 @@ export const parseDelayMinutes = (value) => {
 
 export const getDisplayedDelay = (
     value,
-    values = DELAY_VALUES
+    values = DELAY_VALUES,
+    applyOffset = DELAY_OFFSET_DEFAULT
 ) => {
     const minutes = parseDelayMinutes(value);
 
-    if (minutes === '' || minutes === null
-        || minutes <= DELAY_DISPLAY_THRESHOLD) {
+    if (minutes === '' || minutes === null) {
+        return '';
+    }
+
+    const offsetEnabled = normalizeDelayOffset(applyOffset);
+    if (offsetEnabled && minutes <= DELAY_DISPLAY_THRESHOLD) {
         return '';
     }
 
     const availableValues = values.filter(
         (candidate) => Number.isFinite(Number(candidate))
             && Number(candidate) > 0
-            && Number(candidate) < minutes
+            && (
+                offsetEnabled
+                    ? Number(candidate) < minutes
+                    : Number(candidate) <= minutes
+            )
     );
 
     return availableValues.length
         ? availableValues[availableValues.length - 1]
         : '';
+};
+
+export const getEffectiveDepartureDate = (
+    departureTime,
+    delay,
+    now = new Date(),
+    applyOffset = DELAY_OFFSET_DEFAULT
+) => {
+    const hours = Number(departureTime?.hours);
+    const minutes = Number(departureTime?.minutes);
+
+    if (!Number.isInteger(hours) || hours < 0 || hours > 23
+        || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+        return null;
+    }
+
+    const reference = now instanceof Date ? now : new Date(now);
+    if (Number.isNaN(reference.getTime())) {
+        return null;
+    }
+
+    const date = new Date(reference.getTime());
+    date.setSeconds(0, 0);
+    date.setHours(hours, minutes, 0, 0);
+
+    const displayedDelay = getDisplayedDelay(delay, DELAY_VALUES, applyOffset);
+    if (displayedDelay !== '') {
+        date.setMinutes(date.getMinutes() + Number(displayedDelay));
+    }
+
+    // Clock times that already passed today and are not held by delay are
+    // overnight services, so they belong to the next calendar day.
+    if (date.getTime() < reference.getTime()) {
+        date.setDate(date.getDate() + 1);
+    }
+
+    return date;
+};
+
+export const getDepartureSortTimestamp = (
+    departureTime,
+    delay,
+    now = new Date(),
+    applyOffset = DELAY_OFFSET_DEFAULT
+) => {
+    const hours = Number(departureTime?.hours);
+    const minutes = Number(departureTime?.minutes);
+
+    if (!Number.isInteger(hours) || hours < 0 || hours > 23
+        || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    const reference = now instanceof Date ? now : new Date(now);
+    if (Number.isNaN(reference.getTime())) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    const date = new Date(reference.getTime());
+    date.setSeconds(0, 0);
+    date.setHours(hours, minutes, 0, 0);
+
+    const actualDelay = parseDelayMinutes(delay);
+    const hasDelay = Number.isFinite(actualDelay) && actualDelay > 0;
+
+    // Undelayed clock times that already passed today are overnight
+    // services and sort after the rest of today's departures.
+    // Display offset must not hide a train that still has real delay.
+    if (date.getTime() < reference.getTime() && !hasDelay) {
+        date.setDate(date.getDate() + 1);
+    }
+
+    return date.getTime();
+};
+
+export const compareDeparturesByTime = (
+    first,
+    second,
+    now = new Date(),
+    applyOffset = DELAY_OFFSET_DEFAULT
+) => {
+    const firstTime = getDepartureSortTimestamp(
+        first?.departureTime,
+        first?.delay,
+        now,
+        applyOffset
+    );
+    const secondTime = getDepartureSortTimestamp(
+        second?.departureTime,
+        second?.delay,
+        now,
+        applyOffset
+    );
+
+    return firstTime - secondTime
+        || String(first?.id || '').localeCompare(String(second?.id || ''));
 };
 
 export const TRAIN_TYPES = Object.freeze([
@@ -114,17 +388,165 @@ export const TRAIN_TYPES = Object.freeze([
     },
     {
         name: 'Intercity',
-        source: 'images/InterCity_Austria.svg',
+        source: 'images/intercity.svg',
+        label: 'Intercity (IC)',
         background: '#fff',
-        foreground: '#D80300'
+        foreground: '#CC3333'
     },
     {
         name: 'Eurocity',
         source: 'images/EuroCity_Logo.svg',
+        label: 'Eurocity (EC)',
         background: '#fff',
         foreground: '#000'
+    },
+    {
+        name: 'rj',
+        source: 'images/railjet.svg',
+        label: 'Railjet (rj)',
+        background: '#D80300',
+        foreground: '#fff'
+    },
+    {
+        name: 'RJ',
+        source: 'images/regiojet.svg',
+        label: 'RegioJet (RJ)',
+        background: '#F1B504',
+        foreground: '#000'
+    },
+    {
+        name: 'EuroNight',
+        text: 'EN',
+        label: 'EuroNight (EN)',
+        background: 'var(--flap-background)',
+        foreground: '#fff'
+    },
+    {
+        name: 'nj',
+        source: 'images/nightjet.svg',
+        label: 'NightJet (nj)',
+        background: '#1e3c69',
+        foreground: '#fff'
+    },
+    {
+        name: 'SuperCity',
+        source: 'images/supercity.svg',
+        label: 'SuperCity (SC)',
+        background: '#fff',
+        foreground: '#F1B504'
     }
 ]);
+
+export const DEPARTURE_TRACK_VALUES = Object.freeze([
+    '',
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11',
+    '12', '13', '6a', '11a', '701'
+]);
+
+export const DEPARTURE_PLATFORM_VALUES = Object.freeze([
+    '',
+    '1', '2', '3', '4', '5', '6'
+]);
+
+export const DEPARTURE_SECTOR_VALUES = Object.freeze([
+    '',
+    'A',
+    'A-B',
+    'A-C',
+    'A-D',
+    'B',
+    'B-C',
+    'B-D',
+    'B-E',
+    'C',
+    'C-D',
+    'C-E',
+    'D',
+    'D-E',
+    'E',
+    'Sever',
+    'Jih'
+]);
+
+export const TRAIN_NUMBER_CARD_STYLES = Object.freeze({
+    default: Object.freeze({
+        background: 'var(--flap-background)',
+        foreground: 'var(--flap-foreground)'
+    }),
+    intercity: Object.freeze({
+        background: '#fff',
+        foreground: '#000'
+    }),
+    sp: Object.freeze({
+        background: '#1e3c69',
+        foreground: '#fff'
+    }),
+    red: Object.freeze({
+        background: '#D80300',
+        foreground: '#fff'
+    })
+});
+
+const createTrainNumberCard = (key, value, style) => Object.freeze({
+    key,
+    value,
+    ...TRAIN_NUMBER_CARD_STYLES[style],
+    style
+});
+
+const createTrainNumberDigitCards = (style) =>
+    Array.from({ length: 10 }, (_, digit) =>
+        createTrainNumberCard(`${style}-${digit}`, String(digit), style)
+    );
+
+export const TRAIN_NUMBER_FLAP_CARDS = Object.freeze([
+    createTrainNumberCard('blank', '', 'default'),
+    ...createTrainNumberDigitCards('default'),
+    ...createTrainNumberDigitCards('intercity'),
+    ...createTrainNumberDigitCards('sp'),
+    ...createTrainNumberDigitCards('red')
+]);
+
+export const getTrainNumberCardStyle = (train) => {
+    const name = String(train ?? '');
+    const normalized = name.toLocaleLowerCase('cs-CZ');
+
+    if (
+        name === 'Intercity'
+        || name === 'Eurocity'
+        || name === 'IC'
+        || name === 'EC'
+        || name === 'SuperCity'
+        || normalized === 'sc'
+    ) {
+        return 'intercity';
+    }
+
+    if (
+        name === 'Sp'
+        || normalized === 'nj'
+        || normalized === 'nightjet'
+    ) {
+        return 'sp';
+    }
+
+    if (
+        name === 'R'
+        || name === 'R miest.'
+        || name === 'Mim. R'
+        || name === 'Ex'
+        || name.startsWith('Ex ')
+        || name === 'ČEDOK'
+        || name === 'ROH'
+        || normalized === 'rj'
+        || normalized === 'railjet'
+        || normalized === 'regiojet'
+    ) {
+        return 'red';
+    }
+
+    return 'default';
+};
 
 export const NIGHT_FADE_MODES = Object.freeze([
     { value: 'none', label: 'Bez pohasínání (stálý svit)' },

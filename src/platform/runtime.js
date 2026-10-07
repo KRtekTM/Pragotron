@@ -1,8 +1,11 @@
 import {
     DELAY_VALUES,
+    FLAP_TIMING_DEFAULTS,
     TRAIN_TYPES,
     cloneBoardState,
-    createEmptyBoardState
+    createEmptyBoardState,
+    normalizeDelayOffset,
+    normalizeFlapTiming
 } from './data.js';
 import { SplitFlapAudio } from './audio.js';
 import {
@@ -81,7 +84,8 @@ export class BoardRuntime {
         root,
         slots,
         registry = createDefaultRegistry(),
-        initialState = createEmptyBoardState()
+        initialState = createEmptyBoardState(),
+        flapTiming = FLAP_TIMING_DEFAULTS
     }) {
         if (!root) {
             throw new TypeError('BoardRuntime vyžaduje root element.');
@@ -91,6 +95,7 @@ export class BoardRuntime {
         this.slots = slots;
         this.registry = registry;
         this.initialState = cloneBoardState(initialState);
+        this.flapTiming = normalizeFlapTiming(flapTiming);
         this.components = new Map();
         this.listeners = new Set();
         this.mounted = false;
@@ -113,7 +118,12 @@ export class BoardRuntime {
             const component = this.registry.create(
                 definition.type,
                 element,
-                definition.options || {}
+                definition.type === 'lens-display'
+                    ? definition.options || {}
+                    : {
+                        ...(definition.options || {}),
+                        timing: this.flapTiming
+                    }
             );
             this.components.set(definition.id, component);
         });
@@ -196,6 +206,25 @@ export class BoardRuntime {
 
     getComponent(id) {
         return this.components.get(id);
+    }
+
+    setFlapTiming(timing) {
+        this.flapTiming = normalizeFlapTiming(timing);
+        this.components.forEach((component) => {
+            component.setTiming?.(this.flapTiming);
+        });
+        return { ...this.flapTiming };
+    }
+
+    setDelayOffset(enabled) {
+        this.components.forEach((component) => {
+            component.setDelayOffset?.(enabled);
+        });
+        return normalizeDelayOffset(enabled);
+    }
+
+    getFlapTiming() {
+        return { ...this.flapTiming };
     }
 
     subscribe(listener) {

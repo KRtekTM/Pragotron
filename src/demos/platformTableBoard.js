@@ -12,9 +12,13 @@ import {
     SunSchedule,
     createBoard,
     createDefaultLensState,
+    createEmptyLensState,
     createDefaultRegistry,
     createEmptyBoardState,
-    getDisplayedDelay,
+    getEffectiveDepartureDate,
+    DELAY_OFFSET_DEFAULT,
+    normalizeDelayOffset,
+    normalizeFlapTiming,
     parseDelayMinutes,
     TRAIN_TYPES
 } from '../platform/index.js';
@@ -41,12 +45,15 @@ const transport = new BoardTransport({
 });
 let appliedRevision = 0;
 let automaticNightMode = savedSettings?.autoNightMode === true;
+let delayOffset = normalizeDelayOffset(
+    savedSettings?.delayOffset ?? DELAY_OFFSET_DEFAULT
+);
 let heartbeatTimer = null;
 let commandQueue = Promise.resolve();
 
 const createEmptyDisplayState = () => ({
     ...createEmptyBoardState(),
-    lenses: createDefaultLensState()
+    lenses: createEmptyLensState()
 });
 
 const normalizeIncomingBoardState = (state) => {
@@ -88,7 +95,8 @@ const board = createBoard({
     root: documentRef.querySelector(PLATFORM_TABLE_TEMPLATE.rootSelector),
     slots: PLATFORM_TABLE_TEMPLATE.slots,
     registry: createDefaultRegistry({ audio }),
-    initialState: createEmptyDisplayState()
+    initialState: createEmptyDisplayState(),
+    flapTiming: normalizeFlapTiming(savedSettings?.flapTiming)
 });
 
 const lensDisplay = board.getComponent('lenses');
@@ -115,26 +123,12 @@ const setLensPreDepartureActive = (isActive) => {
     lensAnimationStartedAt = Date.now();
 };
 
-const getEffectiveDeparture = (state) => {
-    const departureTime = state?.departureTime;
-    const hours = Number(departureTime?.hours);
-    const minutes = Number(departureTime?.minutes);
-
-    if (!Number.isInteger(hours) || hours < 0 || hours > 23
-        || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
-        return null;
-    }
-
-    const departure = new Date();
-    departure.setHours(hours, minutes, 0, 0);
-
-    const displayedDelay = getDisplayedDelay(state.delay);
-    if (displayedDelay !== '') {
-        departure.setMinutes(departure.getMinutes() + displayedDelay);
-    }
-
-    return departure;
-};
+const getEffectiveDeparture = (state) => getEffectiveDepartureDate(
+    state?.departureTime,
+    state?.delay,
+    new Date(),
+    delayOffset
+);
 
 const scheduleLensActivation = (state) => {
     cancelLensActivation();
@@ -175,19 +169,33 @@ const scheduleLensActivation = (state) => {
     }, activationTime - Date.now());
 };
 
-const cloneLensState = (value) => ({
-    lenses: Array.isArray(value?.lenses)
-        ? value.lenses.map((lens) => ({ ...lens }))
-        : createDefaultLensState().lenses,
-    preDeparture: {
-        ...(value?.preDeparture || {})
-    }
-});
+const cloneLensState = (value) => {
+    const fallback = createDefaultLensState();
+    return {
+        lenses: Array.isArray(value?.lenses)
+            ? value.lenses.map((lens, index) => {
+                const fallbackLens =
+                    fallback.lenses[index] || fallback.lenses[0];
+                return {
+                    ...fallbackLens,
+                    ...lens,
+                    blinkInterval: fallbackLens.blinkInterval,
+                    blinkDelay: index * fallbackLens.blinkInterval
+                };
+            })
+            : fallback.lenses.map((lens) => ({ ...lens })),
+        preDeparture: {
+            ...fallback.preDeparture,
+            ...(value?.preDeparture || {})
+        },
+        synchronizeRows: value?.synchronizeRows !== false
+    };
+};
 
 const applyIdentificationLensState = () => {
     const source = normalLensState
         || currentDisplayState.lenses
-        || createDefaultLensState();
+        || createEmptyLensState();
     lensDisplay.set({
         lenses: source.lenses.map((lens) => ({
             ...lens,
@@ -227,7 +235,7 @@ const setIdentificationActive = (forceOn) => {
     lensDisplay.set(
         normalLensState
             || currentDisplayState.lenses
-            || createDefaultLensState()
+            || createEmptyLensState()
     );
     normalLensState = null;
     scheduleLensActivation(currentDisplayState);
@@ -239,7 +247,7 @@ const setBoardState = (state, options = {}) => {
     const nextState = state || createEmptyDisplayState();
     currentDisplayState = nextState;
     if (identificationActive) {
-        normalLensState = nextState.lenses || createDefaultLensState();
+        normalLensState = nextState.lenses || createEmptyLensState();
     }
     const result = board.setState(nextState, options);
     scheduleLensActivation(nextState);
@@ -308,12 +316,43 @@ const sunSchedule = new SunSchedule({
     }
 });
 
+const syncAutomaticNightMode = () => {
+    if (!automaticNightMode) {
+        sunSchedule.stop();
+        return;
+    }
+
+    if (sunSchedule.running) {
+        sunSchedule.update();
+        return;
+    }
+
+    sunSchedule.start();
+};
+
+const handleVisibilityChange = () => {
+    if (!documentRef.hidden) {
+        syncAutomaticNightMode();
+    }
+};
+documentRef.addEventListener('visibilitychange', handleVisibilityChange);
+
 const applySettings = ({
     lamps,
     clockLight,
     nightMode,
-    autoNightMode
+    autoNightMode,
+    flapTiming,
+    delayOffset: nextDelayOffset
 } = {}) => {
+    if (flapTiming) {
+        board.setFlapTiming(flapTiming);
+    }
+    if (typeof nextDelayOffset === 'boolean') {
+        delayOffset = normalizeDelayOffset(nextDelayOffset);
+        board.setDelayOffset(delayOffset);
+        scheduleLensActivation(currentDisplayState);
+    }
     if (lamps) {
         nightLighting.setLampSettings(lamps);
     }
@@ -322,16 +361,11 @@ const applySettings = ({
     }
     if (typeof autoNightMode === 'boolean') {
         automaticNightMode = autoNightMode;
-        if (!automaticNightMode) {
-            sunSchedule.stop();
-        }
     }
     if (typeof nightMode === 'boolean' && !automaticNightMode) {
         setNightMode(nightMode);
     }
-    if (automaticNightMode) {
-        sunSchedule.start();
-    }
+    syncAutomaticNightMode();
 };
 
 const waitForBoardToSettle = () => new Promise((resolve) => {
@@ -519,7 +553,9 @@ transport.subscribe((message) => {
 
 applySettings({
     nightMode: savedSettings?.nightMode === true,
-    autoNightMode: automaticNightMode
+    autoNightMode: automaticNightMode,
+    flapTiming: savedSettings?.flapTiming,
+    delayOffset
 });
 publishReady();
 heartbeatTimer = window.setInterval(publishHeartbeat, 4000);
@@ -557,6 +593,7 @@ window.pragotron = {
     },
     destroy: () => {
         cancelLensActivation();
+        documentRef.removeEventListener('visibilitychange', handleVisibilityChange);
         sunSchedule.destroy();
         window.clearInterval(heartbeatTimer);
         heartbeatTimer = null;

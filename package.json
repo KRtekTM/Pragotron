@@ -2,6 +2,9 @@
     "name": "pragotron-platform-poc",
     "private": true,
     "type": "module",
+    "scripts": {
+        "serve": "node scripts/live-departures-server.mjs"
+    },
     "dependencies": {
         "sunrise-sunset-js": "3.3.1"
     }

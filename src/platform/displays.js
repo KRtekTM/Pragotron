@@ -1,11 +1,16 @@
 import {
     DELAY_VALUES,
+    DELAY_OFFSET_DEFAULT,
+    FLAP_TIMING_DEFAULTS,
     getDisplayedDelay,
     getFlapDuration,
+    normalizeDelayOffset,
+    normalizeFlapTiming,
     parseDelayMinutes,
     STATION_CHARACTER_COUNT,
     STATION_FLAP_SEQUENCE,
-    TRAIN_TYPES
+    TRAIN_TYPES,
+    formatStationName
 } from './data.js';
 import { SplitFlapAudio } from './audio.js';
 
@@ -40,13 +45,15 @@ export class SplitFlapDisplay {
     constructor(element, {
         audio = new SplitFlapAudio(),
         maxLength = STATION_CHARACTER_COUNT,
-        sequence = STATION_FLAP_SEQUENCE
+        sequence = STATION_FLAP_SEQUENCE,
+        timing = FLAP_TIMING_DEFAULTS
     } = {}) {
         this.element = element;
         this.audio = audio;
         this.ownsAudio = audio instanceof SplitFlapAudio;
         this.maxLength = maxLength;
         this.sequence = sequence;
+        this.timing = normalizeFlapTiming(timing);
         this.characters = [];
         this.defaultValue = element.dataset.text || '';
         this.value = '';
@@ -54,13 +61,20 @@ export class SplitFlapDisplay {
         this.initialize('');
     }
 
+    setTiming(timing) {
+        this.timing = normalizeFlapTiming(timing);
+        return { ...this.timing };
+    }
+
     normalize(value) {
         return String(value ?? '').toLocaleUpperCase('cs-CZ');
     }
 
     charactersFor(value) {
-        return Array.from(this.normalize(value).slice(0, this.maxLength))
-            .map((character) => this.sequence.includes(character) ? character : ' ')
+        return Array.from(formatStationName(value, {
+            maxLength: this.maxLength,
+            sequence: this.sequence
+        }))
             .concat(Array(this.maxLength).fill(' '))
             .slice(0, this.maxLength);
     }
@@ -109,7 +123,7 @@ export class SplitFlapDisplay {
         this.characters = [];
         this.element.replaceChildren();
 
-        target.forEach((character, index) => {
+        target.forEach((character) => {
             const element = this.createCharacter(' ', ' ');
             const state = {
                 element,
@@ -125,7 +139,7 @@ export class SplitFlapDisplay {
                 this.renderCharacter(element, character, character);
                 state.value = character;
             } else {
-                scheduleFrame(() => this.flip(state, character, index * 55));
+                this.flip(state, character);
             }
         });
 
@@ -163,8 +177,8 @@ export class SplitFlapDisplay {
             return;
         }
 
-        state.timer = window.setTimeout(() => {
-            if (sequence !== state.sequence) {
+        const startStep = () => {
+            if (sequence !== state.sequence || state.value === target) {
                 return;
             }
 
@@ -181,7 +195,7 @@ export class SplitFlapDisplay {
                 return;
             }
 
-            const flipDuration = getFlapDuration();
+            const flipDuration = getFlapDuration(this.timing);
             applyFlipTiming(state.element, flipDuration);
             this.audio.play();
             state.element.classList.add('is-flipping');
@@ -197,7 +211,14 @@ export class SplitFlapDisplay {
                 state.timer = null;
                 this.advance(state, target, sequence);
             }, flipDuration);
-        }, delay);
+        };
+
+        if (delay > 0) {
+            state.timer = window.setTimeout(startStep, delay);
+            return;
+        }
+
+        startStep();
     }
 
     set(value) {
@@ -206,7 +227,7 @@ export class SplitFlapDisplay {
         this.updateLabel();
 
         this.characters.forEach((state, index) => {
-            this.flip(state, target[index], index * 55);
+            this.flip(state, target[index]);
         });
 
         return this.value;
@@ -253,11 +274,22 @@ export class SplitFlapDisplay {
 }
 
 export class DelayFlapDisplay {
-    constructor(element, values = DELAY_VALUES, { audio = new SplitFlapAudio() } = {}) {
+    constructor(
+        element,
+        values = DELAY_VALUES,
+        {
+            audio = new SplitFlapAudio(),
+            timing = FLAP_TIMING_DEFAULTS,
+            applyDelayOffset = DELAY_OFFSET_DEFAULT
+        } = {}
+    ) {
         this.element = element;
         this.values = values;
         this.audio = audio;
         this.ownsAudio = audio instanceof SplitFlapAudio;
+        this.timing = normalizeFlapTiming(timing);
+        this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
+        this.sourceValue = '';
         this.defaultValue = element.dataset.delay || '';
         this.currentValue = '';
         this.targetValue = '';
@@ -266,6 +298,11 @@ export class DelayFlapDisplay {
         this.reducedMotion = prefersReducedMotion();
         this.render('', '');
         this.updateLabel();
+    }
+
+    setTiming(timing) {
+        this.timing = normalizeFlapTiming(timing);
+        return { ...this.timing };
     }
 
     parse(value) {
@@ -281,7 +318,22 @@ export class DelayFlapDisplay {
             );
         }
 
-        return getDisplayedDelay(numericValue, this.values);
+        return getDisplayedDelay(
+            numericValue,
+            this.values,
+            this.applyDelayOffset
+        );
+    }
+
+    setDelayOffset(enabled) {
+        const nextValue = normalizeDelayOffset(enabled);
+        if (nextValue === this.applyDelayOffset) {
+            return this.applyDelayOffset;
+        }
+
+        this.applyDelayOffset = nextValue;
+        this.set(this.sourceValue);
+        return this.applyDelayOffset;
     }
 
     createHalf(className, value) {
@@ -326,6 +378,7 @@ export class DelayFlapDisplay {
     }
 
     set(value) {
+        this.sourceValue = value;
         const next = this.parse(value);
         const sequence = ++this.sequence;
         this.targetValue = next;
@@ -347,6 +400,7 @@ export class DelayFlapDisplay {
     }
 
     setImmediate(value) {
+        this.sourceValue = value;
         const next = this.parse(value);
         this.sequence += 1;
         clearTimer(this, 'timer');
@@ -385,7 +439,7 @@ export class DelayFlapDisplay {
             return;
         }
 
-        const flipDuration = getFlapDuration();
+        const flipDuration = getFlapDuration(this.timing);
         applyFlipTiming(this.element, flipDuration);
         this.audio.play();
         this.element.classList.add('is-flipping');
@@ -423,11 +477,19 @@ export class DelayFlapDisplay {
 }
 
 export class TrainFlapDisplay {
-    constructor(element, types = TRAIN_TYPES, { audio = new SplitFlapAudio() } = {}) {
+    constructor(
+        element,
+        types = TRAIN_TYPES,
+        {
+            audio = new SplitFlapAudio(),
+            timing = FLAP_TIMING_DEFAULTS
+        } = {}
+    ) {
         this.element = element;
         this.types = types;
         this.audio = audio;
         this.ownsAudio = audio instanceof SplitFlapAudio;
+        this.timing = normalizeFlapTiming(timing);
         this.defaultValue = element.dataset.type || element.dataset.src || '';
         this.defaultSource = element.dataset.src || this.defaultValue;
         this.currentIndex = 0;
@@ -438,6 +500,11 @@ export class TrainFlapDisplay {
         this.reducedMotion = prefersReducedMotion();
         this.render(this.types[0], this.types[0]);
         this.updateLabel();
+    }
+
+    setTiming(timing) {
+        this.timing = normalizeFlapTiming(timing);
+        return { ...this.timing };
     }
 
     indexFor(value) {
@@ -537,7 +604,7 @@ export class TrainFlapDisplay {
             return;
         }
 
-        const flipDuration = getFlapDuration();
+        const flipDuration = getFlapDuration(this.timing);
         applyFlipTiming(this.element, flipDuration);
         this.audio.play();
         this.element.classList.add('is-flipping');
@@ -607,18 +674,32 @@ export class TrainFlapDisplay {
 }
 
 export class SequentialNumericFlap {
-    constructor(element, minimum, maximum, { audio = new SplitFlapAudio() } = {}) {
+    constructor(
+        element,
+        minimum,
+        maximum,
+        {
+            audio = new SplitFlapAudio(),
+            timing = FLAP_TIMING_DEFAULTS
+        } = {}
+    ) {
         this.element = element;
         this.minimum = minimum;
         this.maximum = maximum;
         this.audio = audio;
         this.ownsAudio = audio instanceof SplitFlapAudio;
+        this.timing = normalizeFlapTiming(timing);
         this.currentValue = '';
         this.targetValue = '';
         this.timer = null;
         this.sequence = 0;
         this.reducedMotion = prefersReducedMotion();
         this.render(this.currentValue, this.currentValue);
+    }
+
+    setTiming(timing) {
+        this.timing = normalizeFlapTiming(timing);
+        return { ...this.timing };
     }
 
     parse(value) {
@@ -724,7 +805,7 @@ export class SequentialNumericFlap {
             return;
         }
 
-        const flipDuration = getFlapDuration();
+        const flipDuration = getFlapDuration(this.timing);
         applyFlipTiming(this.element, flipDuration);
         this.audio.play();
         this.element.classList.add('is-flipping');
@@ -762,7 +843,13 @@ export class SequentialNumericFlap {
 }
 
 export class DepartureTimeDisplay {
-    constructor(element, { audio = new SplitFlapAudio() } = {}) {
+    constructor(
+        element,
+        {
+            audio = new SplitFlapAudio(),
+            timing = FLAP_TIMING_DEFAULTS
+        } = {}
+    ) {
         this.element = element;
         this.defaultHours = Number(element.dataset.hours);
         this.defaultMinutes = Number(element.dataset.minutes);
@@ -770,21 +857,29 @@ export class DepartureTimeDisplay {
             element.querySelector('.time-hour-flap'),
             0,
             23,
-            { audio }
+            { audio, timing }
         );
         this.minuteTens = new SequentialNumericFlap(
             element.querySelectorAll('.time-minute-flap')[0],
             0,
             5,
-            { audio }
+            { audio, timing }
         );
         this.minuteOnes = new SequentialNumericFlap(
             element.querySelectorAll('.time-minute-flap')[1],
             0,
             9,
-            { audio }
+            { audio, timing }
         );
         this.element.setAttribute('aria-label', 'Odjezd');
+    }
+
+    setTiming(timing) {
+        const normalized = normalizeFlapTiming(timing);
+        this.hour.setTiming(normalized);
+        this.minuteTens.setTiming(normalized);
+        this.minuteOnes.setTiming(normalized);
+        return normalized;
     }
 
     parseTime(hours, minutes) {

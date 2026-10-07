@@ -1,7 +1,7 @@
 import {
     getSunrise,
     getSunset
-} from 'sunrise-sunset-js';
+} from '../../node_modules/sunrise-sunset-js/dist/index.js';
 
 export const BRATISLAVA_SUN_LOCATION = Object.freeze({
     name: 'Bratislava',

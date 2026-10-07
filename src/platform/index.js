@@ -1,18 +1,41 @@
 export {
     DELAY_VALUES,
     DELAY_DISPLAY_THRESHOLD,
+    DELAY_OFFSET_DEFAULT,
+    DEPARTURE_PLATFORM_VALUES,
+    DEPARTURE_SECTOR_VALUES,
+    DEPARTURE_TRACK_VALUES,
+    DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
+    DEPARTURE_BOARD_ROW_COUNT_MAX,
+    DEPARTURE_BOARD_ROW_COUNT_MIN,
+    FLAP_TIMING_DEFAULTS,
+    FLAP_TIMING_DURATION_MAX,
+    FLAP_TIMING_DURATION_MIN,
     FLAP_TIMING_VARIATION_MS,
+    FLAP_TIMING_VARIATION_MAX,
+    FLAP_TIMING_VARIATION_MIN,
     NIGHT_CLOCK_DEFAULTS,
     NIGHT_FADE_MODES,
     NIGHT_LIGHT_DEFAULTS,
+    compareDeparturesByTime,
+    getDepartureSortTimestamp,
     getDisplayedDelay,
+    getEffectiveDepartureDate,
     parseDelayMinutes,
     STATION_CHARACTER_COUNT,
+    STATION_FLIP_DURATION,
     STATION_FLAP_SEQUENCE,
+    formatStationName,
+    TRAIN_NUMBER_FLAP_CARDS,
+    TRAIN_NUMBER_CARD_STYLES,
     TRAIN_TYPES,
     cloneBoardState,
     createEmptyBoardState,
-    getFlapDuration
+    getFlapDuration,
+    getTrainNumberCardStyle,
+    normalizeDelayOffset,
+    normalizeDepartureBoardRowCount,
+    normalizeFlapTiming
 } from './data.js';
 
 export { SplitFlapAudio, createSplitFlapAudio } from './audio.js';
@@ -24,6 +47,12 @@ export {
     TrainFlapDisplay
 } from './displays.js';
 export {
+    CatalogFlapDisplay,
+    DepartureBoardDisplay,
+    DepartureBoardRow,
+    TrainNumberDisplay
+} from './departure-board.js';
+export {
     LENS_COLORS,
     LENS_BLINK_INTERVAL_MAX,
     LENS_BLINK_INTERVAL_MIN,
@@ -33,7 +62,9 @@ export {
     LENS_PREDEPARTURE_SECONDS_MIN,
     LENS_PREDEPARTURE_SECONDS_STEP,
     LensDisplay,
-    createDefaultLensState
+    createDefaultLensState,
+    createEmptyLensState,
+    getLensBlinkPhase
 } from './lenses.js';
 export {
     BoardRuntime,
@@ -68,3 +99,22 @@ export {
     SunSchedule,
     calculateSunSchedule
 } from './sun-schedule.js';
+export {
+    LIVE_POLL_INTERVAL_MS,
+    LIVE_SERVER_DEFAULT_PORT,
+    LIVE_SERVER_FALLBACK_PORTS,
+    LIVE_SERVER_HOST,
+    LIVE_SOURCE_ORIGIN,
+    LIVE_SOURCE_PATH,
+    LIVE_STATION_DEFAULTS,
+    describeLiveNetworkError,
+    extractStationName,
+    fetchLiveDepartures,
+    fetchStationTable,
+    getDefaultLiveApiUrl,
+    isAllowedLiveSourceUrl,
+    normalizeLiveApiUrl,
+    normalizeLiveSourceUrl,
+    parseLiveSourceUrl,
+    parseStationTable
+} from './live-departures.js';

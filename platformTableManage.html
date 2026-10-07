@@ -18,6 +18,19 @@
 <body>
     <script src="src/demos/platformTableManagePreload.js"></script>
 
+    <div id="manageHeader">
+        <img src="images/pragotronNapis.svg" alt="PRAGOTRON" class="manage-header-logo">
+        <div class="manage-header-status">
+            <span
+                id="manageHeaderStation"
+                class="manage-header-chip"
+                hidden
+                aria-label="Stanice živých odjezdů"
+            ></span>
+            <time id="manageHeaderClock" class="manage-header-chip manage-header-clock" aria-label="Aktuální čas">00:00:00</time>
+        </div>
+    </div>
+
     <div id="manage">
         <div class="manage-main-column">
             <form id="boardForm">
@@ -49,7 +62,7 @@
                             id="stationOne"
                             name="stationOne"
                             type="text"
-                            maxlength="14"
+                            maxlength="48"
                             autocomplete="off"
                         >
                     </label>
@@ -59,7 +72,7 @@
                             id="stationTwo"
                             name="stationTwo"
                             type="text"
-                            maxlength="14"
+                            maxlength="48"
                             autocomplete="off"
                         >
                     </label></div>
@@ -98,35 +111,29 @@
                 <div class="board-form-grid board-form-grid-secondary">
                     <label class="board-form-field" for="platformValue">
                         Nástupiště
-                        <input
+                        <select
                             id="platformValue"
                             name="platform"
-                            type="text"
-                            maxlength="20"
-                            autocomplete="off"
                             required
                         >
+                            <option value="">Vyberte nástupiště</option>
+                        </select>
                     </label>
                     <label class="board-form-field" for="trackValue">
                         Kolej
-                        <input
+                        <select
                             id="trackValue"
                             name="track"
-                            type="text"
-                            maxlength="20"
-                            autocomplete="off"
                             required
                         >
+                            <option value="">Vyberte kolej</option>
+                        </select>
                     </label>
                     <label class="board-form-field" for="sectorValue">
                         Sektor
-                        <input
-                            id="sectorValue"
-                            name="sector"
-                            type="text"
-                            maxlength="20"
-                            autocomplete="off"
-                        >
+                        <select id="sectorValue" name="sector">
+                            <option value="">Celá kolej</option>
+                        </select>
                         <small>Volitelné; prázdný sektor znamená celou kolej.</small>
                     </label>
                 </div>
@@ -139,6 +146,81 @@
                 <div class="board-form-actions">
                     <button type="submit" style="margin: 1.5rem auto; scale: 1.5;">Odeslat na tabuli</button>
                 </div>
+
+                <div class="board-timing-panels">
+                    <fieldset id="flapTimingPanel" class="flap-timing-settings">
+                        <div><legend>Rychlost split-flapů</legend></div>
+                        <div class="flap-timing-controls">
+                            <label class="lamp-control-range" for="flapTimingDuration">
+                                <span class="lamp-control-range-header">
+                                    <span>Délka jednoho flapu</span>
+                                    <output id="flapTimingDurationOutput">190 ms</output>
+                                </span>
+                                <input
+                                    id="flapTimingDuration"
+                                    type="range"
+                                    min="150"
+                                    max="500"
+                                    step="1"
+                                    value="190"
+                                >
+                            </label>
+                            <label class="lamp-control-range" for="flapTimingVariation">
+                                <span class="lamp-control-range-header">
+                                    <span>Náhodná variace</span>
+                                    <output id="flapTimingVariationOutput">±1 ms</output>
+                                </span>
+                                <input
+                                    id="flapTimingVariation"
+                                    type="range"
+                                    min="0"
+                                    max="10"
+                                    step="1"
+                                    value="1"
+                                >
+                            </label>
+                        </div>
+                        <small class="flap-timing-help">
+                            Nastavení se použije pro každý jednotlivý flap včetně
+                            času, typu vlaku, zpoždění a názvů stanic.
+                        </small>
+                    </fieldset>
+
+                    <fieldset id="departureBoardRowsPanel" class="flap-timing-settings">
+                        <div><legend>Odjezdová tabule</legend></div>
+                        <label class="board-form-field" for="departureBoardRows">
+                            Počet řádků
+                            <input
+                                id="departureBoardRows"
+                                type="number"
+                                min="1"
+                                max="24"
+                                step="1"
+                                value="8"
+                                inputmode="numeric"
+                            >
+                            <small>
+                                Kolik odjezdů se zobrazí. Výchozí je 8, rozsah 1–24.
+                                Stejné číslo jde nastavit i parametrem
+                                <code>?rows=12</code> u departureBoard.html.
+                            </small>
+                        </label>
+                    </fieldset>
+
+                    <fieldset id="departureDelayOffsetPanel" class="flap-timing-settings">
+                        <div><legend>Offset zpoždění odjezdu</legend></div>
+                        <label class="lamp-control-check" for="delayOffsetEnabled">
+                            <input id="delayOffsetEnabled" type="checkbox">
+                            Odečíst 5 minut
+                        </label>
+                        <small class="flap-timing-help">
+                            Zapnutý offset skryje zpoždění do 5 minut včetně
+                            a vyšší hodnoty zaokrouhlí na nižší položku katalogu.
+                            Vypnutím se od zpoždění nic neodečítá.
+                        </small>
+                    </fieldset>
+                </div>
+                
                 <div class="board-form-actions" style="justify-content: center;">
                     <button id="nightModeButton" type="button" aria-pressed="false">
                         🌙 Noční režim
@@ -181,7 +263,7 @@
                         </fieldset>
                     </div>
                     <p class="lamp-settings-help">
-                        Checkbox „Kolísá“ zapíná vybraný světelný efekt. Volba
+                        Checkbox „S efektem“ zapíná vybraný světelný efekt. Volba
                         „Bez pohasínání“ udrží žárovku ve stálém svitu. Délka
                         cyklu je skutečný čas celého efektu; vyšší hodnota
                         znamená pomalejší změny.
@@ -196,6 +278,63 @@
                 <p id="boardFormStatus" role="status" aria-live="polite"></p>
             </fieldset>
             </form>
+
+            <fieldset id="liveDeparturesPanel" class="manage-panel live-departures-panel">
+                <div><legend>Živé odjezdy</legend></div>
+                <p class="live-departures-description">
+                    Živé odjezdy ze stanice Správy železnic · aktualizace
+                    každou minutu. Pro načítání je potřeba spustit lokální
+                    scraper server.
+                </p>
+                <div class="board-form-field">
+                    <span class="live-source-heading">
+                        <label for="liveSourceUrl">Adresa tabule SŽ</label>
+                        <span id="liveSourceStation" class="live-source-station" hidden>
+                            (<a
+                                id="liveSourceStationLink"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            ></a>)
+                        </span>
+                    </span>
+                    <input
+                        id="liveSourceUrl"
+                        type="url"
+                        autocomplete="off"
+                        spellcheck="false"
+                        aria-describedby="liveSourceHelp"
+                    >
+                    <small id="liveSourceHelp">
+                        Stejný formát
+                        <code>StationTable.aspx?Key=…</code>.
+                        Výchozí je Brno hlavní nádraží
+                        (<code>Key=455</code>).
+                    </small>
+                </div>
+                <label class="board-form-field" for="liveApiUrl">
+                    Adresa scraperu
+                    <input
+                        id="liveApiUrl"
+                        type="url"
+                        autocomplete="off"
+                        spellcheck="false"
+                        aria-describedby="liveApiHelp"
+                    >
+                    <small id="liveApiHelp">
+                        Ve výchozím nastavení se používá
+                        <code>http://127.0.0.1:4787/api/live-departures</code>.
+                    </small>
+                </label>
+                <div class="live-departures-actions">
+                    <button id="liveToggleButton" type="button">
+                        Spustit live odjezdy
+                    </button>
+                    <span id="liveDeparturesState" class="live-departures-state">
+                        Live odjezdy jsou vypnuté.
+                    </span>
+                </div>
+                <p id="liveDeparturesStatus" role="status" aria-live="polite"></p>
+            </fieldset>
         </div>
 
         <div class="manage-side-column">
@@ -217,6 +356,7 @@
                             <th scope="col"><button type="button" data-sort-key="stationTwo">Stanice 2</button></th>
                             <th scope="col"><button type="button" data-sort-key="train">Typ vlaku</button></th>
                             <th scope="col"><button type="button" data-sort-key="trainNumber">Číslo vlaku</button></th>
+                            <th scope="col"><button type="button" data-sort-key="operator">Dopravce</button></th>
                             <th scope="col"><button type="button" data-sort-key="departureTime">Odjezd</button></th>
                             <th scope="col"><button type="button" data-sort-key="delay">Zpoždění</button></th>
                             <th scope="col"><button type="button" data-sort-key="platform">Nástupiště</button></th>

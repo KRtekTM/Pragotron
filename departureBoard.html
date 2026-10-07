@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="PRAGOTRON odjezdová tabule">
+    <title>PRAGOTRON – odjezdy</title>
+    <link href="style.css" rel="stylesheet" type="text/css" media="screen,projection">
+    <link href="images/pragotron.svg" rel="icon" type="image/svg+xml">
+    <script type="importmap">
+        {
+            "imports": {
+                "sunrise-sunset-js": "./node_modules/sunrise-sunset-js/dist/index.js"
+            }
+        }
+    </script>
+</head>
+<body class="departure-board-page">
+    <table
+        id="tabule"
+        class="departure-board"
+        aria-label="Odjezdová tabule"
+    >
+        <thead>
+            <tr class="departure-board-header">
+                <th class="cdlogo" scope="col" colspan="2"><img src="images/CD_logo.svg" alt="CD Logo"></th>
+                <th class="departsmall" scope="col" colspan="2">DEPARTURE</th>
+                <th class="departbig" scope="col" colspan="2">ODJEZD</th>
+                <th class="departsmall right" scope="col" colspan="4">ABFAHRT</th>
+            </tr>
+        </thead>
+        <colgroup>
+            <col class="departure-col-lenses">
+            <col class="departure-col-train">
+            <col class="departure-col-number">
+            <col class="departure-col-station">
+            <col class="departure-col-via">
+            <col class="departure-col-time">
+            <col class="departure-col-delay">
+            <col class="departure-col-platform">
+            <col class="departure-col-track">
+            <col class="departure-col-sector">
+        </colgroup>
+        <thead>
+            <tr>
+                <th scope="col">&nbsp;</th>
+                <th scope="col">Vlak</th>
+                <th scope="col">Číslo</th>
+                <th scope="col">Cílová stanice</th>
+                <th scope="col">Přes</th>
+                <th scope="col">Odjezd</th>
+                <th scope="col">Zpoždění</th>
+                <th scope="col">Nást.</th>
+                <th scope="col">Kolej</th>
+                <th scope="col">Sektor</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr data-departure-row="1"><td><div class="lens-display departure-row-lenses" data-departure-slot="lenses" aria-label="Čočky"></div></td><td><div class="train-flap-display" data-departure-slot="train" aria-label="Typ vlaku"></div></td><td><div class="train-number-display" data-departure-slot="trainNumber" aria-label="Číslo vlaku"></div></td><td><div class="flap-display" data-departure-slot="stationOne"></div></td><td><div class="flap-display" data-departure-slot="stationTwo"></div></td><td><div class="departure-time-display" data-departure-slot="departureTime" data-hours="0" data-minutes="0"><div class="time-flap time-hour-flap"></div><span class="time-separator" aria-hidden="true">.</span><div class="time-minute-group"><div class="time-flap time-minute-flap"></div><div class="time-flap time-minute-flap"></div></div></div></td><td><div class="delay-flap-display" data-departure-slot="delay"></div></td><td><div class="flap-display" data-departure-slot="platform"></div></td><td><div data-departure-slot="track"></div></td><td><div data-departure-slot="sector"></div></td></tr>
+            <tr data-departure-row="2"><td><div class="lens-display departure-row-lenses" data-departure-slot="lenses" aria-label="Čočky"></div></td><td><div class="train-flap-display" data-departure-slot="train" aria-label="Typ vlaku"></div></td><td><div class="train-number-display" data-departure-slot="trainNumber" aria-label="Číslo vlaku"></div></td><td><div class="flap-display" data-departure-slot="stationOne"></div></td><td><div class="flap-display" data-departure-slot="stationTwo"></div></td><td><div class="departure-time-display" data-departure-slot="departureTime" data-hours="0" data-minutes="0"><div class="time-flap time-hour-flap"></div><span class="time-separator" aria-hidden="true">.</span><div class="time-minute-group"><div class="time-flap time-minute-flap"></div><div class="time-minute-flap time-flap"></div></div></div></td><td><div class="delay-flap-display" data-departure-slot="delay"></div></td><td><div class="flap-display" data-departure-slot="platform"></div></td><td><div data-departure-slot="track"></div></td><td><div data-departure-slot="sector"></div></td></tr>
+            <tr data-departure-row="3"><td><div class="lens-display departure-row-lenses" data-departure-slot="lenses" aria-label="Čočky"></div></td><td><div class="train-flap-display" data-departure-slot="train" aria-label="Typ vlaku"></div></td><td><div class="train-number-display" data-departure-slot="trainNumber" aria-label="Číslo vlaku"></div></td><td><div class="flap-display" data-departure-slot="stationOne"></div></td><td><div class="flap-display" data-departure-slot="stationTwo"></div></td><td><div class="departure-time-display" data-departure-slot="departureTime" data-hours="0" data-minutes="0"><div class="time-flap time-hour-flap"></div><span class="time-separator" aria-hidden="true">.</span><div class="time-minute-group"><div class="time-flap time-minute-flap"></div><div class="time-flap time-minute-flap"></div></div></div></td><td><div class="delay-flap-display" data-departure-slot="delay"></div></td><td><div class="flap-display" data-departure-slot="platform"></div></td><td><div data-departure-slot="track"></div></td><td><div data-departure-slot="sector"></div></td></tr>
+            <tr data-departure-row="4"><td><div class="lens-display departure-row-lenses" data-departure-slot="lenses" aria-label="Čočky"></div></td><td><div class="train-flap-display" data-departure-slot="train" aria-label="Typ vlaku"></div></td><td><div class="train-number-display" data-departure-slot="trainNumber" aria-label="Číslo vlaku"></div></td><td><div class="flap-display" data-departure-slot="stationOne"></div></td><td><div class="flap-display" data-departure-slot="stationTwo"></div></td><td><div class="departure-time-display" data-departure-slot="departureTime" data-hours="0" data-minutes="0"><div class="time-flap time-hour-flap"></div><span class="time-separator" aria-hidden="true">.</span><div class="time-minute-group"><div class="time-flap time-minute-flap"></div><div class="time-flap time-minute-flap"></div></div></div></td><td><div class="delay-flap-display" data-departure-slot="delay"></div></td><td><div class="flap-display" data-departure-slot="platform"></div></td><td><div data-departure-slot="track"></div></td><td><div data-departure-slot="sector"></div></td></tr>
+            <tr data-departure-row="5"><td><div class="lens-display departure-row-lenses" data-departure-slot="lenses" aria-label="Čočky"></div></td><td><div class="train-flap-display" data-departure-slot="train" aria-label="Typ vlaku"></div></td><td><div class="train-number-display" data-departure-slot="trainNumber" aria-label="Číslo vlaku"></div></td><td><div class="flap-display" data-departure-slot="stationOne"></div></td><td><div class="flap-display" data-departure-slot="stationTwo"></div></td><td><div class="departure-time-display" data-departure-slot="departureTime" data-hours="0" data-minutes="0"><div class="time-flap time-hour-flap"></div><span class="time-separator" aria-hidden="true">.</span><div class="time-minute-group"><div class="time-flap time-minute-flap"></div><div class="time-flap time-minute-flap"></div></div></div></td><td><div class="delay-flap-display" data-departure-slot="delay"></div></td><td><div class="flap-display" data-departure-slot="platform"></div></td><td><div data-departure-slot="track"></div></td><td><div data-departure-slot="sector"></div></td></tr>
+            <tr data-departure-row="6"><td><div class="lens-display departure-row-lenses" data-departure-slot="lenses" aria-label="Čočky"></div></td><td><div class="train-flap-display" data-departure-slot="train" aria-label="Typ vlaku"></div></td><td><div class="train-number-display" data-departure-slot="trainNumber" aria-label="Číslo vlaku"></div></td><td><div class="flap-display" data-departure-slot="stationOne"></div></td><td><div class="flap-display" data-departure-slot="stationTwo"></div></td><td><div class="departure-time-display" data-departure-slot="departureTime" data-hours="0" data-minutes="0"><div class="time-flap time-hour-flap"></div><span class="time-separator" aria-hidden="true">.</span><div class="time-minute-group"><div class="time-flap time-minute-flap"></div><div class="time-flap time-minute-flap"></div></div></div></td><td><div class="delay-flap-display" data-departure-slot="delay"></div></td><td><div class="flap-display" data-departure-slot="platform"></div></td><td><div data-departure-slot="track"></div></td><td><div data-departure-slot="sector"></div></td></tr>
+            <tr data-departure-row="7"><td><div class="lens-display departure-row-lenses" data-departure-slot="lenses" aria-label="Čočky"></div></td><td><div class="train-flap-display" data-departure-slot="train" aria-label="Typ vlaku"></div></td><td><div class="train-number-display" data-departure-slot="trainNumber" aria-label="Číslo vlaku"></div></td><td><div class="flap-display" data-departure-slot="stationOne"></div></td><td><div class="flap-display" data-departure-slot="stationTwo"></div></td><td><div class="departure-time-display" data-departure-slot="departureTime" data-hours="0" data-minutes="0"><div class="time-flap time-hour-flap"></div><span class="time-separator" aria-hidden="true">.</span><div class="time-minute-group"><div class="time-flap time-minute-flap"></div><div class="time-flap time-minute-flap"></div></div></div></td><td><div class="delay-flap-display" data-departure-slot="delay"></div></td><td><div class="flap-display" data-departure-slot="platform"></div></td><td><div data-departure-slot="track"></div></td><td><div data-departure-slot="sector"></div></td></tr>
+            <tr data-departure-row="8"><td><div class="lens-display departure-row-lenses" data-departure-slot="lenses" aria-label="Čočky"></div></td><td><div class="train-flap-display" data-departure-slot="train" aria-label="Typ vlaku"></div></td><td><div class="train-number-display" data-departure-slot="trainNumber" aria-label="Číslo vlaku"></div></td><td><div class="flap-display" data-departure-slot="stationOne"></div></td><td><div class="flap-display" data-departure-slot="stationTwo"></div></td><td><div class="departure-time-display" data-departure-slot="departureTime" data-hours="0" data-minutes="0"><div class="time-flap time-hour-flap"></div><span class="time-separator" aria-hidden="true">.</span><div class="time-minute-group"><div class="time-flap time-minute-flap"></div><div class="time-flap time-minute-flap"></div></div></div></td><td><div class="delay-flap-display" data-departure-slot="delay"></div></td><td><div class="flap-display" data-departure-slot="platform"></div></td><td><div data-departure-slot="track"></div></td><td><div data-departure-slot="sector"></div></td></tr>
+        </tbody>
+    </table>
+
+    <script src="src/demos/departureBoardLoader.js"></script>
+</body>
+</html>

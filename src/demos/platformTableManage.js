@@ -2,24 +2,54 @@ import {
     LENS_BLINK_INTERVAL_MAX,
     LENS_BLINK_INTERVAL_MIN,
     LENS_COLORS,
+    LENS_DEFAULTS,
     LENS_PREDEPARTURE_SECONDS_MAX,
     LENS_PREDEPARTURE_SECONDS_MIN,
     LENS_PREDEPARTURE_SECONDS_STEP,
+    DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
+    DEPARTURE_BOARD_ROW_COUNT_MAX,
+    DEPARTURE_BOARD_ROW_COUNT_MIN,
+    DEPARTURE_SECTOR_VALUES,
+    DEPARTURE_TRACK_VALUES,
+    FLAP_TIMING_DEFAULTS,
+    FLAP_TIMING_DURATION_MAX,
+    FLAP_TIMING_DURATION_MIN,
+    DELAY_OFFSET_DEFAULT,
+    FLAP_TIMING_VARIATION_MAX,
+    FLAP_TIMING_VARIATION_MIN,
     NIGHT_CLOCK_DEFAULTS,
     NIGHT_FADE_MODES,
     NIGHT_LIGHT_DEFAULTS,
     parseDelayMinutes,
+    compareDeparturesByTime,
+    getDepartureSortTimestamp,
+    getEffectiveDepartureDate,
+    DEPARTURE_PLATFORM_VALUES,
     TRAIN_TYPES,
+    formatStationName,
     BoardTransport,
     formatBoardIdentity,
     getBoardIdentityKey,
+    getLensBlinkPhase,
     identitiesMatch,
     LensDisplay,
     LightingSettings,
     LocalStorageAdapter,
+    SunSchedule,
     normalizeBoardIdentity,
+    normalizeDelayOffset,
+    normalizeDepartureBoardRowCount,
+    normalizeFlapTiming,
     createDefaultLensState,
-    createEmptyBoardState
+    createEmptyLensState,
+    createEmptyBoardState,
+    fetchLiveDepartures,
+    getDefaultLiveApiUrl,
+    LIVE_POLL_INTERVAL_MS,
+    LIVE_STATION_DEFAULTS,
+    normalizeLiveApiUrl,
+    normalizeLiveSourceUrl,
+    parseLiveSourceUrl
 } from '../platform/index.js';
 
 const STORAGE_KEY = 'pragotron.platformTable.state.v2';
@@ -51,6 +81,26 @@ const trainTypeInput = documentRef.querySelector('#trainType');
 const trainNumberInput = documentRef.querySelector('#trainNumber');
 const departureTimeInput = documentRef.querySelector('#departureTime');
 const delayValueInput = documentRef.querySelector('#delayValue');
+const flapTimingDurationInput = documentRef.querySelector(
+    '#flapTimingDuration'
+);
+const flapTimingDurationOutput = documentRef.querySelector(
+    '#flapTimingDurationOutput'
+);
+const flapTimingVariationInput = documentRef.querySelector(
+    '#flapTimingVariation'
+);
+const flapTimingVariationOutput = documentRef.querySelector(
+    '#flapTimingVariationOutput'
+);
+const delayOffsetEnabledInput = documentRef.querySelector(
+    '#delayOffsetEnabled'
+);
+const manageHeaderClock = documentRef.querySelector('#manageHeaderClock');
+const manageHeaderStation = documentRef.querySelector('#manageHeaderStation');
+const departureBoardRowsInput = documentRef.querySelector(
+    '#departureBoardRows'
+);
 const boardFormStatus = documentRef.querySelector('#boardFormStatus');
 const lensControls = documentRef.querySelector('#lensControls');
 const lampSettingsPanel = documentRef.querySelector('#lampSettingsPanel');
@@ -70,6 +120,13 @@ const activeBoardsList = documentRef.querySelector('#activeBoardsList');
 const departuresTable = documentRef.querySelector('#departuresTable');
 const departuresTableBody = documentRef.querySelector('#departuresTableBody');
 const departuresEmptyState = documentRef.querySelector('#departuresEmptyState');
+const liveApiUrlInput = documentRef.querySelector('#liveApiUrl');
+const liveSourceUrlInput = documentRef.querySelector('#liveSourceUrl');
+const liveSourceStation = documentRef.querySelector('#liveSourceStation');
+const liveSourceStationLink = documentRef.querySelector('#liveSourceStationLink');
+const liveToggleButton = documentRef.querySelector('#liveToggleButton');
+const liveDeparturesState = documentRef.querySelector('#liveDeparturesState');
+const liveDeparturesStatus = documentRef.querySelector('#liveDeparturesStatus');
 const submitButton = boardForm.querySelector('button[type="submit"]');
 
 const lighting = new LightingSettings({
@@ -83,9 +140,47 @@ const lensDisplay = new LensDisplay(documentRef.createElement('div'), {
 
 let nightMode = savedSettings?.nightMode === true;
 let autoNightMode = savedSettings?.autoNightMode === true;
+let flapTiming = normalizeFlapTiming(savedSettings?.flapTiming);
+let delayOffset = normalizeDelayOffset(
+    savedSettings?.delayOffset ?? DELAY_OFFSET_DEFAULT
+);
+let departureBoardRows = normalizeDepartureBoardRowCount(
+    savedSettings?.departureBoardRows ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT
+);
+const savedLiveSettings = savedState.liveDepartures
+    && typeof savedState.liveDepartures === 'object'
+    ? savedState.liveDepartures
+    : {};
+let liveDeparturesEnabled = savedLiveSettings.enabled === true;
+let liveApiUrl = normalizeLiveApiUrl(
+    typeof savedLiveSettings.apiUrl === 'string'
+        && savedLiveSettings.apiUrl.trim()
+        ? savedLiveSettings.apiUrl.trim()
+        : getDefaultLiveApiUrl()
+);
+let liveSourceUrl = normalizeLiveSourceUrl(
+    typeof savedLiveSettings.sourceUrl === 'string'
+        && savedLiveSettings.sourceUrl.trim()
+        ? savedLiveSettings.sourceUrl.trim()
+        : LIVE_STATION_DEFAULTS.sourceUrl
+);
+const savedLiveStationName = typeof savedLiveSettings.station === 'string'
+    ? savedLiveSettings.station.trim()
+    : '';
+const savedLiveStationKey = String(savedLiveSettings.stationKey || '');
+let liveStationName = savedLiveStationName
+    && savedLiveStationKey === parseLiveSourceUrl(liveSourceUrl).key
+    ? savedLiveStationName
+    : parseLiveSourceUrl(liveSourceUrl).key === LIVE_STATION_DEFAULTS.key
+        ? LIVE_STATION_DEFAULTS.name
+        : '';
+let livePollTimer = null;
+let livePollInProgress = false;
+let liveRunToken = 0;
 let exampleActive = false;
 let boardActionInProgress = false;
 const pendingActions = new Map();
+const pendingBackgroundActions = new Map();
 const pendingIdentificationActions = new Map();
 const activeBoards = new Map();
 let departures = Array.isArray(savedState.departures)
@@ -103,6 +198,7 @@ let sortState = {
 };
 let presenceTimer = null;
 let heartbeatTimer = null;
+let lensActivationTimer = null;
 
 const exampleState = {
     stations: ['PRAHA', 'BRATISLAVA'],
@@ -151,10 +247,10 @@ const setFormValues = (state) => {
 
 const setSavedFormValues = (formState) => {
     const stationOne = typeof formState.stationOne === 'string'
-        ? formState.stationOne.slice(0, 14)
+        ? formatStationName(formState.stationOne)
         : exampleState.stations[0];
     const stationTwo = typeof formState.stationTwo === 'string'
-        ? formState.stationTwo.slice(0, 14)
+        ? formatStationName(formState.stationTwo)
         : exampleState.stations[1];
     const train = TRAIN_TYPES.some((type) => type.name === formState.train)
         ? formState.train
@@ -201,7 +297,10 @@ const getLightingSettingsState = () => ({
     lamps: lighting.getLampSettings(),
     clockLight: lighting.getClockSettings(),
     nightMode,
-    autoNightMode
+    autoNightMode,
+    flapTiming: { ...flapTiming },
+    departureBoardRows,
+    delayOffset
 });
 
 const normalizeManagedLensState = (value) => {
@@ -210,15 +309,18 @@ const normalizeManagedLensState = (value) => {
     return {
         ...source,
         lenses: Array.isArray(source.lenses)
-            ? source.lenses.map((lens) => ({
+            ? source.lenses.map((lens, index) => ({
                 ...lens,
-                blinking: true
+                blinking: true,
+                blinkInterval: LENS_DEFAULTS.blinkInterval,
+                blinkDelay: index * LENS_DEFAULTS.blinkInterval
             }))
-            : fallback.lenses,
+            : fallback.lenses.map((lens) => ({ ...lens })),
         preDeparture: {
             ...fallback.preDeparture,
             ...(source.preDeparture || {})
-        }
+        },
+        synchronizeRows: source.synchronizeRows !== false
     };
 };
 
@@ -242,65 +344,149 @@ const getDraftFormState = () => ({
     delay: delayValueInput.value
 });
 
+const normalizeDepartureTime = (value) => {
+    if (value && typeof value === 'object') {
+        const hours = Number(value.hours);
+        const minutes = Number(value.minutes);
+        if (Number.isInteger(hours) && hours >= 0 && hours <= 23
+            && Number.isInteger(minutes) && minutes >= 0 && minutes <= 59) {
+            return { hours, minutes };
+        }
+    }
+
+    if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d{1,2})[:.](\d{2})$/);
+        const hours = Number(match?.[1]);
+        const minutes = Number(match?.[2]);
+        if (match && hours >= 0 && hours <= 23
+            && minutes >= 0 && minutes <= 59) {
+            return { hours, minutes };
+        }
+    }
+
+    return null;
+};
+
+const normalizePlatformValue = (value) => {
+    const normalized = String(value ?? '').trim();
+    return DEPARTURE_PLATFORM_VALUES.includes(normalized)
+        ? normalized
+        : '';
+};
+
+const normalizeTrackValue = (value) => {
+    const normalized = String(value ?? '').trim();
+    return DEPARTURE_TRACK_VALUES.includes(normalized)
+        ? normalized
+        : '';
+};
+
+const normalizeSectorValue = (value) => {
+    const normalized = String(value ?? '').trim();
+    return DEPARTURE_SECTOR_VALUES.includes(normalized)
+        ? normalized
+        : '';
+};
+
 const normalizeDeparture = (value) => {
-    const source = value?.state && typeof value.state === 'object'
-        ? { ...value.state, target: value.target }
+    const nestedState = value?.state && typeof value.state === 'object'
+        ? value.state
+        : null;
+    const source = nestedState
+        ? {
+            ...nestedState,
+            ...value,
+            target: value.target ?? nestedState.target
+        }
         : value || {};
+    const desiredById = value?.id
+        ? Object.values(desiredStates).find((candidate) =>
+            candidate?.target
+            && getBoardIdentityKey(candidate.target) === String(value.id)
+        )
+        : null;
+    const desired = desiredById || (
+        source.target
+            ? desiredStates[getBoardIdentityKey(source.target)]
+            : null
+    );
+    const desiredState = desired?.state || {};
     const target = {
-        platform: String(
+        platform: normalizePlatformValue(
             value?.target?.platform
-                ?? source.platform
-                ?? ''
-        ).trim(),
+                || source.platform
+                || desired?.target?.platform
+                || ''
+        ),
         track: String(
             value?.target?.track
-                ?? source.track
-                ?? ''
+                || source.track
+                || desired?.target?.track
+                || ''
         ).trim(),
-        sector: String(
+        sector: normalizeSectorValue(
             value?.target?.sector
-                ?? source.sector
-                ?? ''
-        ).trim()
+                || source.sector
+                || desired?.target?.sector
+                || ''
+        )
     };
-    const departureTime = source.departureTime
-        && Number.isInteger(Number(source.departureTime.hours))
-        && Number.isInteger(Number(source.departureTime.minutes))
-        && Number(source.departureTime.hours) >= 0
-        && Number(source.departureTime.hours) <= 23
-        && Number(source.departureTime.minutes) >= 0
-        && Number(source.departureTime.minutes) <= 59
-        ? {
-            hours: Number(source.departureTime.hours),
-            minutes: Number(source.departureTime.minutes)
-        }
-        : null;
-    const parsedDelay = parseDelayMinutes(source.delay);
-    const train = TRAIN_TYPES.some((type) => type.name === source.train)
-        ? source.train
+    target.track = normalizeTrackValue(target.track);
+    const departureTime = normalizeDepartureTime(source.departureTime)
+        || normalizeDepartureTime(desiredState.departureTime);
+    const rawDelay = source.delay ?? desiredState.delay;
+    const parsedDelay = parseDelayMinutes(rawDelay);
+    const rawTrain = source.train ?? desiredState.train;
+    const train = TRAIN_TYPES.some((type) => type.name === rawTrain)
+        ? rawTrain
         : '';
-    const trainNumber = normalizeTrainNumber(source.trainNumber);
+    const trainNumber = normalizeTrainNumber(
+        source.trainNumber ?? desiredState.trainNumber
+    );
+    const stations = Array.isArray(source.stations)
+        ? source.stations
+        : [];
 
+    const isLive = source.source === 'live'
+        || Boolean(source.liveKey);
+    const liveKey = isLive ? String(source.liveKey || source.id || '') : '';
+    const sourceTrainNumber = isLive
+        ? String(source.sourceTrainNumber || '').replace(/\D/g, '')
+        : '';
     return {
-        id: getBoardIdentityKey(target),
+        id: isLive
+            ? String(source.id || `live:${liveKey}`)
+            : getBoardIdentityKey(target),
+        source: isLive ? 'live' : 'manual',
+        liveKey,
+        liveStationKey: isLive
+            ? String(source.liveStationKey || LIVE_STATION_DEFAULTS.key)
+            : '',
+        dateKey: isLive ? String(source.dateKey || '') : '',
+        sourceTrainNumber,
         target,
         stations: [
-            String(
-                source.stations?.[0]
-                    ?? source.stationOne
-                    ?? ''
-            ).slice(0, 14),
-            String(
-                source.stations?.[1]
-                    ?? source.stationTwo
-                    ?? ''
-            ).slice(0, 14)
+            formatStationName(
+                stations[0]
+                    || source.stationOne
+                    || desiredState.stations?.[0]
+                    || ''
+            ),
+            formatStationName(
+                stations[1]
+                    || source.stationTwo
+                    || desiredState.stations?.[1]
+                    || ''
+            )
         ],
         train,
         trainNumber,
+        operator: String(source.operator || '').trim(),
         delay: parsedDelay === null ? '' : parsedDelay,
         departureTime,
-        lenses: normalizeManagedLensState(source.lenses),
+        lenses: normalizeManagedLensState(
+            source.lenses ?? desiredState.lenses
+        ),
         revision: Number(value?.revision) || 0,
         updatedAt: Number(value?.updatedAt) || 0
     };
@@ -309,9 +495,14 @@ const normalizeDeparture = (value) => {
 departures = departures
     .map(normalizeDeparture)
     .filter((departure) =>
-        departure.target.platform
-        && departure.target.track
-        && departure.departureTime
+        departure.departureTime
+        && (
+            departure.source === 'live'
+            || (
+                departure.target.platform
+                && departure.target.track
+            )
+        )
     );
 
 const persistState = () => {
@@ -323,9 +514,37 @@ const persistState = () => {
         ...settings,
         departures,
         desired: desiredStates,
+        liveDepartures: {
+            enabled: liveDeparturesEnabled,
+            apiUrl: liveApiUrl,
+            station: liveStationName,
+            stationKey: parseLiveSourceUrl(liveSourceUrl).key,
+            sourceUrl: liveSourceUrl
+        },
         revision: nextRevision,
         globalResetRevision,
         sort: sortState
+    });
+};
+
+const publishDepartureSnapshot = () => {
+    transport.publish('manage:departures', {
+        departures: departures.map((departure) => ({
+            ...departure,
+            target: { ...departure.target },
+            stations: [...departure.stations],
+            departureTime: departure.departureTime
+                ? { ...departure.departureTime }
+                : null,
+            lenses: departure.lenses
+                ? {
+                    ...departure.lenses,
+                    lenses: departure.lenses.lenses.map((lens) => ({ ...lens })),
+                    preDeparture: { ...departure.lenses.preDeparture }
+                }
+                : createDefaultLensState()
+        })),
+        revision: nextRevision
     });
 };
 
@@ -334,6 +553,63 @@ const publishSettings = ({ persist = true } = {}) => {
         persistState();
     }
     transport.publish('board:settings', getLightingSettingsState());
+};
+
+const syncFlapTimingControls = () => {
+    if (!flapTimingDurationInput || !flapTimingVariationInput) {
+        return;
+    }
+
+    flapTimingDurationInput.min = String(FLAP_TIMING_DURATION_MIN);
+    flapTimingDurationInput.max = String(FLAP_TIMING_DURATION_MAX);
+    flapTimingVariationInput.min = String(FLAP_TIMING_VARIATION_MIN);
+    flapTimingVariationInput.max = String(FLAP_TIMING_VARIATION_MAX);
+    flapTimingDurationInput.value = String(flapTiming.duration);
+    flapTimingVariationInput.value = String(flapTiming.variation);
+    flapTimingDurationOutput.textContent = `${flapTiming.duration} ms`;
+    flapTimingVariationOutput.textContent = `±${flapTiming.variation} ms`;
+};
+
+const updateFlapTimingFromControls = () => {
+    flapTiming = normalizeFlapTiming({
+        duration: flapTimingDurationInput.value,
+        variation: flapTimingVariationInput.value
+    });
+    syncFlapTimingControls();
+    publishSettings();
+};
+
+const syncDelayOffsetControls = () => {
+    if (!delayOffsetEnabledInput) {
+        return;
+    }
+
+    delayOffsetEnabledInput.checked = delayOffset;
+};
+
+const updateDelayOffsetFromControls = () => {
+    delayOffset = normalizeDelayOffset(delayOffsetEnabledInput.checked);
+    syncDelayOffsetControls();
+    publishSettings();
+    renderDeparturesTable();
+};
+
+const syncDepartureBoardRowControls = () => {
+    if (!departureBoardRowsInput) {
+        return;
+    }
+
+    departureBoardRowsInput.min = String(DEPARTURE_BOARD_ROW_COUNT_MIN);
+    departureBoardRowsInput.max = String(DEPARTURE_BOARD_ROW_COUNT_MAX);
+    departureBoardRowsInput.value = String(departureBoardRows);
+};
+
+const updateDepartureBoardRowsFromControls = () => {
+    departureBoardRows = normalizeDepartureBoardRowCount(
+        departureBoardRowsInput.value
+    );
+    syncDepartureBoardRowControls();
+    publishSettings();
 };
 
 const getFormTarget = () => normalizeBoardIdentity({
@@ -352,40 +628,93 @@ const formatDepartureTime = (departureTime) => {
     }`;
 };
 
+const isDepartureBoardPresence = (boardPresence) =>
+    boardPresence?.page === 'departureBoard';
+
 const findMatchingBoards = (target) => [...activeBoards.values()]
     .filter((boardPresence) =>
-        identitiesMatch(boardPresence.identity, target)
+        !isDepartureBoardPresence(boardPresence)
+        && identitiesMatch(boardPresence.identity, target)
     );
 
-const getLensPresentation = (departure, now = Date.now()) => {
+const getPreDepartureActivationTime = (departure) => {
+    const preDeparture = departure?.lenses?.preDeparture;
+    const lenses = Array.isArray(departure?.lenses?.lenses)
+        ? departure.lenses.lenses
+        : [];
+
+    if (!preDeparture?.enabled
+        || !lenses.some((lens) => lens.enabled && lens.blinking)) {
+        return null;
+    }
+
+    const departureDate = getEffectiveDepartureDate(
+        departure?.departureTime,
+        departure?.delay,
+        new Date(),
+        delayOffset
+    );
+    if (!departureDate) {
+        return null;
+    }
+
+    return departureDate.getTime()
+        - Number(preDeparture.seconds || 0) * 1000;
+};
+
+const getPreDepartureActive = (departure, now = Date.now()) => {
+    const activationTime = getPreDepartureActivationTime(departure);
+    return activationTime === null || now >= activationTime;
+};
+
+const clearLensActivationTimer = () => {
+    if (lensActivationTimer !== null) {
+        window.clearTimeout(lensActivationTimer);
+        lensActivationTimer = null;
+    }
+};
+
+const scheduleLensActivation = () => {
+    clearLensActivationTimer();
+    const now = Date.now();
+    const nextActivation = departures
+        .map(getPreDepartureActivationTime)
+        .filter((value) => value !== null && value > now)
+        .sort((first, second) => first - second)[0];
+
+    if (nextActivation === undefined) {
+        return;
+    }
+
+    lensActivationTimer = window.setTimeout(() => {
+        lensActivationTimer = null;
+        renderDeparturesTable();
+    }, Math.max(0, nextActivation - now) + 10);
+};
+
+const getLensPresentation = (
+    departure,
+    now = Date.now(),
+    rowIndex = 0
+) => {
     const settings = departure.lenses?.lenses || [];
-    const matching = findMatchingBoards(departure.target);
-    const liveState = matching[0]?.lensState;
-    const animationStartedAt = Number(liveState?.animationStartedAt)
-        || Number(departure.updatedAt)
-        || 0;
+    const synchronizeRows = departure.lenses?.synchronizeRows !== false;
+    const preDepartureActive = getPreDepartureActive(departure, now);
 
     return settings.map((setting, index) => {
-        const liveSetting = liveState?.lenses?.[index] || setting;
-        const preDepartureActive = !liveState?.preDeparture?.enabled
-            || liveState.preDepartureActive !== false;
-        const on = liveSetting.enabled && preDepartureActive;
-        const color = LENS_COLORS[liveSetting.color] || LENS_COLORS.green;
-        const blinkInterval = Number(liveSetting.blinkInterval)
-            || Number(setting.blinkInterval)
-            || 0.2;
-        const blinkDuration = blinkInterval * 2;
-        const elapsed = animationStartedAt > 0
-            ? (now - animationStartedAt) / 1000
-            : 0;
-        const animationPhase = (
-            (elapsed + index * blinkInterval) % blinkDuration
-            + blinkDuration
-        ) % blinkDuration;
+        const on = setting.enabled && preDepartureActive;
+        const color = LENS_COLORS[setting.color] || LENS_COLORS.green;
+        const blinkInterval = LENS_DEFAULTS.blinkInterval;
+        const animationPhase = getLensBlinkPhase({
+            now,
+            lensIndex: index,
+            rowIndex,
+            synchronizeRows
+        });
         return {
             color: color.light,
             on,
-            blinking: on && liveSetting.blinking,
+            blinking: on && setting.blinking,
             blinkInterval,
             animationPhase
         };
@@ -397,6 +726,7 @@ const renderDeparturesTable = () => {
         return;
     }
 
+    const now = new Date();
     const rows = [...departures].sort((first, second) => {
         const getValue = (departure) => {
             switch (sortState.key) {
@@ -408,6 +738,8 @@ const renderDeparturesTable = () => {
                     return departure.train;
                 case 'trainNumber':
                     return departure.trainNumber;
+                case 'operator':
+                    return departure.operator;
                 case 'delay':
                     return Number(departure.delay || 0);
                 case 'platform':
@@ -418,10 +750,12 @@ const renderDeparturesTable = () => {
                     return departure.target.sector;
                 case 'departureTime':
                 default:
-                    return departure.departureTime
-                        ? departure.departureTime.hours * 60
-                            + departure.departureTime.minutes
-                        : Number.POSITIVE_INFINITY;
+                    return getDepartureSortTimestamp(
+                        departure.departureTime,
+                        departure.delay,
+                        now,
+                        delayOffset
+                    );
             }
         };
         const left = getValue(first);
@@ -437,12 +771,19 @@ const renderDeparturesTable = () => {
     });
 
     departuresTableBody.replaceChildren();
-    const now = Date.now();
+    const boardOrder = [...departures].sort((first, second) =>
+        compareDeparturesByTime(first, second, now, delayOffset)
+    );
+
     rows.forEach((departure) => {
         const row = documentRef.createElement('tr');
         const lensCell = documentRef.createElement('td');
         lensCell.className = 'departure-lens-status';
-        getLensPresentation(departure, now).forEach((lens, index) => {
+        const boardRowIndex = Math.max(
+            0,
+            boardOrder.findIndex((item) => item.id === departure.id)
+        );
+        getLensPresentation(departure, now, boardRowIndex).forEach((lens, index) => {
             const symbol = documentRef.createElement('span');
             symbol.className = 'lens-status-symbol';
             symbol.classList.toggle('is-on', lens.on);
@@ -454,7 +795,7 @@ const renderDeparturesTable = () => {
             );
             symbol.style.setProperty(
                 '--lens-blink-delay',
-                `${lens.animationPhase}s`
+                `${-lens.animationPhase}s`
             );
             symbol.textContent = '●';
             symbol.setAttribute(
@@ -470,10 +811,11 @@ const renderDeparturesTable = () => {
             departure.stations[1],
             departure.train || '—',
             departure.trainNumber || '—',
+            departure.operator || '—',
             formatDepartureTime(departure.departureTime),
             departure.delay === '' ? '—' : `${departure.delay} min`,
-            departure.target.platform,
-            departure.target.track,
+            departure.target.platform || '—',
+            departure.target.track || '—',
             departure.target.sector || 'celá kolej'
         ].forEach((value) => {
             const cell = documentRef.createElement('td');
@@ -500,6 +842,7 @@ const renderDeparturesTable = () => {
 
     departuresEmptyState.hidden = rows.length > 0;
     departuresTable.hidden = rows.length === 0;
+    scheduleLensActivation();
     departuresTable.querySelectorAll('[data-sort-key]').forEach((button) => {
         const header = button.closest('th');
         const isActive = button.dataset.sortKey === sortState.key;
@@ -587,23 +930,30 @@ const renderActiveBoards = () => {
     }
 
     values.forEach((boardPresence) => {
+        const isDepartureBoard = isDepartureBoardPresence(boardPresence);
         const item = documentRef.createElement('div');
         item.className = 'active-board-item';
+        item.classList.toggle('is-departure-board', isDepartureBoard);
         item.classList.toggle(
             'is-unconfigured',
-            boardPresence.configured === false
+            !isDepartureBoard && boardPresence.configured === false
         );
         const identity = documentRef.createElement('strong');
-        identity.textContent = boardPresence.configured === false
+        identity.textContent = isDepartureBoard
+            ? 'Odjezdová tabule'
+            : boardPresence.configured === false
             ? 'Tabule bez identity'
             : formatBoardIdentity(boardPresence.identity);
         const details = documentRef.createElement('span');
-        details.textContent = `nástupištní tabule · instance ${
+        details.textContent = `${isDepartureBoard
+            ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} řádků`
+            : 'nástupištní tabule'} · instance ${
             boardPresence.instanceId || '—'
         }`;
         const status = documentRef.createElement('span');
         status.className = 'active-board-status';
-        status.textContent = boardPresence.configured === false
+        status.textContent = !isDepartureBoard
+            && boardPresence.configured === false
             ? 'Není nakonfigurovaná'
             : 'Online';
         const audioStatus = documentRef.createElement('span');
@@ -690,8 +1040,29 @@ const setDesiredState = (target, action, state, revision) => {
 TRAIN_TYPES.forEach((type) => {
     const option = documentRef.createElement('option');
     option.value = type.name;
-    option.textContent = type.name || 'Bez typu vlaku';
+    option.textContent = type.label || type.name || 'Bez typu vlaku';
     trainTypeInput.appendChild(option);
+});
+
+DEPARTURE_PLATFORM_VALUES.slice(1).forEach((platform) => {
+    const option = documentRef.createElement('option');
+    option.value = platform;
+    option.textContent = platform;
+    platformInput.appendChild(option);
+});
+
+DEPARTURE_TRACK_VALUES.slice(1).forEach((track) => {
+    const option = documentRef.createElement('option');
+    option.value = track;
+    option.textContent = track;
+    trackInput.appendChild(option);
+});
+
+DEPARTURE_SECTOR_VALUES.slice(1).forEach((sector) => {
+    const option = documentRef.createElement('option');
+    option.value = sector;
+    option.textContent = sector;
+    sectorInput.appendChild(option);
 });
 
 const lampControlElements = new Map();
@@ -751,7 +1122,7 @@ NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
     variationLabel.className = 'lamp-control-check';
     const variation = documentRef.createElement('input');
     variation.type = 'checkbox';
-    variationLabel.append(variation, documentRef.createTextNode(' Kolísá'));
+    variationLabel.append(variation, documentRef.createTextNode(' S efektem'));
     toggles.append(enabledLabel, variationLabel);
 
     const intensityLabel = documentRef.createElement('label');
@@ -784,7 +1155,7 @@ NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
 
     const fadeLabel = documentRef.createElement('label');
     fadeLabel.className = 'lamp-control-select';
-    fadeLabel.appendChild(documentRef.createTextNode('Pohasínání'));
+    fadeLabel.appendChild(documentRef.createTextNode('Efekt'));
     const fade = documentRef.createElement('select');
     NIGHT_FADE_MODES.forEach((mode) => {
         const option = documentRef.createElement('option');
@@ -827,11 +1198,13 @@ const syncLensControls = () => {
 
     controls.enabled.checked = settings.some((setting) => setting.enabled);
     controls.blinking.checked = true;
+    controls.synchronizeRows.checked =
+        lensState.synchronizeRows !== false;
     controls.firstColor.value = settings[0].color;
     controls.secondColor.value = (settings[1] || settings[0]).color;
-    controls.blinkInterval.value = String(settings[0].blinkInterval);
+    controls.blinkInterval.value = String(LENS_DEFAULTS.blinkInterval);
     controls.blinkIntervalOutput.textContent =
-        `${settings[0].blinkInterval.toFixed(1)} s`;
+        `${LENS_DEFAULTS.blinkInterval.toFixed(1)} s`;
     controls.preDepartureEnabled.checked = lensState.preDeparture.enabled;
     controls.preDepartureSeconds.value = String(
         lensState.preDeparture.seconds
@@ -848,11 +1221,13 @@ const updateLensFromControls = () => {
         ...lens,
         enabled: controls.enabled.checked,
         blinking: true,
+        blinkInterval: LENS_DEFAULTS.blinkInterval,
+        blinkDelay: index * LENS_DEFAULTS.blinkInterval,
         color: index === 0
             ? controls.firstColor.value
-            : controls.secondColor.value,
-        blinkInterval: Number(controls.blinkInterval.value)
+            : controls.secondColor.value
     }));
+    state.synchronizeRows = controls.synchronizeRows.checked;
     state.preDeparture = {
         enabled: controls.preDepartureEnabled.checked,
         seconds: Number(controls.preDepartureSeconds.value)
@@ -890,6 +1265,7 @@ if (lensControls) {
     enabledLabel.className = 'lamp-control-check';
     const enabled = documentRef.createElement('input');
     enabled.type = 'checkbox';
+    enabled.checked = true;
     enabledLabel.append(enabled, documentRef.createTextNode(' Svítí'));
 
     const blinkingLabel = documentRef.createElement('label');
@@ -914,10 +1290,21 @@ if (lensControls) {
     });
     blinkingLabel.append(blinking, documentRef.createTextNode(' Bliká'));
 
+    const synchronizeRowsLabel = documentRef.createElement('label');
+    synchronizeRowsLabel.className = 'lamp-control-check';
+    const synchronizeRows = documentRef.createElement('input');
+    synchronizeRows.type = 'checkbox';
+    synchronizeRows.checked = true;
+    synchronizeRowsLabel.append(
+        synchronizeRows,
+        documentRef.createTextNode(' Stejná strana ve všech řádcích')
+    );
+
     const preDepartureEnabledLabel = documentRef.createElement('label');
     preDepartureEnabledLabel.className = 'lamp-control-check';
     const preDepartureEnabled = documentRef.createElement('input');
     preDepartureEnabled.type = 'checkbox';
+    preDepartureEnabled.checked = true;
     preDepartureEnabledLabel.append(
         preDepartureEnabled,
         documentRef.createTextNode(' Rozblikat před odjezdem')
@@ -925,6 +1312,7 @@ if (lensControls) {
     toggles.append(
         enabledLabel,
         blinkingLabel,
+        synchronizeRowsLabel,
         preDepartureEnabledLabel
     );
 
@@ -944,6 +1332,13 @@ if (lensControls) {
     blinkInterval.min = String(LENS_BLINK_INTERVAL_MIN);
     blinkInterval.max = String(LENS_BLINK_INTERVAL_MAX);
     blinkInterval.step = '0.1';
+    blinkInterval.value = String(LENS_DEFAULTS.blinkInterval);
+    blinkInterval.disabled = true;
+    blinkInterval.readOnly = true;
+    blinkInterval.setAttribute('disabled', 'disabled');
+    blinkInterval.setAttribute('readonly', 'readonly');
+    blinkInterval.setAttribute('aria-readonly', 'true');
+    blinkInterval.title = 'Interval je sjednocený pro všechny řádky.';
     blinkIntervalLabel.append(blinkIntervalHeader, blinkInterval);
 
     const preDepartureSecondsLabel = documentRef.createElement('label');
@@ -983,6 +1378,7 @@ if (lensControls) {
     lensControlElements.set('component', {
         enabled,
         blinking,
+        synchronizeRows,
         firstColor: firstColor.select,
         secondColor: secondColor.select,
         blinkInterval,
@@ -995,10 +1391,10 @@ if (lensControls) {
     [
         enabled,
         blinking,
+        synchronizeRows,
         preDepartureEnabled,
         firstColor.select,
         secondColor.select,
-        blinkInterval,
         preDepartureSeconds
     ]
         .forEach((input) => {
@@ -1034,6 +1430,21 @@ clockLightIntensityInput.addEventListener('input', updateClockLightFromControls)
     );
 });
 
+flapTimingDurationInput.addEventListener('input', updateFlapTimingFromControls);
+flapTimingVariationInput.addEventListener('input', updateFlapTimingFromControls);
+syncFlapTimingControls();
+delayOffsetEnabledInput?.addEventListener('change', updateDelayOffsetFromControls);
+syncDelayOffsetControls();
+departureBoardRowsInput?.addEventListener(
+    'input',
+    updateDepartureBoardRowsFromControls
+);
+departureBoardRowsInput?.addEventListener(
+    'change',
+    updateDepartureBoardRowsFromControls
+);
+syncDepartureBoardRowControls();
+
 const renderNightMode = () => {
     documentRef.body.classList.toggle('manage-night-mode', nightMode);
     lampSettingsPanel.hidden = !nightMode;
@@ -1056,12 +1467,44 @@ const setNightMode = (isNight, { persist = true, publish = true } = {}) => {
     }
 };
 
+const sunSchedule = new SunSchedule({
+    onChange: (isNight) => {
+        if (!autoNightMode) {
+            return;
+        }
+
+        setNightMode(isNight);
+    }
+});
+
+const syncAutomaticNightMode = () => {
+    if (!autoNightMode) {
+        sunSchedule.stop();
+        return;
+    }
+
+    if (sunSchedule.running) {
+        sunSchedule.update();
+        return;
+    }
+
+    sunSchedule.start();
+};
+
+const handleVisibilityChange = () => {
+    if (!documentRef.hidden) {
+        syncAutomaticNightMode();
+    }
+};
+documentRef.addEventListener('visibilitychange', handleVisibilityChange);
+
 const setAutomaticNightMode = (
     isEnabled,
     { persist = true, publish = true } = {}
 ) => {
     autoNightMode = Boolean(isEnabled);
     renderNightMode();
+    syncAutomaticNightMode();
 
     if (publish) {
         publishSettings({ persist });
@@ -1081,7 +1524,11 @@ autoNightModeInput.addEventListener('change', () => {
     setAutomaticNightMode(autoNightModeInput.checked);
     setBoardFormStatus(
         autoNightMode
-            ? 'Automatický režim podle slunce zapnut.'
+            ? (
+                nightMode
+                    ? 'Noční režim podle slunce.'
+                    : 'Denní režim podle slunce.'
+            )
             : 'Automatický režim podle slunce vypnut.'
     );
 });
@@ -1165,10 +1612,13 @@ const syncBoardPresence = (boardPresence) => {
 
 const updateBoardPresence = (message) => {
     const payload = message.payload || {};
+    const page = payload.page || 'platformTable';
+    const isDepartureBoard = page === 'departureBoard';
     const identity = normalizeBoardIdentity(payload.identity);
-    const boardId = payload.boardId || getBoardIdentityKey(identity);
+    const boardId = payload.boardId
+        || (isDepartureBoard ? 'departure-board' : getBoardIdentityKey(identity));
     const instanceId = payload.instanceId || message.source;
-    const key = `${boardId}:${instanceId}`;
+    const key = `${page}:${boardId}:${instanceId}`;
     const oldEntry = [...activeBoards.entries()].find(
         ([, presence]) => presence.instanceId === instanceId
     );
@@ -1176,15 +1626,20 @@ const updateBoardPresence = (message) => {
         activeBoards.delete(oldEntry[0]);
     }
     const previous = activeBoards.get(key) || oldEntry?.[1];
-    const sameBoardIdentity = previous?.boardId === boardId;
+    const sameBoardIdentity = previous?.boardId === boardId
+        && previous?.page === page;
     const previousLensState = JSON.stringify(previous?.lensState);
     const boardPresence = {
         ...previous,
+        page,
         boardId,
         instanceId,
         identity,
-        configured: payload.configured !== false
-            && Boolean(identity.platform && identity.track),
+        configured: isDepartureBoard || (
+            payload.configured !== false
+            && Boolean(identity.platform && identity.track)
+        ),
+        rowCount: Number(payload.rowCount) || previous?.rowCount || 0,
         capabilities: payload.capabilities || previous?.capabilities || [],
         appliedRevision: Number(payload.appliedRevision)
             || previous?.appliedRevision
@@ -1212,7 +1667,9 @@ const updateBoardPresence = (message) => {
         || !previous) {
         renderDeparturesTable();
     }
-    syncBoardPresence(boardPresence);
+    if (!isDepartureBoard) {
+        syncBoardPresence(boardPresence);
+    }
 };
 
 const pruneActiveBoards = () => {
@@ -1288,7 +1745,50 @@ const finishBoardAction = (requestId, message) => {
     renderDeparturesTable();
 };
 
+const finishBackgroundBoardAction = (requestId, message) => {
+    const pending = pendingBackgroundActions.get(requestId);
+    if (!pending) {
+        return false;
+    }
+
+    const instanceId = message.payload?.instanceId || message.source;
+    if (pending.expectedInstances.size > 0
+        && !pending.expectedInstances.has(instanceId)) {
+        return true;
+    }
+
+    pending.acknowledgedInstances.add(instanceId);
+    const boardPresence = [...activeBoards.values()].find(
+        (presence) => presence.instanceId === instanceId
+    );
+    if (boardPresence) {
+        boardPresence.appliedRevision = Number(message.payload?.revision)
+            || boardPresence.appliedRevision;
+        boardPresence.lensState = message.payload?.lensState
+            || boardPresence.lensState;
+        boardPresence.lastSeen = Date.now();
+        boardPresence.syncPendingRevision = null;
+    }
+
+    if (message.payload?.ok === false
+        || pending.acknowledgedInstances.size
+            >= pending.expectedInstances.size) {
+        window.clearTimeout(pending.timeout);
+        pendingBackgroundActions.delete(requestId);
+        pending.resolve(message.payload?.ok !== false);
+        renderActiveBoards();
+        renderDeparturesTable();
+    }
+
+    return true;
+};
+
 transport.subscribe((message) => {
+    if (message.type === 'departure-board:hello') {
+        publishDepartureSnapshot();
+        return;
+    }
+
     if (message.type === 'board:ready'
         || message.type === 'board:heartbeat') {
         updateBoardPresence(message);
@@ -1299,14 +1799,15 @@ transport.subscribe((message) => {
     }
 
     if (message.type === 'board:mode') {
-        if (typeof message.payload?.nightMode === 'boolean') {
-            nightMode = message.payload.nightMode;
-        }
         if (typeof message.payload?.autoNightMode === 'boolean') {
             autoNightMode = message.payload.autoNightMode;
         }
+        if (typeof message.payload?.nightMode === 'boolean' && !autoNightMode) {
+            nightMode = message.payload.nightMode;
+        }
         renderNightMode();
         persistState();
+        syncAutomaticNightMode();
         return;
     }
 
@@ -1343,6 +1844,9 @@ transport.subscribe((message) => {
 
         if (pendingActions.has(message.requestId)) {
             finishBoardAction(message.requestId, message);
+            return;
+        }
+        if (finishBackgroundBoardAction(message.requestId, message)) {
             return;
         }
 
@@ -1402,9 +1906,13 @@ const sendBoardAction = (
             ? findMatchingBoards(target).map(
                 (boardPresence) => boardPresence.instanceId
             )
-            : [...activeBoards.values()].map(
+            : [...activeBoards.values()]
+                .filter((boardPresence) =>
+                    !isDepartureBoardPresence(boardPresence)
+                )
+                .map(
                 (boardPresence) => boardPresence.instanceId
-            )
+                )
     );
     const requestId = transport.publish('board:command', {
         action,
@@ -1441,6 +1949,61 @@ const sendBoardAction = (
     return requestId;
 };
 
+const sendBackgroundBoardAction = (
+    action,
+    state,
+    target,
+    revision
+) => {
+    const expectedInstances = new Set(
+        findMatchingBoards(target).map(
+            (boardPresence) => boardPresence.instanceId
+        )
+    );
+    const requestId = `live-${Date.now()}-${
+        Math.random().toString(36).slice(2)
+    }`;
+
+    if (expectedInstances.size === 0) {
+        transport.publish('board:command', {
+            action,
+            state,
+            target,
+            settings: getLightingSettingsState(),
+            revision
+        }, { requestId });
+        return Promise.resolve(true);
+    }
+
+    const promise = new Promise((resolve) => {
+        const timeout = window.setTimeout(() => {
+            const pending = pendingBackgroundActions.get(requestId);
+            if (!pending) {
+                return;
+            }
+            pendingBackgroundActions.delete(requestId);
+            resolve(false);
+        }, 10000);
+
+        pendingBackgroundActions.set(requestId, {
+            expectedInstances,
+            acknowledgedInstances: new Set(),
+            resolve,
+            timeout
+        });
+    });
+
+    transport.publish('board:command', {
+        action,
+        state,
+        target,
+        settings: getLightingSettingsState(),
+        revision
+    }, { requestId });
+
+    return promise;
+};
+
 const getFormState = () => {
     const [hours, minutes] = departureTimeInput.value.split(':').map(Number);
     const parsedDelay = parseDelayMinutes(delayValueInput.value);
@@ -1456,15 +2019,16 @@ const getFormState = () => {
 
 const getEmptyState = () => ({
     ...createEmptyBoardState(),
-    lenses: createDefaultLensState()
+    lenses: createEmptyLensState()
 });
 
 const getBoardStateFromDeparture = (departure) => ({
     stations: [
-        String(departure.stations?.[0] || '').slice(0, 14),
-        String(departure.stations?.[1] || '').slice(0, 14)
+        formatStationName(departure.stations?.[0] || ''),
+        formatStationName(departure.stations?.[1] || '')
     ],
     train: departure.train,
+    trainNumber: departure.trainNumber,
     delay: departure.delay,
     departureTime: departure.departureTime
         ? { ...departure.departureTime }
@@ -1472,8 +2036,353 @@ const getBoardStateFromDeparture = (departure) => ({
     lenses: departure.lenses
 });
 
+const sameTarget = (first, second) =>
+    first?.platform === second?.platform
+    && first?.track === second?.track
+    && first?.sector === second?.sector;
+
+const isConfiguredTarget = (target) =>
+    Boolean(target?.platform && target?.track);
+
+const sameDepartureContent = (first, second) =>
+    JSON.stringify({
+        stations: first?.stations || [],
+        train: first?.train || '',
+        trainNumber: first?.trainNumber || '',
+        operator: first?.operator || '',
+        delay: first?.delay ?? '',
+        departureTime: first?.departureTime || null,
+        target: first?.target || {},
+        lenses: first?.lenses || null
+    }) === JSON.stringify({
+        stations: second?.stations || [],
+        train: second?.train || '',
+        trainNumber: second?.trainNumber || '',
+        operator: second?.operator || '',
+        delay: second?.delay ?? '',
+        departureTime: second?.departureTime || null,
+        target: second?.target || {},
+        lenses: second?.lenses || null
+    });
+
+const sameLiveTrainNumber = (first, second) => {
+    if (!first || !second) {
+        return false;
+    }
+    return String(first).slice(-4) === String(second).slice(-4);
+};
+
+const findPreviousLiveDeparture = (departure, previousLive) => {
+    const byKey = previousLive.find((item) =>
+        item.liveKey && item.liveKey === departure.liveKey
+    );
+    if (byKey) {
+        return byKey;
+    }
+
+    const sourceTrainNumber = departure.sourceTrainNumber
+        || departure.trainNumber;
+    if (!sourceTrainNumber) {
+        return null;
+    }
+
+    return previousLive.find((item) => {
+        const previousNumber = item.sourceTrainNumber || item.trainNumber;
+        return sameLiveTrainNumber(previousNumber, sourceTrainNumber)
+            && (
+                !departure.dateKey
+                || !item.dateKey
+                || item.dateKey === departure.dateKey
+            )
+            && (
+                !departure.liveStationKey
+                || !item.liveStationKey
+                || item.liveStationKey === departure.liveStationKey
+            );
+    }) || null;
+};
+
+const reconcileLiveDepartures = async (values) => {
+    const previousDepartures = [...departures];
+    const previousLive = previousDepartures.filter(
+        (departure) => departure.source === 'live'
+    );
+    const normalizedLive = (Array.isArray(values) ? values : [])
+        .map((value) => normalizeDeparture({
+            ...value,
+            source: 'live',
+            lenses: getManagedLensState()
+        }))
+        .filter((departure) => departure.departureTime);
+
+    const nextLive = normalizedLive.map((departure) => {
+        const previous = findPreviousLiveDeparture(departure, previousLive);
+        return {
+            ...departure,
+            id: previous?.id || departure.id,
+            source: 'live',
+            liveKey: departure.liveKey || previous?.liveKey,
+            liveStationKey: departure.liveStationKey
+                || previous?.liveStationKey
+                || LIVE_STATION_DEFAULTS.key,
+            dateKey: departure.dateKey || previous?.dateKey || '',
+            sourceTrainNumber: departure.sourceTrainNumber
+                || previous?.sourceTrainNumber
+                || '',
+            lenses: previous?.lenses || departure.lenses
+        };
+    });
+
+    const liveTargetKeys = new Set(
+        nextLive
+            .filter((departure) => isConfiguredTarget(departure.target))
+            .map((departure) => getBoardIdentityKey(departure.target))
+    );
+    const manualDepartures = previousDepartures.filter(
+        (departure) =>
+            departure.source !== 'live'
+            && !liveTargetKeys.has(getBoardIdentityKey(departure.target))
+    );
+    const pairedPrevious = new Map(
+        nextLive.map((departure) => [
+            departure,
+            findPreviousLiveDeparture(departure, previousLive)
+        ])
+    );
+    const matchedPrevious = new Set(
+        [...pairedPrevious.values()].filter(Boolean)
+    );
+    const changed = previousLive.length !== nextLive.length
+        || previousLive.some((departure) => !matchedPrevious.has(departure))
+        || nextLive.some((departure) => {
+            const previous = pairedPrevious.get(departure);
+            return !previous || !sameDepartureContent(previous, departure);
+        });
+
+    if (!changed) {
+        return {
+            changed: false,
+            applied: 0
+        };
+    }
+
+    departures = [...manualDepartures, ...nextLive];
+    const commands = [];
+
+    previousLive.forEach((previous) => {
+        const next = nextLive.find((departure) =>
+            pairedPrevious.get(departure) === previous
+        );
+        const targetChanged = next && !sameTarget(
+            previous.target,
+            next.target
+        );
+        const removed = !next;
+        if ((removed || targetChanged)
+            && isConfiguredTarget(previous.target)) {
+            const revision = nextStateRevision();
+            setDesiredState(
+                previous.target,
+                'reset-board',
+                getEmptyState(),
+                revision
+            );
+            commands.push(
+                sendBackgroundBoardAction(
+                    'reset-board',
+                    getEmptyState(),
+                    previous.target,
+                    revision
+                )
+            );
+        }
+    });
+
+    nextLive.forEach((next) => {
+        const previous = pairedPrevious.get(next);
+        const needsApply = !previous
+            || !sameDepartureContent(previous, next)
+            || !sameTarget(previous.target, next.target);
+        if (!needsApply || !isConfiguredTarget(next.target)) {
+            return;
+        }
+
+        const revision = nextStateRevision();
+        next.revision = revision;
+        setDesiredState(
+            next.target,
+            'apply-board',
+            getBoardStateFromDeparture(next),
+            revision
+        );
+        commands.push(
+            sendBackgroundBoardAction(
+                'apply-board',
+                getBoardStateFromDeparture(next),
+                next.target,
+                revision
+            )
+        );
+    });
+
+    persistState();
+    renderDeparturesTable();
+    publishDepartureSnapshot();
+    const results = await Promise.all(commands);
+    return {
+        changed: true,
+        applied: results.filter(Boolean).length
+    };
+};
+
+const setLiveStatus = (message, isError = false) => {
+    if (!liveDeparturesStatus) {
+        return;
+    }
+    liveDeparturesStatus.textContent = message;
+    liveDeparturesStatus.classList.toggle('is-error', isError);
+};
+
+const renderManageHeaderStation = () => {
+    if (!manageHeaderStation) {
+        return;
+    }
+
+    const name = String(liveStationName || '').trim();
+    const visible = liveDeparturesEnabled && Boolean(name);
+    manageHeaderStation.hidden = !visible;
+    manageHeaderStation.textContent = visible ? `stanice: ${name}` : '';
+};
+
+const renderLiveSourceStation = () => {
+    const name = String(liveStationName || '').trim();
+    renderManageHeaderStation();
+    if (!liveSourceStation || !liveSourceStationLink) {
+        return;
+    }
+
+    if (!name) {
+        liveSourceStation.hidden = true;
+        liveSourceStationLink.removeAttribute('href');
+        liveSourceStationLink.textContent = '';
+        return;
+    }
+
+    liveSourceStation.hidden = false;
+    liveSourceStationLink.textContent = name;
+    liveSourceStationLink.href = liveSourceUrl;
+};
+
+const renderLiveControls = () => {
+    if (liveSourceUrlInput) {
+        liveSourceUrlInput.value = liveSourceUrl;
+        liveSourceUrlInput.disabled = liveDeparturesEnabled;
+    }
+    renderLiveSourceStation();
+    if (liveApiUrlInput) {
+        liveApiUrlInput.value = liveApiUrl;
+        liveApiUrlInput.disabled = liveDeparturesEnabled;
+    }
+    if (liveToggleButton) {
+        liveToggleButton.textContent = liveDeparturesEnabled
+            ? 'Zastavit live odjezdy'
+            : 'Spustit live odjezdy';
+        liveToggleButton.disabled = livePollInProgress;
+        liveToggleButton.setAttribute(
+            'aria-pressed',
+            String(liveDeparturesEnabled)
+        );
+    }
+    if (liveDeparturesState) {
+        liveDeparturesState.textContent = liveDeparturesEnabled
+            ? 'Live odjezdy jsou spuštěné.'
+            : 'Live odjezdy jsou vypnuté.';
+    }
+};
+
+const stopLivePolling = () => {
+    liveRunToken += 1;
+    if (livePollTimer !== null) {
+        window.clearInterval(livePollTimer);
+        livePollTimer = null;
+    }
+};
+
+const pollLiveDepartures = async () => {
+    if (!liveDeparturesEnabled || livePollInProgress) {
+        return;
+    }
+
+    livePollInProgress = true;
+    renderLiveControls();
+    const runToken = liveRunToken;
+    try {
+        const payload = await fetchLiveDepartures({
+            apiUrl: liveApiUrl,
+            sourceUrl: liveSourceUrl
+        });
+        if (!liveDeparturesEnabled || runToken !== liveRunToken) {
+            return;
+        }
+
+        const result = await reconcileLiveDepartures(payload.departures);
+        const fetchedAt = payload.fetchedAt
+            ? new Date(payload.fetchedAt).toLocaleTimeString('cs-CZ')
+            : new Date().toLocaleTimeString('cs-CZ');
+        if (typeof payload.station === 'string' && payload.station.trim()) {
+            liveStationName = payload.station.trim();
+            persistState();
+            renderLiveSourceStation();
+        }
+        const stationName = liveStationName || 'tabule SŽ';
+        setLiveStatus(
+            result.changed
+                ? `Aktualizováno ${fetchedAt} (${stationName}): ${
+                    payload.departures.length
+                } odjezdů.`
+                : `Beze změny, poslední kontrola ${fetchedAt} (${stationName}).`
+        );
+    } catch (error) {
+        if (runToken === liveRunToken) {
+            setLiveStatus(
+                error instanceof Error
+                    ? error.message
+                    : 'Live odjezdy se nepodařilo načíst.',
+                true
+            );
+        }
+    } finally {
+        livePollInProgress = false;
+        renderLiveControls();
+    }
+};
+
+const startLivePolling = () => {
+    stopLivePolling();
+    liveDeparturesEnabled = true;
+    renderLiveControls();
+    persistState();
+    setLiveStatus('Načítám aktuální odjezdy…');
+    void pollLiveDepartures();
+    livePollTimer = window.setInterval(
+        pollLiveDepartures,
+        LIVE_POLL_INTERVAL_MS
+    );
+};
+
+const stopLiveDepartures = () => {
+    stopLivePolling();
+    liveDeparturesEnabled = false;
+    renderLiveControls();
+    persistState();
+    setLiveStatus('Live odjezdy byly zastaveny.');
+};
+
 let desiredStatesRepaired = false;
 departures.forEach((departure) => {
+    if (departure.source === 'live') {
+        return;
+    }
     const key = getBoardIdentityKey(departure.target);
     const revision = departure.revision || ++nextRevision;
     nextRevision = Math.max(nextRevision, revision);
@@ -1499,6 +2408,43 @@ departures.forEach((departure) => {
     }
 });
 
+// Recover active departures that are present in the desired-state registry
+// but missing from an older/incomplete departures collection.
+Object.values(desiredStates).forEach((desired) => {
+    if (desired?.action !== 'apply-board'
+        || !desired.target
+        || !desired.state?.departureTime) {
+        return;
+    }
+
+    const identity = getBoardIdentityKey(desired.target);
+    const alreadyLoaded = departures.some((departure) =>
+        departure.id === identity
+        || getBoardIdentityKey(departure.target) === identity
+    );
+    if (alreadyLoaded) {
+        return;
+    }
+
+    const recovered = normalizeDeparture({
+        id: identity,
+        target: desired.target,
+        ...desired.state,
+        revision: desired.revision,
+        updatedAt: desired.updatedAt
+    });
+    if (recovered.target.platform
+        && recovered.target.track
+        && recovered.departureTime) {
+        departures.push(recovered);
+        nextRevision = Math.max(
+            nextRevision,
+            Number(recovered.revision) || 0
+        );
+        desiredStatesRepaired = true;
+    }
+});
+
 const upsertDeparture = (state, target) => {
     const revision = nextStateRevision();
     const departure = normalizeDeparture({
@@ -1519,6 +2465,7 @@ const upsertDeparture = (state, target) => {
     );
     persistState();
     renderDeparturesTable();
+    publishDepartureSnapshot();
     return departure;
 };
 
@@ -1537,6 +2484,7 @@ const resetDeparture = (departure) => {
     );
     persistState();
     renderDeparturesTable();
+    publishDepartureSnapshot();
     sendBoardAction(
         'reset-board',
         getEmptyState(),
@@ -1583,10 +2531,42 @@ if (savedState?.form && typeof savedState.form === 'object') {
 if (desiredStatesRepaired) {
     persistState();
 }
+const padClockPart = (value) => String(value).padStart(2, '0');
+
+const formatManageClock = (date) =>
+    `${padClockPart(date.getHours())}:`
+    + `${padClockPart(date.getMinutes())}:`
+    + `${padClockPart(date.getSeconds())}`;
+
+const renderManageClock = (date = new Date()) => {
+    if (!manageHeaderClock) {
+        return;
+    }
+
+    manageHeaderClock.textContent = formatManageClock(date);
+    manageHeaderClock.dateTime = date.toISOString();
+};
+
+let manageClockTimer = null;
+const scheduleManageClock = () => {
+    const now = new Date();
+    renderManageClock(now);
+    manageClockTimer = window.setTimeout(
+        scheduleManageClock,
+        1000 - now.getMilliseconds()
+    );
+};
+
+scheduleManageClock();
+
 renderActiveBoards();
 renderDeparturesTable();
 syncClockLightControls();
+syncFlapTimingControls();
+syncDelayOffsetControls();
+syncDepartureBoardRowControls();
 renderNightMode();
+syncAutomaticNightMode();
 
 startButton.textContent = 'Načíst příklad';
 startButton.setAttribute('aria-pressed', 'false');
@@ -1624,6 +2604,7 @@ startButton.addEventListener('click', () => {
     setDesiredState(target, 'reset-board', getEmptyState(), revision);
     persistState();
     renderDeparturesTable();
+    publishDepartureSnapshot();
     startButton.textContent = 'Načíst příklad';
     startButton.setAttribute('aria-pressed', 'false');
     sendBoardAction(
@@ -1644,18 +2625,33 @@ resetAllSettingsButton.addEventListener('click', () => {
 
     storage.clear();
     legacyStorage.clear();
+    stopLivePolling();
+    liveDeparturesEnabled = false;
+    liveApiUrl = getDefaultLiveApiUrl();
+    liveSourceUrl = LIVE_STATION_DEFAULTS.sourceUrl;
+    liveStationName = LIVE_STATION_DEFAULTS.name;
     departures = [];
     desiredStates = {};
     lighting.reset();
     lensDisplay.setImmediate(createDefaultLensState());
     nightMode = false;
     autoNightMode = false;
+    sunSchedule.stop();
+    flapTiming = normalizeFlapTiming(FLAP_TIMING_DEFAULTS);
+    delayOffset = DELAY_OFFSET_DEFAULT;
+    departureBoardRows = DEPARTURE_BOARD_ROW_COUNT_DEFAULT;
     renderNightMode();
+    renderLiveControls();
+    setLiveStatus('Live odjezdy byly vypnuté obnovením nastavení.');
     syncLensControls();
     NIGHT_LIGHT_DEFAULTS.forEach((setting) =>
         syncLampControls(lighting.getLampSettings()[setting.id])
     );
     syncClockLightControls();
+    syncFlapTimingControls();
+    syncDelayOffsetControls();
+    syncDepartureBoardRowControls();
+    publishSettings({ persist: false });
     setFormValues(exampleState);
     exampleActive = false;
     startButton.textContent = 'Načíst příklad';
@@ -1664,12 +2660,13 @@ resetAllSettingsButton.addEventListener('click', () => {
     const resetRevision = nextStateRevision();
     globalResetRevision = resetRevision;
     persistState();
+    publishDepartureSnapshot();
 
     sendBoardAction(
         'reset-all',
         {
             ...createEmptyBoardState(),
-            lenses: createDefaultLensState()
+            lenses: createEmptyLensState()
         },
         'Všechna nastavení byla obnovena na výchozí hodnoty.',
         {
@@ -1746,7 +2743,49 @@ boardForm.addEventListener('submit', (event) => {
         input.addEventListener('change', persistState);
     });
 
+liveSourceUrlInput?.addEventListener('change', () => {
+    const value = liveSourceUrlInput.value.trim();
+    const parsed = parseLiveSourceUrl(value);
+    if (value && !parsed.valid) {
+        setLiveStatus(
+            'URL musí být tabule Správy železnic ve formátu '
+            + 'StationTable.aspx?Key=…',
+            true
+        );
+        renderLiveControls();
+        return;
+    }
+
+    if (parsed.key !== parseLiveSourceUrl(liveSourceUrl).key) {
+        liveStationName = parsed.key === LIVE_STATION_DEFAULTS.key
+            ? LIVE_STATION_DEFAULTS.name
+            : '';
+    }
+    liveSourceUrl = parsed.sourceUrl;
+    renderLiveControls();
+    persistState();
+    setLiveStatus('');
+});
+
+liveApiUrlInput?.addEventListener('change', () => {
+    liveApiUrl = normalizeLiveApiUrl(
+        liveApiUrlInput.value.trim() || getDefaultLiveApiUrl()
+    );
+    renderLiveControls();
+    persistState();
+});
+
+liveToggleButton?.addEventListener('click', () => {
+    if (liveDeparturesEnabled) {
+        stopLiveDepartures();
+    } else {
+        startLivePolling();
+    }
+});
+
+renderLiveControls();
 publishDiscovery();
+publishDepartureSnapshot();
 heartbeatTimer = window.setInterval(publishDiscovery, 4000);
 presenceTimer = window.setInterval(pruneActiveBoards, 4000);
 
@@ -1757,7 +2796,14 @@ window.pragotron = {
         form: getFormState(),
         target: getFormTarget(),
         ...getSettingsState(),
-        departures: [...departures]
+        departures: [...departures],
+        liveDepartures: {
+            enabled: liveDeparturesEnabled,
+            apiUrl: liveApiUrl,
+            station: liveStationName,
+            stationKey: parseLiveSourceUrl(liveSourceUrl).key,
+            sourceUrl: liveSourceUrl
+        }
     }),
     getActiveBoards: () => [...activeBoards.values()].map((boardPresence) => ({
         ...boardPresence,
@@ -1766,17 +2812,32 @@ window.pragotron = {
     setNightMode,
     setAutomaticNightMode,
     destroy: () => {
+        documentRef.removeEventListener('visibilitychange', handleVisibilityChange);
+        sunSchedule.destroy();
+        stopLivePolling();
+        pendingBackgroundActions.forEach(({ timeout, resolve }) => {
+            window.clearTimeout(timeout);
+            resolve(false);
+        });
+        pendingBackgroundActions.clear();
         pendingActions.forEach(({ timeout }) => window.clearTimeout(timeout));
         pendingActions.clear();
         pendingIdentificationActions.forEach(({ timeout }) =>
             window.clearTimeout(timeout)
         );
         pendingIdentificationActions.clear();
+        clearLensActivationTimer();
+        window.clearTimeout(manageClockTimer);
         window.clearInterval(heartbeatTimer);
         window.clearInterval(presenceTimer);
+        manageClockTimer = null;
         heartbeatTimer = null;
         presenceTimer = null;
         transport.close();
         lensDisplay.destroy();
     }
 };
+
+if (liveDeparturesEnabled) {
+    startLivePolling();
+}

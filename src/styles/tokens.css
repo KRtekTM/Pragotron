@@ -22,6 +22,7 @@
 
 :root {
     --flap-background: #222;
+    --flap-dark-background: #181818;
     --flap-foreground: #fff;
     --cabinet-day-background: #34567e;
     --cabinet-night-background: #101a2a;
@@ -30,6 +31,10 @@
     --ridge-inner-color: #808080;
     --control-focus: #ffd800;
     --control-radius: 0.35rem;
+}
+
+#tabule.departure-board {
+    --flap-background: var(--flap-dark-background);
 }
 
 html,

@@ -55,6 +55,10 @@
     border-top-right-radius: 1.5em;
 }
 
+#tabule.departure-board, #tabule.departure-board tr:first-of-type td {
+    border-radius: 0;
+}
+
 #tabule tr + tr td {
     border-top: 0;
 }
