@@ -80,7 +80,7 @@
     "#",
     "'"
   ]);
-  var STATION_FLIP_DURATION = 190;
+  var STATION_FLIP_DURATION = 175;
   var FLAP_TIMING_VARIATION_MS = 10;
   var getFlapDuration = () => STATION_FLIP_DURATION + Math.floor(Math.random() * (FLAP_TIMING_VARIATION_MS * 2 + 1)) - FLAP_TIMING_VARIATION_MS;
   var DELAY_VALUES = Object.freeze([

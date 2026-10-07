@@ -11,7 +11,7 @@ export const STATION_FLAP_SEQUENCE = Object.freeze([
     '!', '?', '%', '&', '#', "'"
 ]);
 
-export const STATION_FLIP_DURATION = 190;
+export const STATION_FLIP_DURATION = 175;
 export const FLAP_TIMING_VARIATION_MS = 10;
 
 export const getFlapDuration = () =>

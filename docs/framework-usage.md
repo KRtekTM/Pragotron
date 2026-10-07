@@ -89,7 +89,7 @@ Používají tento společný kontrakt:
 měl před dalším odesláním dat počkat na `board.isSettled()`.
 
 `set()` a `clear()` používají skutečnou animaci, zvuk `split-flap.wav` a
-náhodnou mechanickou odchylku `190 ± 10 ms`. Odchylka se aplikuje na každý
+náhodnou mechanickou odchylku `175 ± 10 ms`. Odchylka se aplikuje na každý
 jednotlivý flip, tedy i na každou číslici času, vlakový typ a zpoždění.
 
 ## Znaková sada split-flapu
