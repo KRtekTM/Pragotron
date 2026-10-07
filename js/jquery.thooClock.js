@@ -30,7 +30,8 @@
                 x,
                 y,
                 pragotronImg,
-                pragotronImgReady = false;
+                pragotronImgReady = false,
+                pragotronImgLoading = false;
 
        defaults = {
                 size: 250,
@@ -121,14 +122,21 @@
             if((el.brandText === undefined || el.brandText === "")
                 && (el.brandText2 === undefined || el.brandText2 === "")) {
                 pragotronImg = new Image();
+                pragotronImgLoading = true;
                 pragotronImg.onload = function() {
                     pragotronImgReady = true;
+                    pragotronImgLoading = false;
                 };
                 pragotronImg.onerror = function() {
                     pragotronImgReady = false;
+                    pragotronImgLoading = false;
                     console.error('Failed to load the SVG file.');
                 };
                 pragotronImg.src = 'images/pragotron.svg';
+                if(pragotronImg.complete && pragotronImg.naturalWidth > 0) {
+                    pragotronImgReady = true;
+                    pragotronImgLoading = false;
+                }
             }
 
             function toRadians(deg){
@@ -559,21 +567,19 @@
 
             y=0;
 
-            function startClock(x){
-                var theDate,
-                    ms,
-                    s,
-                    m,
-                    hours,
-                    mins,
-                    h,
-                    exth,
-                    extm,
-                    allExtM,
-                    allAlarmM,
-                    atime;
+            function scheduleNextTick(callback){
+                if(pragotronImgLoading
+                    || el.secondHandEnabled
+                    || el.sweepingMinutes){
+                    window.requestAnimationFrame(callback);
+                    return;
+                }
 
-                theDate = new Date();
+                window.setTimeout(callback, 1000);
+            }
+
+            function getCorrectedDate(){
+                var theDate = new Date();
 
                 if(el.timeCorrection){
                     if(el.timeCorrection.operator === '+'){
@@ -586,25 +592,54 @@
                     }
                 }
 
-    
-                s = theDate.getSeconds();
-                el.sweepingSeconds ? ms = theDate.getMilliseconds() : ms = 0;
-                mins = theDate.getMinutes();
-                m = (mins  + (s/60));
+                return theDate;
+            }
+
+            function drawCurrentFrame(){
+                var theDate = getCorrectedDate(),
+                    ms,
+                    seconds,
+                    minutes,
+                    minutesWithSeconds,
+                    hours,
+                    hoursWithMinutes;
+
+                seconds = theDate.getSeconds();
+                ms = el.sweepingSeconds ? theDate.getMilliseconds() : 0;
+                minutes = theDate.getMinutes();
+                minutesWithSeconds = minutes + (seconds / 60);
                 hours = theDate.getHours();
-                h = twelvebased(hours + (m/60));
+                hoursWithMinutes = twelvebased(hours + (minutesWithSeconds / 60));
 
                 ctx.clearRect(-radius,-radius,el.size,el.size);
-
                 drawDial(el.dialColor, el.dialBackgroundColor);
 
                 if(el.alarmTime !== undefined){
                     el.alarmTime = checkAlarmTime(el.alarmTime);
                     drawAlarmHand(el.alarmTime, el.alarmHandColor, el.alarmHandTipColor);
                 }
-                drawHourHand(h, el.hourHandColor);
-                drawMinuteHand(m, el.minuteHandColor);
-                drawSecondHand(ms, s, el.secondHandColor);
+                drawHourHand(hoursWithMinutes, el.hourHandColor);
+                drawMinuteHand(minutesWithSeconds, el.minuteHandColor);
+                drawSecondHand(ms, seconds, el.secondHandColor);
+
+                return {
+                    seconds: seconds,
+                    minutes: minutes,
+                    hours: hours
+                };
+            }
+
+            el.redraw = function(){
+                drawCurrentFrame();
+            };
+
+            function startClock(x){
+                var frame = drawCurrentFrame(),
+                    s = frame.seconds,
+                    mins = frame.minutes,
+                    hours = frame.hours,
+                    allExtM,
+                    allAlarmM;
 
                 //trigger every second custom event
                 if(y !== s){
@@ -627,7 +662,7 @@
                    $(el).trigger('onAlarm');
                 }
                 
-                window.requestAnimationFrame(function(){startClock(x)});
+                scheduleNextTick(function(){startClock(x)});
 
             }
 

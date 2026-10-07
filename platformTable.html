@@ -10,6 +10,7 @@
 
     <title>PRAGOTRON</title>
 
+    <link rel="preload" href="images/pragotron.svg" as="image" type="image/svg+xml" />
     <link href="style.css" rel="stylesheet" type="text/css" media="screen,projection" />
     <link href="favicon.ico" rel="icon" />
 
@@ -24,7 +25,7 @@
                 <span class="night-light night-light--top-left" data-light-id="top-left"></span>
                 <span class="night-light night-light--top-center" data-light-id="top-center"></span>
                 <span class="night-light night-light--top-right night-light--dim" data-light-id="top-right"></span>
-                <span class="night-light night-light--bottom-left night-light--broken" data-light-id="bottom-left"></span>
+                <span class="night-light night-light--bottom-left" data-light-id="bottom-left"></span>
                 <span class="night-light night-light--bottom-right" data-light-id="bottom-right"></span>
             </div>
             <div class="ridge-outer"><div class="ridge-inner">
@@ -368,7 +369,6 @@
                         return;
                     }
 
-                    void state.element.offsetWidth;
                     const flipDuration = getFlapDuration();
                     playSplitFlapSound();
                     state.element.classList.add('is-flipping');
@@ -395,6 +395,30 @@
                 this.characters.forEach((state, index) => {
                     this.flip(state, target[index], index * 55);
                 });
+            }
+
+            setImmediate(value) {
+                const target = this.charactersFor(value);
+                this.value = target.join('').trim();
+                this.updateLabel();
+
+                this.characters.forEach((state, index) => {
+                    state.sequence += 1;
+                    if (state.timer !== null) {
+                        window.clearTimeout(state.timer);
+                    }
+                    state.timer = null;
+                    state.element.classList.remove('is-flipping');
+                    this.renderCharacter(state.element, target[index], target[index]);
+                    state.value = target[index];
+                });
+            }
+
+            isSettled() {
+                const target = this.charactersFor(this.value);
+                return this.characters.every((state, index) =>
+                    state.value === target[index] && state.timer === null
+                );
             }
         }
 
@@ -513,6 +537,7 @@
                 this.values = values;
                 this.defaultValue = element.dataset.delay || '';
                 this.currentValue = '';
+                this.targetValue = '';
                 this.timer = null;
                 this.sequence = 0;
                 this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -583,6 +608,7 @@
                 const next = this.parse(value);
                 const current = this.currentValue === undefined ? '' : this.currentValue;
                 const sequence = ++this.sequence;
+                this.targetValue = next;
 
                 if (this.timer) {
                     window.clearTimeout(this.timer);
@@ -599,7 +625,6 @@
                     return this.currentValue;
                 }
 
-                void this.element.offsetWidth;
                 const flipDuration = getFlapDuration();
                 playSplitFlapSound();
                 this.element.classList.add('is-flipping');
@@ -617,8 +642,23 @@
                 return this.currentValue;
             }
 
+            setImmediate(value) {
+                const next = this.parse(value);
+                this.sequence += 1;
+                if (this.timer !== null) {
+                    window.clearTimeout(this.timer);
+                }
+                this.timer = null;
+                this.targetValue = next;
+                this.currentValue = next;
+                this.element.classList.remove('is-flipping');
+                this.render(next, next);
+                this.updateLabel();
+            }
+
             clear() {
                 const sequence = ++this.sequence;
+                this.targetValue = '';
 
                 if (this.timer) {
                     window.clearTimeout(this.timer);
@@ -649,7 +689,6 @@
                     return;
                 }
 
-                void this.element.offsetWidth;
                 const flipDuration = getFlapDuration();
                 playSplitFlapSound();
                 this.element.classList.add('is-flipping');
@@ -664,6 +703,10 @@
                     this.timer = null;
                     this.advanceToBlank(sequence);
                 }, flipDuration);
+            }
+
+            isSettled() {
+                return this.currentValue === this.targetValue && this.timer === null;
             }
         }
 
@@ -782,7 +825,6 @@
                     return;
                 }
 
-                void this.element.offsetWidth;
                 const flipDuration = getFlapDuration();
                 playSplitFlapSound();
                 this.element.classList.add('is-flipping');
@@ -817,6 +859,25 @@
                 this.render(this.types[this.currentIndex], this.types[this.currentIndex]);
                 this.advance(sequence);
                 return this.types[targetIndex].name;
+            }
+
+            setImmediate(value) {
+                const targetIndex = this.indexFor(value);
+                this.sequence += 1;
+                if (this.timer !== null) {
+                    window.clearTimeout(this.timer);
+                }
+                this.timer = null;
+                this.currentIndex = targetIndex;
+                this.targetIndex = targetIndex;
+                this.source = this.types[targetIndex].source || '';
+                this.element.classList.remove('is-flipping');
+                this.render(this.types[targetIndex], this.types[targetIndex]);
+                this.updateLabel();
+            }
+
+            isSettled() {
+                return this.currentIndex === this.targetIndex && this.timer === null;
             }
         }
 
@@ -889,6 +950,31 @@
                 return nextTarget;
             }
 
+            setImmediate(value) {
+                const nextTarget = this.parse(value);
+                this.sequence += 1;
+                if (this.timer !== null) {
+                    window.clearTimeout(this.timer);
+                }
+                this.timer = null;
+                this.targetValue = nextTarget;
+                this.currentValue = nextTarget;
+                this.element.classList.remove('is-flipping');
+                this.render(nextTarget, nextTarget);
+            }
+
+            clearImmediate() {
+                this.sequence += 1;
+                if (this.timer !== null) {
+                    window.clearTimeout(this.timer);
+                }
+                this.timer = null;
+                this.targetValue = '';
+                this.currentValue = '';
+                this.element.classList.remove('is-flipping');
+                this.render('', '');
+            }
+
             clear() {
                 this.targetValue = '';
                 this.sequence += 1;
@@ -931,7 +1017,6 @@
                     return;
                 }
 
-                void this.element.offsetWidth;
                 const flipDuration = getFlapDuration();
                 playSplitFlapSound();
                 this.element.classList.add('is-flipping');
@@ -947,6 +1032,10 @@
                     this.timer = null;
                     this.advance(sequence);
                 }, flipDuration);
+            }
+
+            isSettled() {
+                return this.currentValue === this.targetValue && this.timer === null;
             }
         }
 
@@ -1014,11 +1103,33 @@
                 return `${time.hours}.${String(time.minutes).padStart(2, '0')}`;
             }
 
+            setImmediate(hours, minutes) {
+                const time = this.parseTime(hours, minutes);
+
+                this.hour.setImmediate(time.hours);
+                this.minuteTens.setImmediate(Math.floor(time.minutes / 10));
+                this.minuteOnes.setImmediate(time.minutes % 10);
+                this.updateLabel(time.hours, time.minutes);
+            }
+
             clear() {
                 this.hour.clear();
                 this.minuteTens.clear();
                 this.minuteOnes.clear();
                 this.element.setAttribute('aria-label', 'Odjezd');
+            }
+
+            clearImmediate() {
+                this.hour.clearImmediate();
+                this.minuteTens.clearImmediate();
+                this.minuteOnes.clearImmediate();
+                this.element.setAttribute('aria-label', 'Odjezd');
+            }
+
+            isSettled() {
+                return this.hour.isSettled()
+                    && this.minuteTens.isSettled()
+                    && this.minuteOnes.isSettled();
             }
         }
 
@@ -1043,6 +1154,20 @@
             hours: departureTimeDisplay.defaultHours,
             minutes: departureTimeDisplay.defaultMinutes
         });
+        const PRAGOTRON_STORAGE_KEY = 'pragotron.platformTable.state.v1';
+        let lastBoardState = null;
+
+        const loadPersistentState = () => {
+            try {
+                const rawState = window.localStorage.getItem(PRAGOTRON_STORAGE_KEY);
+                const parsedState = rawState ? JSON.parse(rawState) : null;
+                return parsedState && parsedState.version === 1 ? parsedState : null;
+            } catch {
+                return null;
+            }
+        };
+
+        const savedState = loadPersistentState();
 
         const boardForm = document.querySelector('#boardForm');
         const stationInputs = [
@@ -1053,6 +1178,7 @@
         const departureTimeInput = document.querySelector('#departureTime');
         const delayValueInput = document.querySelector('#delayValue');
         const boardFormStatus = document.querySelector('#boardFormStatus');
+        const screenElement = document.querySelector('#skrin');
 
         TRAIN_TYPES.forEach((type) => {
             const option = document.createElement('option');
@@ -1079,6 +1205,35 @@
             delayValueInput.value = state.delay === '' ? '' : String(state.delay);
         };
 
+        const setSavedFormValues = (formState) => {
+            const stationOne = typeof formState.stationOne === 'string'
+                ? formState.stationOne.slice(0, STATION_CHARACTER_COUNT)
+                : exampleState.stations[0];
+            const stationTwo = typeof formState.stationTwo === 'string'
+                ? formState.stationTwo.slice(0, STATION_CHARACTER_COUNT)
+                : exampleState.stations[1];
+            const train = TRAIN_TYPES.some((type) => type.name === formState.train)
+                ? formState.train
+                : exampleState.train;
+            const departureTime = typeof formState.departureTime === 'string'
+                && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(formState.departureTime)
+                ? formState.departureTime
+                : `${String(exampleState.hours).padStart(2, '0')}:${
+                    String(exampleState.minutes).padStart(2, '0')
+                }`;
+            const delay = formState.delay === '' || DELAY_VALUES.some(
+                (value) => String(value) === String(formState.delay)
+            )
+                ? String(formState.delay)
+                : String(exampleState.delay);
+
+            stationInputs[0].value = stationOne;
+            stationInputs[1].value = stationTwo;
+            trainTypeInput.value = train;
+            departureTimeInput.value = departureTime;
+            delayValueInput.value = delay;
+        };
+
         const setBoardFormStatus = (message, isError = false) => {
             boardFormStatus.textContent = message;
             boardFormStatus.classList.toggle('is-error', isError);
@@ -1099,10 +1254,95 @@
         );
         const lampControlElements = new Map();
         const clockBlockElement = document.querySelector('#clockBlock');
+        const clockElement = document.querySelector('#pragotronAnalogClock');
         const clockLightEnabledInput = document.querySelector('#clockLightEnabled');
         const clockLightIntensityInput = document.querySelector('#clockLightIntensity');
         const clockLightIntensityOutput = document.querySelector('#clockLightIntensityOutput');
         const clockLightSettings = { ...NIGHT_CLOCK_DEFAULTS };
+        let clockRedrawFrame = null;
+        const numberInRange = (value, minimum, maximum, fallback) => {
+            const numericValue = Number(value);
+            return Number.isFinite(numericValue)
+                ? Math.min(maximum, Math.max(minimum, numericValue))
+                : fallback;
+        };
+
+        if (savedState && savedState.lamps && typeof savedState.lamps === 'object') {
+            NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
+                const savedSetting = savedState.lamps[defaultSetting.id];
+                if (!savedSetting || typeof savedSetting !== 'object') {
+                    return;
+                }
+
+                const setting = lightSettings.get(defaultSetting.id);
+                if (typeof savedSetting.enabled === 'boolean') {
+                    setting.enabled = savedSetting.enabled;
+                }
+                if (typeof savedSetting.variation === 'boolean') {
+                    setting.variation = savedSetting.variation;
+                }
+                setting.intensity = Math.round(
+                    numberInRange(savedSetting.intensity, 0, 100, setting.intensity)
+                );
+                setting.speed = Math.round(
+                    numberInRange(savedSetting.speed, 1, 120, setting.speed) * 2
+                ) / 2;
+                if (NIGHT_FADE_MODES.some((mode) => mode.value === savedSetting.fade)) {
+                    setting.fade = savedSetting.fade;
+                }
+            });
+        }
+
+        if (savedState && savedState.clockLight
+            && typeof savedState.clockLight === 'object') {
+            if (typeof savedState.clockLight.enabled === 'boolean') {
+                clockLightSettings.enabled = savedState.clockLight.enabled;
+            }
+            clockLightSettings.intensity = Math.round(
+                numberInRange(
+                    savedState.clockLight.intensity,
+                    0,
+                    100,
+                    clockLightSettings.intensity
+                )
+            );
+        }
+
+        const persistState = () => {
+            const lamps = {};
+            lightSettings.forEach((setting, id) => {
+                lamps[id] = { ...setting };
+            });
+
+            const persistentState = {
+                version: 1,
+                form: {
+                    stationOne: stationInputs[0].value,
+                    stationTwo: stationInputs[1].value,
+                    train: trainTypeInput.value,
+                    departureTime: departureTimeInput.value,
+                    delay: delayValueInput.value
+                },
+                board: lastBoardState
+                    ? {
+                        ...lastBoardState,
+                        stations: [...lastBoardState.stations]
+                    }
+                    : null,
+                lamps,
+                clockLight: { ...clockLightSettings },
+                nightMode: screenElement.classList.contains('night-mode')
+            };
+
+            try {
+                window.localStorage.setItem(
+                    PRAGOTRON_STORAGE_KEY,
+                    JSON.stringify(persistentState)
+                );
+            } catch {
+                // localStorage can be unavailable in private/restricted contexts.
+            }
+        };
 
         const updateLampVisual = (setting) => {
             const light = lightElements.get(setting.id);
@@ -1157,6 +1397,7 @@
 
             syncLampControls(setting);
             updateLampVisual(setting);
+            persistState();
         };
 
         const syncClockLightControls = () => {
@@ -1176,6 +1417,15 @@
                 '--clock-light-enabled',
                 clockLightSettings.enabled ? '1' : '0'
             );
+            if (clockRedrawFrame !== null
+                || typeof clockElement.redraw !== 'function') {
+                return;
+            }
+
+            clockRedrawFrame = window.requestAnimationFrame(() => {
+                clockRedrawFrame = null;
+                clockElement.redraw();
+            });
         };
 
         const createLampControls = () => {
@@ -1277,18 +1527,25 @@
         syncClockLightControls();
         updateClockLightVisual();
 
-        [clockLightEnabledInput, clockLightIntensityInput].forEach((input) => {
-            input.addEventListener('input', () => {
-                clockLightSettings.enabled = clockLightEnabledInput.checked;
-                clockLightSettings.intensity = Number(clockLightIntensityInput.value);
-                syncClockLightControls();
-                updateClockLightVisual();
+        [...stationInputs, trainTypeInput, departureTimeInput, delayValueInput]
+            .forEach((input) => {
+                input.addEventListener('input', persistState);
+                input.addEventListener('change', persistState);
             });
+
+        const updateClockLightFromControls = () => {
+            clockLightSettings.enabled = clockLightEnabledInput.checked;
+            clockLightSettings.intensity = Number(clockLightIntensityInput.value);
+            syncClockLightControls();
+            updateClockLightVisual();
+        };
+
+        clockLightEnabledInput.addEventListener('input', updateClockLightFromControls);
+        clockLightIntensityInput.addEventListener('input', updateClockLightFromControls);
+        [clockLightEnabledInput, clockLightIntensityInput].forEach((input) => {
             input.addEventListener('change', () => {
-                clockLightSettings.enabled = clockLightEnabledInput.checked;
-                clockLightSettings.intensity = Number(clockLightIntensityInput.value);
-                syncClockLightControls();
-                updateClockLightVisual();
+                updateClockLightFromControls();
+                persistState();
             });
         });
 
@@ -1303,12 +1560,16 @@
             clockLightSettings.intensity = NIGHT_CLOCK_DEFAULTS.intensity;
             syncClockLightControls();
             updateClockLightVisual();
+            persistState();
             setBoardFormStatus('Výchozí nastavení světel obnoveno.');
         });
 
-        setFormValues(exampleState);
+        if (savedState && savedState.form && typeof savedState.form === 'object') {
+            setSavedFormValues(savedState.form);
+        } else {
+            setFormValues(exampleState);
+        }
 
-        const screenElement = document.querySelector('#skrin');
         const nightModeButton = document.querySelector('#nightModeButton');
         const setNightMode = (isNight) => {
             screenElement.classList.toggle('night-mode', isNight);
@@ -1318,6 +1579,7 @@
             setBoardFormStatus(
                 isNight ? 'Noční režim zapnut.' : 'Denní režim zapnut.'
             );
+            persistState();
         };
 
         nightModeButton.addEventListener('click', () => {
@@ -1326,6 +1588,66 @@
 
         let exampleActive = false;
         const startButton = document.querySelector('#startButton');
+        const submitButton = boardForm.querySelector('button[type="submit"]');
+        const boardActionButtons = [submitButton, startButton];
+        const boardDisplays = [
+            ...splitFlapDisplays,
+            delayFlapDisplay,
+            trainFlapDisplay,
+            departureTimeDisplay
+        ];
+        let boardActionInProgress = false;
+
+        const setBoardActionBusy = (isBusy) => {
+            boardActionInProgress = isBusy;
+            boardForm.classList.toggle('is-updating', isBusy);
+            boardForm.setAttribute('aria-busy', String(isBusy));
+            boardActionButtons.forEach((button) => {
+                button.disabled = isBusy;
+                button.setAttribute('aria-disabled', String(isBusy));
+            });
+        };
+
+        const waitForBoardToSettle = () => new Promise((resolve) => {
+            const check = () => {
+                if (boardDisplays.every((display) => display.isSettled())) {
+                    resolve();
+                    return;
+                }
+
+                window.setTimeout(check, 50);
+            };
+
+            check();
+        });
+
+        const runBoardAction = (action, completedMessage) => {
+            if (boardActionInProgress) {
+                return;
+            }
+
+            setBoardActionBusy(true);
+
+            try {
+                action();
+                persistState();
+                setBoardFormStatus('Tabule se přenastavuje…');
+            } catch (error) {
+                setBoardActionBusy(false);
+                setBoardFormStatus(
+                    error instanceof Error ? error.message : 'Tabuli se nepodařilo přenastavit.',
+                    true
+                );
+                return;
+            }
+
+            waitForBoardToSettle().then(() => {
+                setBoardActionBusy(false);
+                persistState();
+                setBoardFormStatus(completedMessage);
+            });
+        };
+
         const applyBoardState = (showExample) => {
             splitFlapDisplays.forEach((display, index) => {
                 display.set(showExample ? exampleState.stations[index] : '');
@@ -1347,20 +1669,122 @@
                 setFormValues(exampleState);
             }
 
+            lastBoardState = showExample
+                ? {
+                    active: true,
+                    stations: [...exampleState.stations],
+                    train: exampleState.train,
+                    delay: exampleState.delay,
+                    hours: exampleState.hours,
+                    minutes: exampleState.minutes
+                }
+                : {
+                    active: false,
+                    stations: ['', ''],
+                    train: '',
+                    delay: '',
+                    hours: 0,
+                    minutes: 0
+                };
             exampleActive = showExample;
             startButton.textContent = showExample
                 ? 'Resetovat tabuli'
                 : 'Načíst příklad';
             startButton.setAttribute('aria-pressed', String(showExample));
-            setBoardFormStatus(showExample ? 'Příklad načten.' : 'Tabule resetována.');
         };
 
         startButton.textContent = 'Načíst příklad';
         startButton.setAttribute('aria-pressed', 'false');
-        startButton.addEventListener('click', () => applyBoardState(!exampleActive));
+
+        const restoreLastBoardState = () => {
+            const savedBoard = savedState && savedState.board;
+            if (!savedBoard || typeof savedBoard !== 'object') {
+                return;
+            }
+
+            if (savedBoard.active !== true) {
+                splitFlapDisplays.forEach((display) => display.setImmediate(''));
+                delayFlapDisplay.setImmediate('');
+                trainFlapDisplay.setImmediate('');
+                departureTimeDisplay.clearImmediate();
+                lastBoardState = {
+                    active: false,
+                    stations: ['', ''],
+                    train: '',
+                    delay: '',
+                    hours: 0,
+                    minutes: 0
+                };
+                return;
+            }
+
+            const stations = Array.isArray(savedBoard.stations)
+                ? savedBoard.stations.map((station) =>
+                    typeof station === 'string'
+                        ? station.slice(0, STATION_CHARACTER_COUNT)
+                        : ''
+                ).slice(0, 2)
+                : [];
+            while (stations.length < 2) {
+                stations.push('');
+            }
+
+            const train = TRAIN_TYPES.some((type) => type.name === savedBoard.train)
+                ? savedBoard.train
+                : '';
+            const delay = savedBoard.delay === '' || DELAY_VALUES.some(
+                (value) => String(value) === String(savedBoard.delay)
+            )
+                ? String(savedBoard.delay)
+                : '';
+            const hours = Number(savedBoard.hours);
+            const minutes = Number(savedBoard.minutes);
+
+            if (!Number.isInteger(hours) || hours < 0 || hours > 23
+                || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+                return;
+            }
+
+            splitFlapDisplays.forEach((display, index) => display.setImmediate(stations[index]));
+            delayFlapDisplay.setImmediate(delay);
+            trainFlapDisplay.setImmediate(train);
+            departureTimeDisplay.setImmediate(hours, minutes);
+            lastBoardState = {
+                active: true,
+                stations,
+                train,
+                delay,
+                hours,
+                minutes
+            };
+            exampleActive = true;
+            startButton.textContent = 'Resetovat tabuli';
+            startButton.setAttribute('aria-pressed', 'true');
+        };
+
+        restoreLastBoardState();
+        if (savedState && savedState.nightMode === true) {
+            setNightMode(true);
+        }
+
+        startButton.addEventListener('click', () => {
+            if (boardActionInProgress) {
+                return;
+            }
+
+            const showExample = !exampleActive;
+            runBoardAction(
+                () => applyBoardState(showExample),
+                showExample ? 'Příklad načten.' : 'Tabule resetována.'
+            );
+        });
 
         boardForm.addEventListener('submit', (event) => {
             event.preventDefault();
+
+            if (boardActionInProgress) {
+                return;
+            }
 
             if (!departureTimeInput.value) {
                 setBoardFormStatus('Vyplňte prosím čas odjezdu.', true);
@@ -1370,7 +1794,7 @@
 
             const [hours, minutes] = departureTimeInput.value.split(':').map(Number);
 
-            try {
+            runBoardAction(() => {
                 splitFlapDisplays.forEach((display, index) => {
                     display.set(stationInputs[index].value);
                 });
@@ -1383,16 +1807,18 @@
                 }
 
                 departureTimeDisplay.set(hours, minutes);
+                lastBoardState = {
+                    active: true,
+                    stations: stationInputs.map((input) => input.value),
+                    train: trainTypeInput.value,
+                    delay: delayValueInput.value,
+                    hours,
+                    minutes
+                };
                 exampleActive = true;
                 startButton.textContent = 'Resetovat tabuli';
                 startButton.setAttribute('aria-pressed', 'true');
-                setBoardFormStatus('Údaje byly odeslány na tabuli.');
-            } catch (error) {
-                setBoardFormStatus(
-                    error instanceof Error ? error.message : 'Údaje se nepodařilo odeslat.',
-                    true
-                );
-            }
+            }, 'Údaje byly odeslány na tabuli.');
         });
 
         // Optional API for changing a field from the console or another script:
