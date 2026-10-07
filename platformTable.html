@@ -29,7 +29,7 @@
                     <div class="flap-display" data-text="PRAHA" aria-label="PRAHA" role="img"></div>
                 </td>
                 <td class="displayCell trainCell">
-                    <div class="flap-display" data-text="EC" aria-label="EuroCity" role="img"></div>
+                    <div class="train-flap-display" data-src="images/EuroCity_Logo.svg" aria-label="EuroCity" role="img"></div>
                 </td>
                 <td rowspan="3" id="clockBlock">
                     <div id="pragotronAnalogClock"></div>
@@ -41,7 +41,14 @@
                     <div class="flap-display" data-text="BRATISLAVA" aria-label="BRATISLAVA" role="img"></div>
                 </td>
                 <td class="displayCell timeCell">
-                    <div class="flap-display" data-text="16.20" aria-label="Odjezd 16.20" role="img"></div>
+                    <div class="departure-time-display" data-hours="16" data-minutes="20" aria-label="Odjezd 16.20" role="img">
+                        <div class="time-flap time-hour-flap"></div>
+                        <span class="time-separator" aria-hidden="true">.</span>
+                        <div class="time-minute-group">
+                            <div class="time-flap time-minute-flap"></div>
+                            <div class="time-flap time-minute-flap"></div>
+                        </div>
+                    </div>
                 </td>
             </tr>
             <tr>
@@ -59,6 +66,19 @@
     </div>
 
     <script language="javascript">
+        const STATION_CHARACTER_COUNT = 14;
+        const STATION_FLAP_SEQUENCE = Object.freeze([
+            ' ',
+            'A', 'Á', 'B', 'C', 'Č', 'D', 'Ď', 'E', 'É', 'Ě',
+            'F', 'G', 'H', 'I', 'Í', 'J', 'K', 'L', 'M', 'N', 'Ň',
+            'O', 'Ó', 'P', 'Q', 'R', 'Ř', 'S', 'Š', 'T', 'Ť',
+            'U', 'Ú', 'Ů', 'V', 'W', 'X', 'Y', 'Ý', 'Z', 'Ž',
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            '.', ',', ':', ';', '-', '/', '+', '(', ')', '[', ']',
+            '!', '?', '%', '&', '#', "'"
+        ]);
+        const STATION_FLIP_DURATION = 190;
+
         class SplitFlapDisplay {
             constructor(element) {
                 this.element = element;
@@ -73,7 +93,12 @@
             }
 
             charactersFor(value) {
-                return Array.from(this.normalize(value));
+                return Array.from(this.normalize(value).slice(0, STATION_CHARACTER_COUNT))
+                    .map((character) =>
+                        STATION_FLAP_SEQUENCE.includes(character) ? character : ' '
+                    )
+                    .concat(Array(STATION_CHARACTER_COUNT).fill(' '))
+                    .slice(0, STATION_CHARACTER_COUNT);
             }
 
             glyphFor(character) {
@@ -82,11 +107,16 @@
 
             createHalf(className, character) {
                 const half = document.createElement('span');
-                half.className = `flap-half ${className}`;
+                const timeHalfClass = className.replace('flap-half', 'time-flap-half');
+                half.className = `flap-half ${className} time-flap-half ${timeHalfClass}`;
 
                 const glyph = document.createElement('span');
-                glyph.className = 'flap-glyph';
-                glyph.textContent = this.glyphFor(character);
+                glyph.className = 'flap-glyph time-flap-content';
+
+                const glyphText = document.createElement('span');
+                glyphText.className = 'flap-glyph-text time-flap-value';
+                glyphText.textContent = this.glyphFor(character);
+                glyph.appendChild(glyphText);
 
                 half.appendChild(glyph);
                 return half;
@@ -111,12 +141,12 @@
 
             initialize(value) {
                 const target = this.charactersFor(value);
-                this.value = this.normalize(value);
+                this.value = target.join('').trim();
                 this.characters = [];
                 this.element.replaceChildren();
 
                 target.forEach((character, index) => {
-                    const element = this.createCharacter(' ', character);
+                    const element = this.createCharacter(' ', ' ');
                     const state = {
                         element,
                         value: ' ',
@@ -132,7 +162,7 @@
                         state.value = character;
                     } else {
                         window.requestAnimationFrame(() => {
-                            this.flip(state, ' ', character, index * 55);
+                            this.flip(state, character, index * 55);
                         });
                     }
                 });
@@ -144,7 +174,21 @@
                 this.element.setAttribute('aria-label', this.value.trim());
             }
 
-            flip(state, current, next, delay) {
+            nextCharacter(current, target) {
+                const currentIndex = STATION_FLAP_SEQUENCE.indexOf(current);
+                const targetIndex = STATION_FLAP_SEQUENCE.indexOf(target);
+                const safeCurrentIndex = currentIndex === -1 ? 0 : currentIndex;
+
+                if (safeCurrentIndex === targetIndex) {
+                    return target;
+                }
+
+                return STATION_FLAP_SEQUENCE[
+                    (safeCurrentIndex + 1) % STATION_FLAP_SEQUENCE.length
+                ];
+            }
+
+            flip(state, target, delay) {
                 state.sequence += 1;
                 const sequence = state.sequence;
 
@@ -153,55 +197,58 @@
                 }
 
                 state.element.classList.remove('is-flipping');
-                this.renderCharacter(state.element, current, next);
+                state.element.style.removeProperty('--flap-delay');
+                this.advance(state, target, sequence, delay);
+            }
 
-                if (current === next || this.reducedMotion) {
-                    state.value = next;
+            advance(state, target, sequence, delay = 0) {
+                if (sequence !== state.sequence || state.value === target) {
                     return;
                 }
-
-                state.element.style.setProperty('--flap-delay', `${delay}ms`);
-                void state.element.offsetWidth;
-                state.element.classList.add('is-flipping');
 
                 state.timer = window.setTimeout(() => {
                     if (sequence !== state.sequence) {
                         return;
                     }
 
-                    this.renderCharacter(state.element, next, next);
+                    const current = state.value;
+                    const next = this.nextCharacter(current, target);
                     state.element.classList.remove('is-flipping');
-                    state.element.style.removeProperty('--flap-delay');
-                    state.value = next;
-                    state.timer = null;
-                }, delay + 430);
+                    this.renderCharacter(state.element, current, next);
+
+                    if (this.reducedMotion) {
+                        this.renderCharacter(state.element, next, next);
+                        state.value = next;
+                        state.timer = null;
+                        this.advance(state, target, sequence);
+                        return;
+                    }
+
+                    void state.element.offsetWidth;
+                    state.element.classList.add('is-flipping');
+
+                    state.timer = window.setTimeout(() => {
+                        if (sequence !== state.sequence) {
+                            return;
+                        }
+
+                        state.element.classList.remove('is-flipping');
+                        this.renderCharacter(state.element, next, next);
+                        state.value = next;
+                        state.timer = null;
+                        this.advance(state, target, sequence);
+                    }, STATION_FLIP_DURATION);
+                }, delay);
             }
 
             set(value) {
                 const target = this.charactersFor(value);
-                const width = Math.max(this.characters.length, target.length);
-
-                while (this.characters.length < width) {
-                    const element = this.createCharacter(' ', ' ');
-                    const state = {
-                        element,
-                        value: ' ',
-                        timer: null,
-                        sequence: 0
-                    };
-
-                    this.characters.push(state);
-                    this.element.appendChild(element);
-                }
-
-                this.value = this.normalize(value);
+                this.value = target.join('').trim();
                 this.updateLabel();
 
-                for (let index = 0; index < width; index += 1) {
-                    const next = target[index] || ' ';
-                    const state = this.characters[index];
-                    this.flip(state, state.value, next, index * 55);
-                }
+                this.characters.forEach((state, index) => {
+                    this.flip(state, target[index], index * 55);
+                });
             }
         }
 
@@ -319,19 +366,286 @@
             }
         }
 
+        class TrainFlapDisplay {
+            constructor(element) {
+                this.element = element;
+                this.source = element.dataset.src;
+                this.timer = null;
+                this.sequence = 0;
+                this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+                this.render(null, this.source);
+                window.requestAnimationFrame(() => this.flip(null, this.source));
+            }
+
+            createHalf(className, source) {
+                const half = document.createElement('span');
+                half.className = `train-flap-half ${className}`;
+                half.setAttribute('aria-hidden', 'true');
+
+                if (source) {
+                    const image = document.createElement('img');
+                    image.src = source;
+                    image.alt = '';
+                    half.appendChild(image);
+                }
+
+                return half;
+            }
+
+            render(currentSource, nextSource) {
+                this.element.replaceChildren(
+                    this.createHalf('train-flap-half--top-current', currentSource),
+                    this.createHalf('train-flap-half--top-next', nextSource),
+                    this.createHalf('train-flap-half--bottom-current', currentSource),
+                    this.createHalf('train-flap-half--bottom-next', nextSource)
+                );
+            }
+
+            flip(currentSource, nextSource) {
+                this.sequence += 1;
+                const sequence = this.sequence;
+
+                if (this.timer) {
+                    window.clearTimeout(this.timer);
+                    this.timer = null;
+                }
+
+                this.element.classList.remove('is-flipping');
+                this.render(currentSource, nextSource);
+
+                if (currentSource === nextSource || this.reducedMotion) {
+                    this.render(nextSource, nextSource);
+                    this.source = nextSource;
+                    return;
+                }
+
+                void this.element.offsetWidth;
+                this.element.classList.add('is-flipping');
+
+                this.timer = window.setTimeout(() => {
+                    if (sequence !== this.sequence) {
+                        return;
+                    }
+
+                    this.render(nextSource, nextSource);
+                    this.element.classList.remove('is-flipping');
+                    this.source = nextSource;
+                    this.timer = null;
+                }, 430);
+            }
+
+            set(source) {
+                if (!source) {
+                    throw new TypeError('Grafika typu vlaku musí mít platnou cestu k souboru.');
+                }
+
+                this.flip(this.source, source);
+                return source;
+            }
+        }
+
+        class SequentialNumericFlap {
+            constructor(element, minimum, maximum, target) {
+                this.element = element;
+                this.minimum = minimum;
+                this.maximum = maximum;
+                this.currentValue = minimum;
+                this.targetValue = minimum;
+                this.timer = null;
+                this.sequence = 0;
+                this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+                this.render(this.currentValue, this.currentValue);
+                this.set(target);
+            }
+
+            parse(value) {
+                const numericValue = Number(value);
+
+                if (!Number.isInteger(numericValue)
+                    || numericValue < this.minimum
+                    || numericValue > this.maximum) {
+                    throw new RangeError(
+                        `Hodnota ${value} není v rozsahu ${this.minimum}-${this.maximum}.`
+                    );
+                }
+
+                return numericValue;
+            }
+
+            createHalf(className, value) {
+                const half = document.createElement('span');
+                half.className = `time-flap-half ${className}`;
+
+                const content = document.createElement('span');
+                content.className = 'time-flap-content';
+
+                const number = document.createElement('span');
+                number.className = 'time-flap-value';
+                number.textContent = String(value);
+
+                content.appendChild(number);
+                half.appendChild(content);
+                return half;
+            }
+
+            render(current, next) {
+                this.element.replaceChildren(
+                    this.createHalf('time-flap-half--top-current', current),
+                    this.createHalf('time-flap-half--top-next', next),
+                    this.createHalf('time-flap-half--bottom-current', current),
+                    this.createHalf('time-flap-half--bottom-next', next)
+                );
+            }
+
+            set(value) {
+                const nextTarget = this.parse(value);
+                this.targetValue = nextTarget;
+                this.sequence += 1;
+                const sequence = this.sequence;
+
+                if (this.timer) {
+                    window.clearTimeout(this.timer);
+                    this.timer = null;
+                }
+
+                this.element.classList.remove('is-flipping');
+                this.advance(sequence);
+                return nextTarget;
+            }
+
+            advance(sequence) {
+                if (sequence !== this.sequence || this.currentValue === this.targetValue) {
+                    return;
+                }
+
+                const direction = this.targetValue > this.currentValue ? 1 : -1;
+                const next = this.currentValue + direction;
+                const current = this.currentValue;
+
+                this.render(current, next);
+
+                if (this.reducedMotion) {
+                    this.render(next, next);
+                    this.currentValue = next;
+                    window.requestAnimationFrame(() => this.advance(sequence));
+                    return;
+                }
+
+                void this.element.offsetWidth;
+                this.element.classList.add('is-flipping');
+
+                this.timer = window.setTimeout(() => {
+                    if (sequence !== this.sequence) {
+                        return;
+                    }
+
+                    this.render(next, next);
+                    this.element.classList.remove('is-flipping');
+                    this.currentValue = next;
+                    this.timer = null;
+                    this.advance(sequence);
+                }, 190);
+            }
+        }
+
+        class DepartureTimeDisplay {
+            constructor(element) {
+                this.element = element;
+                this.hour = new SequentialNumericFlap(
+                    element.querySelector('.time-hour-flap'),
+                    0,
+                    23,
+                    element.dataset.hours
+                );
+                this.minuteTens = new SequentialNumericFlap(
+                    element.querySelector('.time-minute-flap'),
+                    0,
+                    9,
+                    0
+                );
+                this.minuteOnes = new SequentialNumericFlap(
+                    element.querySelectorAll('.time-minute-flap')[1],
+                    0,
+                    9,
+                    0
+                );
+
+                this.set(element.dataset.hours, element.dataset.minutes);
+            }
+
+            parseTime(hours, minutes) {
+                if (minutes === undefined && typeof hours === 'string') {
+                    const match = hours.trim().match(/^(\d{1,2})[.:](\d{2})$/);
+
+                    if (!match) {
+                        throw new TypeError('Čas odjezdu musí mít formát HH.MM.');
+                    }
+
+                    hours = Number(match[1]);
+                    minutes = Number(match[2]);
+                }
+
+                hours = Number(hours);
+                minutes = Number(minutes);
+
+                if (!Number.isInteger(hours) || hours < 0 || hours > 23
+                    || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+                    throw new RangeError('Čas odjezdu musí být mezi 00.00 a 23.59.');
+                }
+
+                return { hours, minutes };
+            }
+
+            updateLabel(hours, minutes) {
+                this.element.setAttribute(
+                    'aria-label',
+                    `Odjezd ${hours}.${String(minutes).padStart(2, '0')}`
+                );
+            }
+
+            set(hours, minutes) {
+                const time = this.parseTime(hours, minutes);
+
+                this.hour.set(time.hours);
+                this.minuteTens.set(Math.floor(time.minutes / 10));
+                this.minuteOnes.set(time.minutes % 10);
+                this.updateLabel(time.hours, time.minutes);
+
+                return `${time.hours}.${String(time.minutes).padStart(2, '0')}`;
+            }
+        }
+
         const splitFlapDisplays = Array.from(document.querySelectorAll('.flap-display'))
             .map((element) => new SplitFlapDisplay(element));
         const delayFlapDisplay = new DelayFlapDisplay(
             document.querySelector('.delay-flap-display'),
             DELAY_VALUES
         );
+        const trainFlapDisplay = new TrainFlapDisplay(
+            document.querySelector('.train-flap-display')
+        );
+        const departureTimeDisplay = new DepartureTimeDisplay(
+            document.querySelector('.departure-time-display')
+        );
 
         // Optional API for changing a field from the console or another script:
         // window.pragotronDisplays[0].set('BRNO');
-        window.pragotronDisplays = [...splitFlapDisplays, delayFlapDisplay];
+        window.pragotronDisplays = [
+            ...splitFlapDisplays,
+            delayFlapDisplay,
+            trainFlapDisplay,
+            departureTimeDisplay
+        ];
         window.pragotronDelay = delayFlapDisplay;
         window.pragotronDelayValues = DELAY_VALUES;
         window.setPragotronDelay = (value) => delayFlapDisplay.set(value);
+        window.pragotronTrain = trainFlapDisplay;
+        window.setPragotronTrain = (source) => trainFlapDisplay.set(source);
+        window.pragotronDepartureTime = departureTimeDisplay;
+        window.setPragotronDepartureTime = (hours, minutes) =>
+            departureTimeDisplay.set(hours, minutes);
 
         /*$(window).resize(function(){
             window.location.reload()

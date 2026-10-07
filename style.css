@@ -1,4 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400;700&display=swap');
+
+:root {
+    --flap-background: #222222;
+    --flap-foreground: #fff;
+}
 
 html, body {
     margin: 0;
@@ -61,7 +66,7 @@ html, body {
 #tabule td {
     padding: 0 4em;
     margin: 0;
-    background: #333;
+    background: var(--flap-background);
     width: 1px;
 }
 
@@ -112,10 +117,102 @@ html, body {
     padding: 0.25em 0;
 }
 
+/* Pragotron-style condensed lettering and shared panel widths. */
+#tabule .flap-glyph,
+#tabule .time-flap-value,
+#tabule .delay-flap-number {
+    font-family: "Roboto Condensed", "Arial Narrow", sans-serif;
+    font-stretch: condensed;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+#tabule .delay-flap-unit {
+    font-family: "Roboto Condensed", "Arial Narrow", sans-serif;
+    font-stretch: condensed;
+    font-weight: 400;
+}
+
+#tabule .delay-flap-display {
+    width: 19em;
+}
+
+#tabule .departure-time-display {
+    flex: 0 0 19rem;
+    width: 19rem;
+}
+
+/* Final lettering scale: keep the glyphs tall inside the same flap cards. */
+#tabule .flap-character {
+    flex-basis: 0.9em;
+    width: 0.9em;
+}
+
+#tabule .flap-glyph {
+    font-size: 1.4em;
+}
+
+#tabule .time-flap {
+    flex-basis: 0.9em;
+    width: 0.9em;
+}
+
+#tabule .time-hour-flap {
+    flex-basis: 1.8em;
+    width: 1.8em;
+}
+
+#tabule .time-flap-value {
+    font-size: 1.4em;
+}
+
+#tabule .delay-flap-number {
+    font-size: 3.75em;
+}
+
+/* Keep the original regular stroke while retaining the larger glyph size. */
+#tabule .flap-glyph,
+#tabule .time-flap-value,
+#tabule .delay-flap-number {
+    font-weight: 400;
+}
+
+/* Every individual character card uses the same wider reference width. */
+#tabule .flap-character {
+    flex-basis: 1.5em;
+    width: 1.5em;
+}
+
+/* Fill the flap card with the taller, slightly wider reference lettering. */
+#tabule .flap-character {
+    flex-basis: 0.9em;
+    width: 0.9em;
+}
+
+#tabule .flap-glyph {
+    font-size: 1.4em;
+}
+
+#tabule .time-flap {
+    flex-basis: 0.9em;
+    width: 0.9em;
+}
+
+#tabule .time-hour-flap {
+    flex-basis: 1.8em;
+    width: 1.8em;
+}
+
+#tabule .time-flap-value {
+    font-size: 1.4em;
+}
+
+#tabule .delay-flap-number {
+    font-size: 3.75em;
+}
+
 /* One wide flap for the delay value. The number and unit flip together. */
 #tabule .delay-flap-display {
-    --flap-background: #333;
-    --flap-foreground: #fff;
     position: relative;
     display: inline-block;
     width: 12em;
@@ -150,18 +247,14 @@ html, body {
 #tabule .delay-flap-half--top-current,
 #tabule .delay-flap-half--top-next {
     top: 0;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 48%),
-        var(--flap-background);
+    background: var(--flap-background);
     transform-origin: center bottom;
 }
 
 #tabule .delay-flap-half--bottom-current,
 #tabule .delay-flap-half--bottom-next {
     top: 50%;
-    background:
-        linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.04) 60%),
-        var(--flap-background);
+    background: var(--flap-background);
     transform-origin: center top;
 }
 
@@ -212,9 +305,9 @@ html, body {
 }
 
 #tabule .delay-flap-unit {
-    margin-top: 0.5em;
-    margin-left: 0.2em;
-    font-size: 1.1em;
+    margin-top: 0.8em;
+    margin-left: 0.7em;
+    font-size: 2em;
     line-height: 1;
 }
 
@@ -241,6 +334,267 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
     #tabule .delay-flap-half--top-current,
     #tabule .delay-flap-half--bottom-next {
+        animation: none !important;
+        transform: none !important;
+    }
+}
+
+/* The train type is one graphic flap, with one horizontal seam. */
+#tabule .train-flap-display {
+    position: relative;
+    display: inline-block;
+    width: 19em;
+    height: 5em;
+    margin: -2em 0;
+    overflow: hidden;
+    vertical-align: middle;
+    box-sizing: border-box;
+    background: var(--flap-background);
+    perspective: 8em;
+    transform-style: preserve-3d;
+}
+
+#tabule .train-flap-half {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.42);
+    font-size: 1em;
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+}
+
+#tabule .train-flap-half--top-current,
+#tabule .train-flap-half--top-next {
+    top: 0;
+    background: var(--flap-background);
+    transform-origin: center bottom;
+}
+
+#tabule .train-flap-half--bottom-current,
+#tabule .train-flap-half--bottom-next {
+    top: 50%;
+    background: var(--flap-background);
+    transform-origin: center top;
+}
+
+#tabule .train-flap-half--top-current {
+    z-index: 4;
+}
+
+#tabule .train-flap-half--top-next {
+    z-index: 3;
+}
+
+#tabule .train-flap-half--bottom-current {
+    z-index: 2;
+}
+
+#tabule .train-flap-half--bottom-next {
+    z-index: 5;
+    transform: rotateX(90deg);
+}
+
+#tabule .train-flap-half--top-current img,
+#tabule .train-flap-half--top-next img {
+    position: absolute;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: 200%;
+    max-width: none;
+    object-fit: fill;
+}
+
+#tabule .train-flap-half--bottom-current img,
+#tabule .train-flap-half--bottom-next img {
+    position: absolute;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: 200%;
+    max-width: none;
+    object-fit: fill;
+}
+
+#tabule .train-flap-half--top-current img,
+#tabule .train-flap-half--top-next img {
+    top: 0;
+}
+
+#tabule .train-flap-half--bottom-current img,
+#tabule .train-flap-half--bottom-next img {
+    top: -100%;
+}
+
+#tabule .train-flap-display::after {
+    position: absolute;
+    top: calc(50% - 1px);
+    right: 0;
+    left: 0;
+    z-index: 10;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.62);
+    content: "";
+    pointer-events: none;
+}
+
+#tabule .train-flap-display.is-flipping .train-flap-half--top-current {
+    animation: flap-top 0.2s ease-in forwards;
+}
+
+#tabule .train-flap-display.is-flipping .train-flap-half--bottom-next {
+    animation: flap-bottom 0.2s ease-out 0.2s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #tabule .train-flap-half--top-current,
+    #tabule .train-flap-half--bottom-next {
+        animation: none !important;
+        transform: none !important;
+    }
+}
+
+/* Departure time: one rolling hour panel, two rolling minute digits and a
+   static separator. */
+#tabule .departure-time-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.04em;
+    height: 1em;
+    vertical-align: middle;
+    color: #fff;
+    font-family: "Roboto Condensed", "Arial Narrow", sans-serif;
+    font-size: 3em;
+    line-height: 1;
+}
+
+#tabule .time-separator {
+    display: inline-block;
+    width: 0.25em;
+    color: #fff;
+    font-size: 1em;
+    line-height: 1;
+    text-align: center;
+}
+
+#tabule .time-flap {
+    position: relative;
+    display: inline-block;
+    flex: 0 0 0.8em;
+    width: 0.8em;
+    height: 1.6em;
+    margin: 0;
+    overflow: hidden;
+    background: var(--flap-background);
+    font-size: 1em;
+    perspective: 8em;
+    transform-style: preserve-3d;
+}
+
+#tabule .time-hour-flap {
+    flex-basis: 1.6em;
+    width: 1.6em;
+}
+
+#tabule .time-flap-half {
+    position: absolute;
+    left: 0;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 50%;
+    overflow: hidden;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.42);
+    color: #fff;
+    backface-visibility: hidden;
+    font-size: 1em;
+    transform-style: preserve-3d;
+}
+
+#tabule .time-flap-half--top-current,
+#tabule .time-flap-half--top-next {
+    top: 0;
+    background: var(--flap-background);
+    transform-origin: center bottom;
+}
+
+#tabule .time-flap-half--bottom-current,
+#tabule .time-flap-half--bottom-next {
+    top: 50%;
+    background: var(--flap-background);
+    transform-origin: center top;
+}
+
+#tabule .time-flap-half--top-current {
+    z-index: 4;
+}
+
+#tabule .time-flap-half--top-next {
+    z-index: 3;
+}
+
+#tabule .time-flap-half--bottom-current {
+    z-index: 2;
+}
+
+#tabule .time-flap-half--bottom-next {
+    z-index: 5;
+    transform: rotateX(90deg);
+}
+
+#tabule .time-flap-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 200%;
+    font-size: 1em;
+    line-height: 1;
+}
+
+#tabule .time-flap-half--bottom-current .time-flap-content,
+#tabule .time-flap-half--bottom-next .time-flap-content {
+    top: -100%;
+}
+
+#tabule .time-flap-value {
+    font-size: 1em;
+    line-height: 1;
+}
+
+#tabule .time-flap::after {
+    position: absolute;
+    top: calc(50% - 1px);
+    right: 0;
+    left: 0;
+    z-index: 10;
+    height: 2px;
+    background: rgba(0, 0, 0, 0.62);
+    content: "";
+    pointer-events: none;
+}
+
+#tabule .time-flap.is-flipping .time-flap-half--top-current {
+    animation: flap-top 0.08s ease-in forwards;
+}
+
+#tabule .time-flap.is-flipping .time-flap-half--bottom-next {
+    animation: flap-bottom 0.08s ease-out 0.08s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #tabule .time-flap-half--top-current,
+    #tabule .time-flap-half--bottom-next {
         animation: none !important;
         transform: none !important;
     }
@@ -436,18 +790,14 @@ img.pragotronLogo {
 .flap-half--top-current,
 .flap-half--top-next {
     top: 0;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 48%),
-        var(--flap-background);
+    background: var(--flap-background);
     transform-origin: center bottom;
 }
 
 .flap-half--bottom-current,
 .flap-half--bottom-next {
     top: 50%;
-    background:
-        linear-gradient(0deg, rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.04) 60%),
-        var(--flap-background);
+    background: var(--flap-background);
     transform-origin: center top;
 }
 
@@ -631,7 +981,7 @@ img.pragotronLogo {
 
 #tabule tr:first-of-type {
     border-top: none;
-    height: 4em;
+    height: 2em;
 }
 
 #tabule tr + tr td {
@@ -655,11 +1005,11 @@ img.pragotronLogo {
 #tabule td.trainCell,
 #tabule td.timeCell,
 #tabule td.delayCell {
-    background: #333;
+    background: var(--flap-background);
 }
 
 #tabule .flap-display {
-    --flap-background: #333;
+    --flap-background: #222222;
     --flap-foreground: #fff;
     display: inline-flex;
     vertical-align: middle;
@@ -720,4 +1070,173 @@ img.pragotronLogo {
     text-align: center;
     font-size: 3.5em;
     padding: 0.25em 0;
+}
+
+/* Final overrides: the train panel is the width reference. */
+#tabule .delay-flap-display {
+    width: 19em;
+}
+
+#tabule .departure-time-display {
+    flex: 0 0 19rem;
+    width: 19rem;
+}
+
+/* Final lettering scale: keep the glyphs tall inside the same flap cards. */
+#tabule .flap-character {
+    flex-basis: 0.9em;
+    width: 0.9em;
+}
+
+#tabule .flap-glyph {
+    font-size: 1.4em;
+}
+
+#tabule .time-flap {
+    flex-basis: 0.9em;
+    width: 0.9em;
+}
+
+#tabule .time-hour-flap {
+    flex-basis: 1.8em;
+    width: 1.8em;
+}
+
+#tabule .time-flap-value {
+    font-size: 1.4em;
+}
+
+#tabule .delay-flap-number {
+    font-size: 3.75em;
+}
+
+/* The visible time group must occupy the same width as the reference panel. */
+#tabule .time-flap {
+    flex-basis: 1.5em;
+    width: 1.5em;
+}
+
+#tabule .time-hour-flap {
+    flex-basis: 3em;
+    width: 3em;
+}
+
+#tabule .flap-glyph,
+#tabule .time-flap-value,
+#tabule .delay-flap-number {
+    font-weight: 400;
+}
+
+/* Keep the cards compact and widen the actual glyphs inside them. */
+#tabule .flap-character {
+    flex-basis: 1.1em;
+    width: 1.1em;
+}
+
+#tabule .time-flap {
+    flex-basis: 1.1em;
+    width: 1.1em;
+}
+
+#tabule .time-hour-flap {
+    flex-basis: 2.2em;
+    width: 2.2em;
+}
+
+#tabule .flap-glyph-text,
+#tabule .time-flap-value,
+#tabule .delay-flap-number {
+    display: inline-block;
+    transform: scaleX(1.15);
+    transform-origin: center;
+}
+
+/* Final geometry: all ordinary flap cards share one explicit size. */
+#tabule .flap-display {
+    height: 5rem;
+    gap: 0.12rem;
+    font-size: 3rem;
+}
+
+#tabule .flap-character {
+    flex: 0 0 3.3rem;
+    width: 3.3rem;
+    height: 5rem;
+}
+
+#tabule .flap-glyph {
+    font-size: 4.6rem;
+}
+
+#tabule .flap-glyph-text {
+    font-size: inherit;
+}
+
+#tabule .train-flap-display,
+#tabule .delay-flap-display {
+    width: 16rem;
+    height: 5rem;
+}
+
+#tabule .departure-time-display {
+    display: inline-flex;
+    flex: 0 0 16rem;
+    width: 16rem;
+    height: 5rem;
+    gap: 0;
+    font-size: 3rem;
+    justify-content: space-between;
+}
+
+#tabule .time-flap {
+    flex: 0 0 3.3rem;
+    width: 3.3rem;
+    height: 5rem;
+}
+
+#tabule .time-hour-flap {
+    flex-basis: 6.6rem;
+    width: 6.6rem;
+}
+
+#tabule .time-minute-group {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    gap: 0.12rem;
+    height: 5rem;
+}
+
+#tabule .time-flap-value {
+    font-size: 4.6rem;
+}
+
+#tabule .delay-flap-number {
+    font-size: 4.6rem;
+}
+
+/* Keep the three information rows vertically balanced. */
+#tabule tr:not(:first-of-type) {
+    height: 7.5rem;
+}
+
+#tabule tr:not(:first-of-type) > td {
+    padding-top: 0.8em;
+    padding-bottom: 0.8em;
+}
+
+#tabule .train-flap-display,
+#tabule .delay-flap-display {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* The station characters advance one flap at a time through the sequence. */
+#tabule .flap-character.is-flipping .flap-half--top-current {
+    animation: flap-top 0.08s ease-in forwards;
+    animation-delay: 0s;
+}
+
+#tabule .flap-character.is-flipping .flap-half--bottom-next {
+    animation: flap-bottom 0.08s ease-out 0.08s forwards;
 }
