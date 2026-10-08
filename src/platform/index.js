@@ -25,6 +25,7 @@ export {
     getDepartureSortTimestamp,
     getDisplayedDelay,
     getEffectiveDepartureDate,
+    getNextLensBoundary,
     parseDelayMinutes,
     STATION_CHARACTER_COUNT,
     STATION_FLIP_DURATION,

@@ -275,11 +275,8 @@ export const DELAY_VALUES = Object.freeze([
 export const DELAY_DISPLAY_THRESHOLD = 5;
 export const DELAY_OFFSET_DEFAULT = false;
 const RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1000;
-
-const hasPositiveDelay = (delay) => {
-    const actualDelay = parseDelayMinutes(delay);
-    return Number.isFinite(actualDelay) && actualDelay > 0;
-};
+// The 10th minute still counts. The hold releases at the start of the next one.
+const DEPARTURE_HOLD_RELEASE_MS = RECENT_DEPARTURE_GRACE_MS + 60 * 1000;
 
 const minutesSinceClock = (clockDate, reference) => {
     const referenceMinute = new Date(reference.getTime());
@@ -363,17 +360,42 @@ export const getEffectiveDepartureDate = (
         date.setMinutes(date.getMinutes() + Number(displayedDelay));
     }
 
-    // Clock times that already passed today and are not held by delay are
-    // overnight services, so they belong to the next calendar day.
-    // An undelayed departure up to 10 minutes ago inclusive is still today,
-    // so a train that has not left yet stays on the board.
-    const recentUndelayed = !hasPositiveDelay(delay)
-        && minutesSinceClock(clock, reference) <= RECENT_DEPARTURE_GRACE_MS;
-    if (date.getTime() < reference.getTime() && !recentUndelayed) {
+    // A clock time that already passed today belongs to the next calendar
+    // day, so an overnight service does not light its lenses in the evening.
+    // Up to 10 minutes after the effective departure (scheduled time plus the
+    // displayed delay) the service is still this one, with or without delay.
+    const recentDeparture = minutesSinceClock(date, reference)
+        <= RECENT_DEPARTURE_GRACE_MS;
+    if (date.getTime() < reference.getTime() && !recentDeparture) {
         date.setDate(date.getDate() + 1);
     }
 
     return date;
+};
+
+export const getNextLensBoundary = (
+    departureDate,
+    preDepartureSeconds,
+    now = Date.now()
+) => {
+    if (!(departureDate instanceof Date) || Number.isNaN(departureDate.getTime())) {
+        return null;
+    }
+
+    const nowMs = now instanceof Date ? now.getTime() : Number(now);
+    if (!Number.isFinite(nowMs)) {
+        return null;
+    }
+
+    const seconds = Number(preDepartureSeconds);
+    const activation = departureDate.getTime()
+        - (Number.isFinite(seconds) ? seconds : 0) * 1000;
+    if (activation > nowMs) {
+        return activation;
+    }
+
+    const release = departureDate.getTime() + DEPARTURE_HOLD_RELEASE_MS;
+    return release > nowMs ? release : null;
 };
 
 export const getDepartureSortTimestamp = (
