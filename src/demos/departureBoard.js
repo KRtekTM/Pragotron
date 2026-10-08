@@ -79,7 +79,8 @@ const boardClock = clockRoot
     ? new DepartureTimeDisplay(clockRoot, {
         audio,
         timing: initialTiming,
-        label: 'Aktuální čas'
+        label: 'Aktuální čas',
+        includeBlank: false
     })
     : null;
 let boardClockTimer = null;
@@ -91,27 +92,27 @@ const tickBoardClock = (immediate = false) => {
     }
 
     const now = new Date();
-    const stamp = `${now.getHours()}:${now.getMinutes()}`;
+    const stamp = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
     if (stamp === lastBoardClockStamp) {
         return;
     }
 
     lastBoardClockStamp = stamp;
     if (immediate) {
-        boardClock.setImmediate(now.getHours(), now.getMinutes());
+        boardClock.setImmediate(now.getHours(), now.getMinutes(), now.getSeconds());
         return;
     }
 
-    boardClock.set(now.getHours(), now.getMinutes());
+    boardClock.set(now.getHours(), now.getMinutes(), now.getSeconds());
 };
 
 const scheduleBoardClock = (immediate = false) => {
     tickBoardClock(immediate);
     const now = new Date();
-    const delay = ((60 - now.getSeconds()) * 1000) - now.getMilliseconds();
+    const delay = 1000 - now.getMilliseconds();
     boardClockTimer = window.setTimeout(
         () => scheduleBoardClock(false),
-        Math.max(50, delay)
+        Math.max(20, delay)
     );
 };
 

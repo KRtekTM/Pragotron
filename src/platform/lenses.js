@@ -367,18 +367,33 @@ export class LensDisplay {
             return;
         }
 
+        const now = Date.now();
         const preDepartureActive = !this.state.preDeparture.enabled
             || this.preDepartureActive;
         this.state.lenses.forEach((setting, index) => {
             const lens = lenses[index];
+            const blinking = setting.enabled
+                && setting.blinking
+                && preDepartureActive;
+            // The delay is relative to the moment the animation starts. A phase
+            // captured while the lens was dark would put this row on its own
+            // clock, so refresh it from the shared wall-clock phase now.
+            if (blinking && !lens.classList.contains('is-blinking')) {
+                lens.style.setProperty(
+                    '--lens-blink-delay',
+                    `${-getLensBlinkPhase({
+                        now,
+                        lensIndex: index,
+                        rowIndex: this.rowIndex,
+                        synchronizeRows: this.state.synchronizeRows
+                    })}s`
+                );
+            }
             lens.classList.toggle(
                 'is-on',
                 setting.enabled && preDepartureActive
             );
-            lens.classList.toggle(
-                'is-blinking',
-                setting.enabled && setting.blinking && preDepartureActive
-            );
+            lens.classList.toggle('is-blinking', blinking);
         });
     }
 

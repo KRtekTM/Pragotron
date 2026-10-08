@@ -311,10 +311,7 @@
   var DELAY_DISPLAY_THRESHOLD = 5;
   var DELAY_OFFSET_DEFAULT = false;
   var RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1e3;
-  var hasPositiveDelay = (delay) => {
-    const actualDelay = parseDelayMinutes(delay);
-    return Number.isFinite(actualDelay) && actualDelay > 0;
-  };
+  var DEPARTURE_HOLD_RELEASE_MS = RECENT_DEPARTURE_GRACE_MS + 60 * 1e3;
   var minutesSinceClock = (clockDate, reference) => {
     const referenceMinute = new Date(reference.getTime());
     referenceMinute.setSeconds(0, 0);
@@ -362,8 +359,8 @@
     if (displayedDelay !== "") {
       date.setMinutes(date.getMinutes() + Number(displayedDelay));
     }
-    const recentUndelayed = !hasPositiveDelay(delay) && minutesSinceClock(clock, reference) <= RECENT_DEPARTURE_GRACE_MS;
-    if (date.getTime() < reference.getTime() && !recentUndelayed) {
+    const recentDeparture = minutesSinceClock(date, reference) <= RECENT_DEPARTURE_GRACE_MS;
+    if (date.getTime() < reference.getTime() && !recentDeparture) {
       date.setDate(date.getDate() + 1);
     }
     return date;
@@ -1711,11 +1708,13 @@
   var SequentialNumericFlap = class {
     constructor(element, minimum, maximum, {
       audio: audio2 = new SplitFlapAudio(),
-      timing = FLAP_TIMING_DEFAULTS
+      timing = FLAP_TIMING_DEFAULTS,
+      includeBlank = true
     } = {}) {
       this.element = element;
       this.minimum = minimum;
       this.maximum = maximum;
+      this.includeBlank = includeBlank !== false;
       this.audio = audio2;
       this.ownsAudio = audio2 instanceof SplitFlapAudio;
       this.timing = normalizeFlapTiming(timing);
@@ -1813,8 +1812,10 @@
       let next;
       if (this.currentValue === "") {
         next = this.minimum;
+      } else if (this.currentValue === this.maximum) {
+        next = this.includeBlank ? "" : this.minimum;
       } else {
-        next = this.currentValue === this.maximum ? "" : this.currentValue + 1;
+        next = this.currentValue + 1;
       }
       const current = this.currentValue;
       clearFlapAnimation(this.element);
@@ -1867,30 +1868,35 @@
     constructor(element, {
       audio: audio2 = new SplitFlapAudio(),
       timing = FLAP_TIMING_DEFAULTS,
-      label = "Odjezd"
+      label = "Odjezd",
+      includeBlank = true
     } = {}) {
       this.element = element;
       this.label = label || "Odjezd";
       this.defaultHours = Number(element.dataset.hours);
       this.defaultMinutes = Number(element.dataset.minutes);
+      const flapOptions = { audio: audio2, timing, includeBlank };
       this.hour = new SequentialNumericFlap(
         element.querySelector(".time-hour-flap"),
         0,
         23,
-        { audio: audio2, timing }
+        flapOptions
       );
       this.minuteTens = new SequentialNumericFlap(
         element.querySelectorAll(".time-minute-flap")[0],
         0,
         5,
-        { audio: audio2, timing }
+        flapOptions
       );
       this.minuteOnes = new SequentialNumericFlap(
         element.querySelectorAll(".time-minute-flap")[1],
         0,
         9,
-        { audio: audio2, timing }
+        flapOptions
       );
+      const secondFlaps = element.querySelectorAll(".time-second-flap");
+      this.secondTens = secondFlaps.length >= 2 ? new SequentialNumericFlap(secondFlaps[0], 0, 5, flapOptions) : null;
+      this.secondOnes = secondFlaps.length >= 2 ? new SequentialNumericFlap(secondFlaps[1], 0, 9, flapOptions) : null;
       this.element.setAttribute("aria-label", this.label);
     }
     setTiming(timing) {
@@ -1898,9 +1904,11 @@
       this.hour.setTiming(normalized);
       this.minuteTens.setTiming(normalized);
       this.minuteOnes.setTiming(normalized);
+      this.secondTens?.setTiming(normalized);
+      this.secondOnes?.setTiming(normalized);
       return normalized;
     }
-    parseTime(hours, minutes) {
+    parseTime(hours, minutes, seconds) {
       if (minutes === void 0 && typeof hours === "string") {
         const match = hours.trim().match(/^(\d{1,2})[.:](\d{2})$/);
         if (!match) {
@@ -1914,39 +1922,67 @@
       if (!Number.isInteger(hours) || hours < 0 || hours > 23 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
         throw new RangeError("\u010Cas odjezdu mus\xED b\xFDt mezi 00.00 a 23.59.");
       }
-      return { hours, minutes };
+      if (!this.secondTens || seconds === void 0) {
+        return { hours, minutes, seconds: null };
+      }
+      seconds = Number(seconds);
+      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 59) {
+        throw new RangeError("Vte\u0159iny mus\xED b\xFDt mezi 0 a 59.");
+      }
+      return { hours, minutes, seconds };
     }
-    updateLabel(hours, minutes) {
+    updateLabel(hours, minutes, seconds) {
+      const clock = `${hours}.${String(minutes).padStart(2, "0")}`;
       this.element.setAttribute(
         "aria-label",
-        `${this.label} ${hours}.${String(minutes).padStart(2, "0")}`
+        seconds === null || seconds === void 0 ? `${this.label} ${clock}` : `${this.label} ${clock}.${String(seconds).padStart(2, "0")}`
       );
     }
-    set(hours, minutes) {
-      const time = this.parseTime(hours, minutes);
+    applySeconds(time, immediate) {
+      if (!this.secondTens || time.seconds === null) {
+        return;
+      }
+      const tens = Math.floor(time.seconds / 10);
+      const ones = time.seconds % 10;
+      if (immediate) {
+        this.secondTens.setImmediate(tens);
+        this.secondOnes.setImmediate(ones);
+        return;
+      }
+      this.secondTens.set(tens);
+      this.secondOnes.set(ones);
+    }
+    set(hours, minutes, seconds) {
+      const time = this.parseTime(hours, minutes, seconds);
       this.hour.set(time.hours);
       this.minuteTens.set(Math.floor(time.minutes / 10));
       this.minuteOnes.set(time.minutes % 10);
-      this.updateLabel(time.hours, time.minutes);
+      this.applySeconds(time, false);
+      this.updateLabel(time.hours, time.minutes, time.seconds);
       return time;
     }
-    setImmediate(hours, minutes) {
-      const time = this.parseTime(hours, minutes);
+    setImmediate(hours, minutes, seconds) {
+      const time = this.parseTime(hours, minutes, seconds);
       this.hour.setImmediate(time.hours);
       this.minuteTens.setImmediate(Math.floor(time.minutes / 10));
       this.minuteOnes.setImmediate(time.minutes % 10);
-      this.updateLabel(time.hours, time.minutes);
+      this.applySeconds(time, true);
+      this.updateLabel(time.hours, time.minutes, time.seconds);
     }
     clear() {
       this.hour.clear();
       this.minuteTens.clear();
       this.minuteOnes.clear();
+      this.secondTens?.clear();
+      this.secondOnes?.clear();
       this.element.setAttribute("aria-label", this.label);
     }
     clearImmediate() {
       this.hour.clearImmediate();
       this.minuteTens.clearImmediate();
       this.minuteOnes.clearImmediate();
+      this.secondTens?.clearImmediate();
+      this.secondOnes?.clearImmediate();
       this.element.setAttribute("aria-label", this.label);
     }
     getValue() {
@@ -1955,21 +1991,28 @@
         this.minuteTens.getValue(),
         this.minuteOnes.getValue()
       ];
-      if (values.every((value) => value === "")) {
+      const secondValues = this.secondTens ? [this.secondTens.getValue(), this.secondOnes.getValue()] : [];
+      if (values.concat(secondValues).every((value) => value === "")) {
         return null;
       }
-      return {
+      const time = {
         hours: values[0] === "" ? 0 : values[0],
         minutes: (values[1] === "" ? 0 : values[1]) * 10 + (values[2] === "" ? 0 : values[2])
       };
+      if (this.secondTens) {
+        time.seconds = (secondValues[0] === "" ? 0 : secondValues[0]) * 10 + (secondValues[1] === "" ? 0 : secondValues[1]);
+      }
+      return time;
     }
     isSettled() {
-      return this.hour.isSettled() && this.minuteTens.isSettled() && this.minuteOnes.isSettled();
+      return this.hour.isSettled() && this.minuteTens.isSettled() && this.minuteOnes.isSettled() && (this.secondTens?.isSettled() ?? true) && (this.secondOnes?.isSettled() ?? true);
     }
     destroy() {
       this.hour.destroy();
       this.minuteTens.destroy();
       this.minuteOnes.destroy();
+      this.secondTens?.destroy();
+      this.secondOnes?.destroy();
       this.element.replaceChildren();
     }
   };
@@ -2275,17 +2318,27 @@
         this.render();
         return;
       }
+      const now = Date.now();
       const preDepartureActive = !this.state.preDeparture.enabled || this.preDepartureActive;
       this.state.lenses.forEach((setting, index) => {
         const lens = lenses[index];
+        const blinking = setting.enabled && setting.blinking && preDepartureActive;
+        if (blinking && !lens.classList.contains("is-blinking")) {
+          lens.style.setProperty(
+            "--lens-blink-delay",
+            `${-getLensBlinkPhase({
+              now,
+              lensIndex: index,
+              rowIndex: this.rowIndex,
+              synchronizeRows: this.state.synchronizeRows
+            })}s`
+          );
+        }
         lens.classList.toggle(
           "is-on",
           setting.enabled && preDepartureActive
         );
-        lens.classList.toggle(
-          "is-blinking",
-          setting.enabled && setting.blinking && preDepartureActive
-        );
+        lens.classList.toggle("is-blinking", blinking);
       });
     }
     clear() {
@@ -3548,7 +3601,8 @@
   var boardClock = clockRoot ? new DepartureTimeDisplay(clockRoot, {
     audio,
     timing: initialTiming,
-    label: "Aktu\xE1ln\xED \u010Das"
+    label: "Aktu\xE1ln\xED \u010Das",
+    includeBlank: false
   }) : null;
   var boardClockTimer = null;
   var lastBoardClockStamp = "";
@@ -3557,24 +3611,24 @@
       return;
     }
     const now = /* @__PURE__ */ new Date();
-    const stamp = `${now.getHours()}:${now.getMinutes()}`;
+    const stamp = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
     if (stamp === lastBoardClockStamp) {
       return;
     }
     lastBoardClockStamp = stamp;
     if (immediate) {
-      boardClock.setImmediate(now.getHours(), now.getMinutes());
+      boardClock.setImmediate(now.getHours(), now.getMinutes(), now.getSeconds());
       return;
     }
-    boardClock.set(now.getHours(), now.getMinutes());
+    boardClock.set(now.getHours(), now.getMinutes(), now.getSeconds());
   };
   var scheduleBoardClock = (immediate = false) => {
     tickBoardClock(immediate);
     const now = /* @__PURE__ */ new Date();
-    const delay = (60 - now.getSeconds()) * 1e3 - now.getMilliseconds();
+    const delay = 1e3 - now.getMilliseconds();
     boardClockTimer = window.setTimeout(
       () => scheduleBoardClock(false),
-      Math.max(50, delay)
+      Math.max(20, delay)
     );
   };
   scheduleBoardClock(true);

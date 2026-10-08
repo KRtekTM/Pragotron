@@ -12,6 +12,7 @@ body.departure-board-page {
 #tabule.departure-board {
     --departure-flap-height: clamp(3rem, 5vw, 5rem);
     --departure-flap-font-size: clamp(1.05rem, 2.6vw, 3.2rem);
+    --departure-hour-flap-font-size: clamp(1.55rem, 3.1vw, 6.2rem);
     --departure-flap-gap: 0.04rem;
     --departure-group-gap: 0.9%;
     table-layout: fixed;
@@ -210,6 +211,12 @@ body.departure-board-page {
     font-size: var(--departure-flap-font-size);
 }
 
+#tabule.departure-board #departureBoardClock .time-hour-flap .flap-character,
+#tabule.departure-board #departureBoardClock .time-hour-flap .time-flap-value, 
+#tabule.departure-board #departureBoardClock .time-hour-flap .delay-flap-number {
+    font-size: var(--departure-hour-flap-font-size);
+}
+
 #tabule.departure-board .flap-glyph-text,
 #tabule.departure-board .time-flap-value,
 #tabule.departure-board .delay-flap-number {
@@ -309,6 +316,20 @@ body.departure-board-page {
     height: var(--departure-flap-height);
     width: 100%;
     gap: var(--departure-flap-gap);
+}
+
+#tabule.departure-board .departhodiny .departure-time-display {
+    min-width: 0;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-areas: "hour hour separator minute minute second-separator second second";
+}
+
+#tabule.departure-board .departhodiny .time-second-separator {
+    grid-area: second-separator;
+}
+
+#tabule.departure-board .departhodiny .time-second-group {
+    grid-area: second;
 }
 
 #tabule.departure-board .train-number-display {

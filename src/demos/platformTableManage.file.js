@@ -307,10 +307,7 @@
   var DELAY_DISPLAY_THRESHOLD = 5;
   var DELAY_OFFSET_DEFAULT = false;
   var RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1e3;
-  var hasPositiveDelay = (delay) => {
-    const actualDelay = parseDelayMinutes(delay);
-    return Number.isFinite(actualDelay) && actualDelay > 0;
-  };
+  var DEPARTURE_HOLD_RELEASE_MS = RECENT_DEPARTURE_GRACE_MS + 60 * 1e3;
   var minutesSinceClock = (clockDate, reference) => {
     const referenceMinute = new Date(reference.getTime());
     referenceMinute.setSeconds(0, 0);
@@ -358,8 +355,8 @@
     if (displayedDelay !== "") {
       date.setMinutes(date.getMinutes() + Number(displayedDelay));
     }
-    const recentUndelayed = !hasPositiveDelay(delay) && minutesSinceClock(clock, reference) <= RECENT_DEPARTURE_GRACE_MS;
-    if (date.getTime() < reference.getTime() && !recentUndelayed) {
+    const recentDeparture = minutesSinceClock(date, reference) <= RECENT_DEPARTURE_GRACE_MS;
+    if (date.getTime() < reference.getTime() && !recentDeparture) {
       date.setDate(date.getDate() + 1);
     }
     return date;
@@ -973,17 +970,27 @@
         this.render();
         return;
       }
+      const now = Date.now();
       const preDepartureActive = !this.state.preDeparture.enabled || this.preDepartureActive;
       this.state.lenses.forEach((setting, index) => {
         const lens = lenses[index];
+        const blinking = setting.enabled && setting.blinking && preDepartureActive;
+        if (blinking && !lens.classList.contains("is-blinking")) {
+          lens.style.setProperty(
+            "--lens-blink-delay",
+            `${-getLensBlinkPhase({
+              now,
+              lensIndex: index,
+              rowIndex: this.rowIndex,
+              synchronizeRows: this.state.synchronizeRows
+            })}s`
+          );
+        }
         lens.classList.toggle(
           "is-on",
           setting.enabled && preDepartureActive
         );
-        lens.classList.toggle(
-          "is-blinking",
-          setting.enabled && setting.blinking && preDepartureActive
-        );
+        lens.classList.toggle("is-blinking", blinking);
       });
     }
     clear() {

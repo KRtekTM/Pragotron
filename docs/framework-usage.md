@@ -593,7 +593,9 @@ s nastavitelným počtem řádků (výchozí 12, rozsah 1–24). Logo v záhlav�
 se volí v manage (ČD, SŽ, SŽ bílé, Pragotron nebo vlastní SVG) a
 ukládá se do `board:settings` jako `departureBoardLogo` a
 `departureBoardLogoSvg`. V záhlaví vedle loga běží aktuální čas
-jako stejný split-flap jako čas odjezdu.
+jako stejný split-flap jako čas odjezdu, navíc s oddělovačem a dvěma
+flapy vteřin. V cyklu aktuálního času není prázdná karta, po nejvyšší
+číslici následuje hned nula.
 Barva čoček se při načtení vezme z nastavení manage (`settings.lenses`)
 a platí hned, i na prázdných řádcích. Rozsvícení dál řídí konkrétní odjezd.
 Každý řádek (`DepartureBoardRow`) obsahuje čočky, typ vlaku, číslo vlaku,
