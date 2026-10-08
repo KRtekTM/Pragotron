@@ -13,6 +13,13 @@ import {
     formatStationName
 } from './data.js';
 import { SplitFlapAudio } from './audio.js';
+import {
+    cancelFlipDone,
+    clearFlipTiming,
+    scheduleFlipDone,
+    setNodeText,
+    startFlip
+} from './flap-runtime.js';
 
 const scheduleFrame = (callback) => {
     if (typeof window.requestAnimationFrame === 'function') {
@@ -28,17 +35,9 @@ const prefersReducedMotion = () =>
 
 const clearTimer = (owner, property) => {
     if (owner[property] !== null) {
-        window.clearTimeout(owner[property]);
+        cancelFlipDone(owner[property]);
         owner[property] = null;
     }
-};
-
-const applyFlipTiming = (element, duration) => {
-    element.style.setProperty('--flap-half-duration', `${duration / 2}ms`);
-};
-
-const clearFlipTiming = (element) => {
-    element.style.removeProperty('--flap-half-duration');
 };
 
 export class SplitFlapDisplay {
@@ -101,12 +100,22 @@ export class SplitFlapDisplay {
     }
 
     renderCharacter(element, current, next) {
-        element.replaceChildren(
-            this.createHalf('flap-half--top-current', current),
-            this.createHalf('flap-half--top-next', next),
-            this.createHalf('flap-half--bottom-current', current),
-            this.createHalf('flap-half--bottom-next', next)
-        );
+        if (element.childElementCount !== 4) {
+            element.replaceChildren(
+                this.createHalf('flap-half--top-current', current),
+                this.createHalf('flap-half--top-next', next),
+                this.createHalf('flap-half--bottom-current', current),
+                this.createHalf('flap-half--bottom-next', next)
+            );
+            return;
+        }
+
+        const currentGlyph = this.glyphFor(current);
+        const nextGlyph = this.glyphFor(next);
+        setNodeText(element.children[0].querySelector('.flap-glyph-text'), currentGlyph);
+        setNodeText(element.children[1].querySelector('.flap-glyph-text'), nextGlyph);
+        setNodeText(element.children[2].querySelector('.flap-glyph-text'), currentGlyph);
+        setNodeText(element.children[3].querySelector('.flap-glyph-text'), nextGlyph);
     }
 
     createCharacter(current, next) {
@@ -196,11 +205,9 @@ export class SplitFlapDisplay {
             }
 
             const flipDuration = getFlapDuration(this.timing);
-            applyFlipTiming(state.element, flipDuration);
-            this.audio.play();
-            state.element.classList.add('is-flipping');
+            startFlip(state.element, flipDuration, this.audio);
 
-            state.timer = window.setTimeout(() => {
+            state.timer = scheduleFlipDone(() => {
                 if (sequence !== state.sequence) {
                     return;
                 }
@@ -359,13 +366,47 @@ export class DelayFlapDisplay {
         return half;
     }
 
+    fillHalf(half, value) {
+        const content = half.firstElementChild;
+        if (!content) {
+            return;
+        }
+
+        if (value === '') {
+            if (content.childElementCount) {
+                content.replaceChildren();
+            }
+            return;
+        }
+
+        let number = content.querySelector('.delay-flap-number');
+        if (!number) {
+            number = document.createElement('span');
+            number.className = 'delay-flap-number';
+            const unit = document.createElement('span');
+            unit.className = 'delay-flap-unit';
+            unit.textContent = 'min';
+            content.replaceChildren(number, unit);
+        }
+
+        setNodeText(number, value);
+    }
+
     render(current, next) {
-        this.element.replaceChildren(
-            this.createHalf('delay-flap-half--top-current', current),
-            this.createHalf('delay-flap-half--top-next', next),
-            this.createHalf('delay-flap-half--bottom-current', current),
-            this.createHalf('delay-flap-half--bottom-next', next)
-        );
+        if (this.element.childElementCount !== 4) {
+            this.element.replaceChildren(
+                this.createHalf('delay-flap-half--top-current', current),
+                this.createHalf('delay-flap-half--top-next', next),
+                this.createHalf('delay-flap-half--bottom-current', current),
+                this.createHalf('delay-flap-half--bottom-next', next)
+            );
+            return;
+        }
+
+        this.fillHalf(this.element.children[0], current);
+        this.fillHalf(this.element.children[1], next);
+        this.fillHalf(this.element.children[2], current);
+        this.fillHalf(this.element.children[3], next);
     }
 
     updateLabel() {
@@ -440,11 +481,9 @@ export class DelayFlapDisplay {
         }
 
         const flipDuration = getFlapDuration(this.timing);
-        applyFlipTiming(this.element, flipDuration);
-        this.audio.play();
-        this.element.classList.add('is-flipping');
+        startFlip(this.element, flipDuration, this.audio);
 
-        this.timer = window.setTimeout(() => {
+        this.timer = scheduleFlipDone(() => {
             if (sequence !== this.sequence) {
                 return;
             }
@@ -568,13 +607,66 @@ export class TrainFlapDisplay {
         return half;
     }
 
+    trainKey(type) {
+        return type.source || `${type.text || ''}|${type.suffix || ''}|${type.name || ''}`;
+    }
+
+    fillTrainHalf(half, type) {
+        const key = this.trainKey(type);
+        if (half.dataset.trainKey === key) {
+            return;
+        }
+
+        half.dataset.trainKey = key;
+        half.style.setProperty('--train-flap-background', type.background);
+        half.style.setProperty('--train-flap-foreground', type.foreground);
+        half.replaceChildren();
+
+        if (type.source) {
+            const image = document.createElement('img');
+            image.src = type.source;
+            image.alt = '';
+            half.appendChild(image);
+            return;
+        }
+
+        if (!type.text) {
+            return;
+        }
+
+        const content = document.createElement('span');
+        content.className = 'train-flap-content';
+        const text = document.createElement('span');
+        text.className = 'train-flap-text';
+        const mainText = document.createElement('span');
+        mainText.className = 'train-flap-main';
+        mainText.textContent = type.text;
+        text.appendChild(mainText);
+        if (type.suffix) {
+            const suffix = document.createElement('span');
+            suffix.className = 'train-flap-suffix';
+            suffix.textContent = type.suffix;
+            text.appendChild(suffix);
+        }
+        content.appendChild(text);
+        half.appendChild(content);
+    }
+
     render(currentType, nextType) {
-        this.element.replaceChildren(
-            this.createHalf('train-flap-half--top-current', currentType),
-            this.createHalf('train-flap-half--top-next', nextType),
-            this.createHalf('train-flap-half--bottom-current', currentType),
-            this.createHalf('train-flap-half--bottom-next', nextType)
-        );
+        if (this.element.childElementCount !== 4) {
+            this.element.replaceChildren(
+                this.createHalf('train-flap-half--top-current', currentType),
+                this.createHalf('train-flap-half--top-next', nextType),
+                this.createHalf('train-flap-half--bottom-current', currentType),
+                this.createHalf('train-flap-half--bottom-next', nextType)
+            );
+            return;
+        }
+
+        this.fillTrainHalf(this.element.children[0], currentType);
+        this.fillTrainHalf(this.element.children[1], nextType);
+        this.fillTrainHalf(this.element.children[2], currentType);
+        this.fillTrainHalf(this.element.children[3], nextType);
     }
 
     updateLabel() {
@@ -605,11 +697,9 @@ export class TrainFlapDisplay {
         }
 
         const flipDuration = getFlapDuration(this.timing);
-        applyFlipTiming(this.element, flipDuration);
-        this.audio.play();
-        this.element.classList.add('is-flipping');
+        startFlip(this.element, flipDuration, this.audio);
 
-        this.timer = window.setTimeout(() => {
+        this.timer = scheduleFlipDone(() => {
             if (sequence !== this.sequence) {
                 return;
             }
@@ -731,12 +821,22 @@ export class SequentialNumericFlap {
     }
 
     render(current, next) {
-        this.element.replaceChildren(
-            this.createHalf('time-flap-half--top-current', current),
-            this.createHalf('time-flap-half--top-next', next),
-            this.createHalf('time-flap-half--bottom-current', current),
-            this.createHalf('time-flap-half--bottom-next', next)
-        );
+        if (this.element.childElementCount !== 4) {
+            this.element.replaceChildren(
+                this.createHalf('time-flap-half--top-current', current),
+                this.createHalf('time-flap-half--top-next', next),
+                this.createHalf('time-flap-half--bottom-current', current),
+                this.createHalf('time-flap-half--bottom-next', next)
+            );
+            return;
+        }
+
+        const currentText = current === '' ? '' : String(current);
+        const nextText = next === '' ? '' : String(next);
+        setNodeText(this.element.children[0].querySelector('.time-flap-value'), currentText);
+        setNodeText(this.element.children[1].querySelector('.time-flap-value'), nextText);
+        setNodeText(this.element.children[2].querySelector('.time-flap-value'), currentText);
+        setNodeText(this.element.children[3].querySelector('.time-flap-value'), nextText);
     }
 
     set(value) {
@@ -806,11 +906,9 @@ export class SequentialNumericFlap {
         }
 
         const flipDuration = getFlapDuration(this.timing);
-        applyFlipTiming(this.element, flipDuration);
-        this.audio.play();
-        this.element.classList.add('is-flipping');
+        startFlip(this.element, flipDuration, this.audio);
 
-        this.timer = window.setTimeout(() => {
+        this.timer = scheduleFlipDone(() => {
             if (sequence !== this.sequence) {
                 return;
             }
@@ -847,10 +945,12 @@ export class DepartureTimeDisplay {
         element,
         {
             audio = new SplitFlapAudio(),
-            timing = FLAP_TIMING_DEFAULTS
+            timing = FLAP_TIMING_DEFAULTS,
+            label = 'Odjezd'
         } = {}
     ) {
         this.element = element;
+        this.label = label || 'Odjezd';
         this.defaultHours = Number(element.dataset.hours);
         this.defaultMinutes = Number(element.dataset.minutes);
         this.hour = new SequentialNumericFlap(
@@ -871,7 +971,7 @@ export class DepartureTimeDisplay {
             9,
             { audio, timing }
         );
-        this.element.setAttribute('aria-label', 'Odjezd');
+        this.element.setAttribute('aria-label', this.label);
     }
 
     setTiming(timing) {
@@ -907,7 +1007,7 @@ export class DepartureTimeDisplay {
     updateLabel(hours, minutes) {
         this.element.setAttribute(
             'aria-label',
-            `Odjezd ${hours}.${String(minutes).padStart(2, '0')}`
+            `${this.label} ${hours}.${String(minutes).padStart(2, '0')}`
         );
     }
 
@@ -932,14 +1032,14 @@ export class DepartureTimeDisplay {
         this.hour.clear();
         this.minuteTens.clear();
         this.minuteOnes.clear();
-        this.element.setAttribute('aria-label', 'Odjezd');
+        this.element.setAttribute('aria-label', this.label);
     }
 
     clearImmediate() {
         this.hour.clearImmediate();
         this.minuteTens.clearImmediate();
         this.minuteOnes.clearImmediate();
-        this.element.setAttribute('aria-label', 'Odjezd');
+        this.element.setAttribute('aria-label', this.label);
     }
 
     getValue() {

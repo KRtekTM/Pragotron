@@ -72,7 +72,7 @@ http://localhost:8000/departureBoard.html
 Odjezdová tabule používá stejné `platformTableManage.html` a stejný
 `localStorage`/transport. Po odeslání odjezdu seřadí odjezdy podle času
 a začne je zobrazovat od horního řádku. Počet řádků se nastavuje v manage
-(výchozí 8) nebo parametrem `departureBoard.html?rows=12`.
+(výchozí 12) nebo parametrem `departureBoard.html?rows=16`.
 
 Při otevření přes `file://` použijí stránky vlastní loader a fallback bundle:
 
@@ -130,9 +130,12 @@ Používají tento společný kontrakt:
 měl před dalším odesláním dat počkat na `board.isSettled()`.
 
 `set()` a `clear()` používají skutečnou animaci, zvuk `split-flap.wav` a
-náhodnou mechanickou odchylku `190 ± 1 ms`. Všechny klapky jednoho slova
+náhodnou mechanickou odchylku podle `variation`. Všechny klapky jednoho slova
 nebo řádku začínají flipovat naráz; odchylka mění jen délku jednotlivých
 flipů, ne jejich start. Platí to i pro číslice času, typ vlaku a zpoždění.
+Každý krok drží nastavenou délku (výchozí `190 ms`) a po záseku se
+nedohání zrychlením — další flap počká celý interval. DOM karet se
+recykluje a start i konec vlny se slučují do jednoho snímku.
 
 Timing lze pro konkrétní `BoardRuntime` změnit bez zásahu do komponent:
 
@@ -145,7 +148,7 @@ board.setFlapTiming({
 
 `duration` je délka jednoho flapu v milisekundách a podporovaný rozsah je
 `150–500`. `variation` určuje náhodnou odchylku na každém flapu v rozsahu
-`0–10 ms`. Výchozí hodnoty jsou `190` a `1`; hodnoty se zaokrouhlí a omezí
+`0–10 ms`. Výchozí hodnoty jsou `190` a `0`; hodnoty se zaokrouhlí a omezí
 na povolený rozsah.
 
 ## Znaková sada split-flapu
@@ -587,7 +590,11 @@ Pokud použijete obrázek, musí být dostupný v HTTP i ve fallback/file režim
 ## Odjezdová tabule
 
 `DepartureBoardDisplay` je šablonová komponenta pro odjezdovou tabuli
-s nastavitelným počtem řádků (výchozí 8, rozsah 1–24).
+s nastavitelným počtem řádků (výchozí 12, rozsah 1–24). Logo v záhlaví
+se volí v manage (ČD, SŽ, SŽ bílé, Pragotron nebo vlastní SVG) a
+ukládá se do `board:settings` jako `departureBoardLogo` a
+`departureBoardLogoSvg`. V záhlaví vedle loga běží aktuální čas
+jako stejný split-flap jako čas odjezdu.
 Každý řádek (`DepartureBoardRow`) obsahuje čočky, typ vlaku, číslo vlaku,
 dvě stanice, čas, zpoždění, nástupiště, kolej a sektor. Controlleru stačí
 předat pole odjezdů:
@@ -671,8 +678,9 @@ stavu. Správa zůstává výhradně na `platformTableManage.html`.
 
 ## Audio
 
-`SplitFlapAudio` přehraje pro každý flip samostatný klon zvuku. Díky tomu
-může hrát více flapů současně:
+`SplitFlapAudio` přehraje flap přes Web Audio (po odemčení) nebo přes
+malý pool HTMLAudio hlasů. Současné flipy v jednom snímku sdílejí jeden
+klik, aby prohlížeč nezahltil desítkami `play()` najednou:
 
 ```js
 const audio = new SplitFlapAudio('assets/split-flap.wav');

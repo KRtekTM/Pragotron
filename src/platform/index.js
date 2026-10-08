@@ -5,6 +5,10 @@ export {
     DEPARTURE_PLATFORM_VALUES,
     DEPARTURE_SECTOR_VALUES,
     DEPARTURE_TRACK_VALUES,
+    DEPARTURE_BOARD_LOGO_CUSTOM_ID,
+    DEPARTURE_BOARD_LOGO_DEFAULT,
+    DEPARTURE_BOARD_LOGO_PRESETS,
+    DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH,
     DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
     DEPARTURE_BOARD_ROW_COUNT_MAX,
     DEPARTURE_BOARD_ROW_COUNT_MIN,
@@ -33,7 +37,11 @@ export {
     createEmptyBoardState,
     getFlapDuration,
     getTrainNumberCardStyle,
+    getDepartureBoardLogoLabel,
+    getDepartureBoardLogoSrc,
+    normalizeCustomBoardLogoSvg,
     normalizeDelayOffset,
+    normalizeDepartureBoardLogoId,
     normalizeDepartureBoardRowCount,
     normalizeFlapTiming
 } from './data.js';

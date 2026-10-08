@@ -23,10 +23,25 @@
     >
         <thead>
             <tr class="departure-board-header">
-                <th class="cdlogo" scope="col" colspan="2"><img src="images/CD_logo.svg" alt="CD Logo"></th>
+                <th class="cdlogo" scope="col"><img id="departureBoardLogo" src="images/sprzel.svg" alt="Správa železnic"></th>
                 <th class="departsmall" scope="col" colspan="2">DEPARTURE</th>
-                <th class="departbig" scope="col" colspan="2">ODJEZD</th>
-                <th class="departsmall right" scope="col" colspan="4">ABFAHRT</th>
+                <th class="departbig" scope="col" colspan="3">ODJEZD</th>
+                <th class="departhodiny" scope="col" colspan="2">
+                    <div
+                        id="departureBoardClock"
+                        class="departure-time-display"
+                        data-hours="0"
+                        data-minutes="0"
+                    >
+                        <div class="time-flap time-hour-flap"></div>
+                        <span class="time-separator" aria-hidden="true">.</span>
+                        <div class="time-minute-group">
+                            <div class="time-flap time-minute-flap"></div>
+                            <div class="time-flap time-minute-flap"></div>
+                        </div>
+                    </div>
+                </th>
+                <th class="departsmall right" scope="col" colspan="2">ABFAHRT</th>
             </tr>
         </thead>
         <colgroup>

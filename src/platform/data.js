@@ -130,7 +130,7 @@ export const formatStationName = (
 };
 
 export const STATION_FLIP_DURATION = 190;
-export const FLAP_TIMING_VARIATION_MS = 1;
+export const FLAP_TIMING_VARIATION_MS = 0;
 
 export const FLAP_TIMING_DURATION_MIN = 150;
 export const FLAP_TIMING_DURATION_MAX = 500;
@@ -141,7 +141,7 @@ export const FLAP_TIMING_DEFAULTS = Object.freeze({
     variation: FLAP_TIMING_VARIATION_MS
 });
 
-export const DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 8;
+export const DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 12;
 export const DEPARTURE_BOARD_ROW_COUNT_MIN = 1;
 export const DEPARTURE_BOARD_ROW_COUNT_MAX = 24;
 
@@ -151,6 +151,85 @@ export const normalizeDepartureBoardRowCount = (value) => clampInteger(
     DEPARTURE_BOARD_ROW_COUNT_MAX,
     DEPARTURE_BOARD_ROW_COUNT_DEFAULT
 );
+
+export const DEPARTURE_BOARD_LOGO_CUSTOM_ID = 'custom';
+export const DEPARTURE_BOARD_LOGO_DEFAULT = 'sprzel';
+export const DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH = 80_000;
+export const DEPARTURE_BOARD_LOGO_PRESETS = Object.freeze([
+    {
+        id: 'cd',
+        src: 'images/CD_logo.svg',
+        label: 'ČD'
+    },
+    {
+        id: 'sprzel',
+        src: 'images/sprzel.svg',
+        label: 'Správa železnic'
+    },
+    {
+        id: 'sprzel-white',
+        src: 'images/sprzel_bile.svg',
+        label: 'Správa železnic bílé'
+    },
+    {
+        id: 'pragotron',
+        src: 'images/pragotron_bile.svg',
+        label: 'Pragotron'
+    }
+]);
+
+export const normalizeDepartureBoardLogoId = (value) => {
+    if (value === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+        return DEPARTURE_BOARD_LOGO_CUSTOM_ID;
+    }
+
+    return DEPARTURE_BOARD_LOGO_PRESETS.some((item) => item.id === value)
+        ? value
+        : DEPARTURE_BOARD_LOGO_DEFAULT;
+};
+
+export const normalizeCustomBoardLogoSvg = (value) => {
+    const text = String(value ?? '').trim();
+    if (!text
+        || text.length > DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH
+        || !/<svg[\s>]/i.test(text)
+        || /<script/i.test(text)
+        || /\bon\w+\s*=/i.test(text)) {
+        return '';
+    }
+
+    return text;
+};
+
+export const getDepartureBoardLogoLabel = (
+    value,
+    fallback = DEPARTURE_BOARD_LOGO_DEFAULT
+) => {
+    const logoId = normalizeDepartureBoardLogoId(value ?? fallback);
+    if (logoId === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+        return 'Vlastní logo';
+    }
+
+    return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.label
+        || 'Logo';
+};
+
+export const getDepartureBoardLogoSrc = (
+    value,
+    customSvg = '',
+    fallback = DEPARTURE_BOARD_LOGO_DEFAULT
+) => {
+    const logoId = normalizeDepartureBoardLogoId(value ?? fallback);
+    if (logoId === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+        const svg = normalizeCustomBoardLogoSvg(customSvg);
+        return svg
+            ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+            : '';
+    }
+
+    return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.src
+        || '';
+};
 
 const clampInteger = (value, minimum, maximum, fallback) => {
     const number = Number(value);

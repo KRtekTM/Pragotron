@@ -38,6 +38,7 @@
     overflow: hidden;
     perspective: 8em;
     transform-style: preserve-3d;
+    contain: layout style;
 }
 
 #tabule .flap-half,
@@ -161,6 +162,7 @@
     perspective: 8em;
     transform-style: preserve-3d;
     vertical-align: middle;
+    contain: layout style;
 }
 
 #tabule .train-flap-half,
@@ -326,6 +328,7 @@
     font-size: 1em;
     perspective: 8em;
     transform-style: preserve-3d;
+    contain: layout style;
 }
 
 #tabule .time-hour-flap {
@@ -363,25 +366,20 @@
 
 #tabule .flap-character.is-flipping .flap-half--top-current,
 #tabule .train-flap-display.is-flipping .train-flap-half--top-current,
-#tabule .delay-flap-display.is-flipping .delay-flap-half--top-current {
+#tabule .delay-flap-display.is-flipping .delay-flap-half--top-current,
+#tabule .time-flap.is-flipping .time-flap-half--top-current {
     animation: flap-top var(--flap-half-duration, 80ms) ease-in forwards;
     animation-delay: 0s;
+    will-change: transform;
 }
 
 #tabule .flap-character.is-flipping .flap-half--bottom-next,
 #tabule .train-flap-display.is-flipping .train-flap-half--bottom-next,
-#tabule .delay-flap-display.is-flipping .delay-flap-half--bottom-next {
+#tabule .delay-flap-display.is-flipping .delay-flap-half--bottom-next,
+#tabule .time-flap.is-flipping .time-flap-half--bottom-next {
     animation: flap-bottom var(--flap-half-duration, 80ms) ease-out forwards;
     animation-delay: var(--flap-half-duration, 80ms);
-}
-
-#tabule .time-flap.is-flipping .time-flap-half--top-current {
-    animation: flap-top var(--flap-half-duration, 80ms) ease-in forwards;
-}
-
-#tabule .time-flap.is-flipping .time-flap-half--bottom-next {
-    animation: flap-bottom var(--flap-half-duration, 80ms) ease-out
-        var(--flap-half-duration, 80ms) forwards;
+    will-change: transform;
 }
 
 @media (max-width: 700px) {

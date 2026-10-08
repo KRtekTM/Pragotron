@@ -6,6 +6,9 @@ import {
     LENS_PREDEPARTURE_SECONDS_MAX,
     LENS_PREDEPARTURE_SECONDS_MIN,
     LENS_PREDEPARTURE_SECONDS_STEP,
+    DEPARTURE_BOARD_LOGO_CUSTOM_ID,
+    DEPARTURE_BOARD_LOGO_DEFAULT,
+    DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH,
     DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
     DEPARTURE_BOARD_ROW_COUNT_MAX,
     DEPARTURE_BOARD_ROW_COUNT_MIN,
@@ -37,7 +40,10 @@ import {
     LocalStorageAdapter,
     SunSchedule,
     normalizeBoardIdentity,
+    getDepartureBoardLogoLabel,
+    getDepartureBoardLogoSrc,
     normalizeDelayOffset,
+    normalizeDepartureBoardLogoId,
     normalizeDepartureBoardRowCount,
     normalizeFlapTiming,
     createDefaultLensState,
@@ -101,6 +107,22 @@ const manageHeaderStation = documentRef.querySelector('#manageHeaderStation');
 const departureBoardRowsInput = documentRef.querySelector(
     '#departureBoardRows'
 );
+const departureBoardLogoInputs = [
+    ...documentRef.querySelectorAll('input[name="departureBoardLogo"]')
+];
+const departureBoardLogoSvgInput = documentRef.querySelector(
+    '#departureBoardLogoSvg'
+);
+const departureBoardLogoCustomPreview = documentRef.querySelector(
+    '#departureBoardLogoCustomPreview'
+);
+const departureBoardLogoCustomPlaceholder = documentRef.querySelector(
+    '#departureBoardLogoCustomPlaceholder'
+);
+const manageHeaderBoardLogo = documentRef.querySelector('#manageHeaderBoardLogo');
+const manageHeaderBoardLogoWrap = documentRef.querySelector(
+    '#manageHeaderBoardLogoWrap'
+);
 const boardFormStatus = documentRef.querySelector('#boardFormStatus');
 const lensControls = documentRef.querySelector('#lensControls');
 const lampSettingsPanel = documentRef.querySelector('#lampSettingsPanel');
@@ -116,6 +138,9 @@ const nightModeButton = documentRef.querySelector('#nightModeButton');
 const autoNightModeInput = documentRef.querySelector('#autoNightMode');
 const startButton = documentRef.querySelector('#startButton');
 const resetAllSettingsButton = documentRef.querySelector('#resetAllSettings');
+const clearAllDeparturesButton = documentRef.querySelector(
+    '#clearAllDeparturesButton'
+);
 const activeBoardsList = documentRef.querySelector('#activeBoardsList');
 const departuresTable = documentRef.querySelector('#departuresTable');
 const departuresTableBody = documentRef.querySelector('#departuresTableBody');
@@ -147,6 +172,12 @@ let delayOffset = normalizeDelayOffset(
 let departureBoardRows = normalizeDepartureBoardRowCount(
     savedSettings?.departureBoardRows ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT
 );
+let departureBoardLogo = normalizeDepartureBoardLogoId(
+    savedSettings?.departureBoardLogo ?? DEPARTURE_BOARD_LOGO_DEFAULT
+);
+let departureBoardLogoSvg = String(savedSettings?.departureBoardLogoSvg || '')
+    .trim()
+    .slice(0, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH);
 const savedLiveSettings = savedState.liveDepartures
     && typeof savedState.liveDepartures === 'object'
     ? savedState.liveDepartures
@@ -300,7 +331,9 @@ const getLightingSettingsState = () => ({
     autoNightMode,
     flapTiming: { ...flapTiming },
     departureBoardRows,
-    delayOffset
+    delayOffset,
+    departureBoardLogo,
+    departureBoardLogoSvg
 });
 
 const normalizeManagedLensState = (value) => {
@@ -612,6 +645,75 @@ const updateDepartureBoardRowsFromControls = () => {
     publishSettings();
 };
 
+const applyDisplayedLogos = () => {
+    const src = getDepartureBoardLogoSrc(
+        departureBoardLogo,
+        departureBoardLogoSvg
+    );
+    const label = getDepartureBoardLogoLabel(departureBoardLogo);
+    if (manageHeaderBoardLogo) {
+        if (src) {
+            manageHeaderBoardLogo.hidden = false;
+            manageHeaderBoardLogo.src = src;
+            manageHeaderBoardLogo.alt = label;
+            if (manageHeaderBoardLogoWrap) {
+                manageHeaderBoardLogoWrap.hidden = false;
+            }
+        } else if (manageHeaderBoardLogoWrap) {
+            manageHeaderBoardLogoWrap.hidden = true;
+        }
+    }
+
+    const customSrc = getDepartureBoardLogoSrc(
+        DEPARTURE_BOARD_LOGO_CUSTOM_ID,
+        departureBoardLogoSvg
+    );
+    if (departureBoardLogoCustomPreview) {
+        if (customSrc) {
+            departureBoardLogoCustomPreview.hidden = false;
+            departureBoardLogoCustomPreview.src = customSrc;
+        } else {
+            departureBoardLogoCustomPreview.hidden = true;
+            departureBoardLogoCustomPreview.removeAttribute('src');
+        }
+    }
+    if (departureBoardLogoCustomPlaceholder) {
+        departureBoardLogoCustomPlaceholder.hidden = Boolean(customSrc);
+    }
+};
+
+const syncDepartureBoardLogoControls = () => {
+    departureBoardLogoInputs.forEach((input) => {
+        input.checked = input.value === departureBoardLogo;
+    });
+    if (departureBoardLogoSvgInput
+        && departureBoardLogoSvgInput.value !== departureBoardLogoSvg) {
+        departureBoardLogoSvgInput.value = departureBoardLogoSvg;
+    }
+    applyDisplayedLogos();
+};
+
+const updateDepartureBoardLogoFromControls = () => {
+    const selected = departureBoardLogoInputs.find((input) => input.checked);
+    departureBoardLogo = normalizeDepartureBoardLogoId(
+        selected?.value ?? DEPARTURE_BOARD_LOGO_DEFAULT
+    );
+    departureBoardLogoSvg = String(departureBoardLogoSvgInput?.value || '')
+        .trim()
+        .slice(0, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH);
+    applyDisplayedLogos();
+    publishSettings();
+};
+
+const updateDepartureBoardLogoSvgFromControls = () => {
+    departureBoardLogo = DEPARTURE_BOARD_LOGO_CUSTOM_ID;
+    departureBoardLogoSvg = String(departureBoardLogoSvgInput?.value || '')
+        .trim()
+        .slice(0, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH);
+    syncDepartureBoardLogoControls();
+    publishSettings();
+};
+
 const getFormTarget = () => normalizeBoardIdentity({
     platform: platformInput.value,
     track: trackInput.value,
@@ -842,6 +944,11 @@ const renderDeparturesTable = () => {
 
     departuresEmptyState.hidden = rows.length > 0;
     departuresTable.hidden = rows.length === 0;
+    if (clearAllDeparturesButton) {
+        const disabled = boardActionInProgress || rows.length === 0;
+        clearAllDeparturesButton.disabled = disabled;
+        clearAllDeparturesButton.setAttribute('aria-disabled', String(disabled));
+    }
     scheduleLensActivation();
     departuresTable.querySelectorAll('[data-sort-key]').forEach((button) => {
         const header = button.closest('th');
@@ -1444,6 +1551,14 @@ departureBoardRowsInput?.addEventListener(
     updateDepartureBoardRowsFromControls
 );
 syncDepartureBoardRowControls();
+departureBoardLogoInputs.forEach((input) => {
+    input.addEventListener('change', updateDepartureBoardLogoFromControls);
+});
+departureBoardLogoSvgInput?.addEventListener(
+    'input',
+    updateDepartureBoardLogoSvgFromControls
+);
+syncDepartureBoardLogoControls();
 
 const renderNightMode = () => {
     documentRef.body.classList.toggle('manage-night-mode', nightMode);
@@ -1546,7 +1661,8 @@ resetLampSettingsButton.addEventListener('click', () => {
 const boardActionButtons = [
     submitButton,
     startButton,
-    resetAllSettingsButton
+    resetAllSettingsButton,
+    clearAllDeparturesButton
 ];
 
 const setBoardActionBusy = (isBusy) => {
@@ -1554,8 +1670,10 @@ const setBoardActionBusy = (isBusy) => {
     boardForm.classList.toggle('is-updating', isBusy);
     boardForm.setAttribute('aria-busy', String(isBusy));
     boardActionButtons.forEach((button) => {
-        button.disabled = isBusy;
-        button.setAttribute('aria-disabled', String(isBusy));
+        const emptyClear = button === clearAllDeparturesButton
+            && departures.length === 0;
+        button.disabled = isBusy || emptyClear;
+        button.setAttribute('aria-disabled', String(button.disabled));
     });
     documentRef.querySelectorAll('[data-departure-action]').forEach((button) => {
         button.disabled = isBusy;
@@ -2496,6 +2614,68 @@ const resetDeparture = (departure) => {
     );
 };
 
+const clearAllDepartures = () => {
+    if (boardActionInProgress || departures.length === 0) {
+        return;
+    }
+
+    const confirmed = window.confirm(
+        departures.length === 1
+            ? 'Opravdu vymazat 1 uložený odjezd a resetovat související tabule?'
+            : `Opravdu vymazat všech ${departures.length} uložených odjezdů a resetovat související tabule?`
+    );
+    if (!confirmed) {
+        return;
+    }
+
+    const targets = [];
+    const seen = new Set();
+    departures.forEach((departure) => {
+        if (!isConfiguredTarget(departure.target)) {
+            return;
+        }
+
+        const key = getBoardIdentityKey(departure.target);
+        if (seen.has(key)) {
+            return;
+        }
+
+        seen.add(key);
+        targets.push(departure.target);
+    });
+
+    departures = [];
+    targets.forEach((target) => {
+        const revision = nextStateRevision();
+        setDesiredState(
+            target,
+            'reset-board',
+            getEmptyState(),
+            revision
+        );
+        void sendBackgroundBoardAction(
+            'reset-board',
+            getEmptyState(),
+            target,
+            revision
+        );
+    });
+
+    exampleActive = false;
+    startButton.textContent = 'Načíst příklad';
+    startButton.setAttribute('aria-pressed', 'false');
+    persistState();
+    renderDeparturesTable();
+    publishDepartureSnapshot();
+    setBoardFormStatus(
+        targets.length
+            ? 'Všechny odjezdy byly vymazány a tabule resetovány.'
+            : 'Všechny odjezdy byly vymazány.'
+    );
+};
+
+clearAllDeparturesButton?.addEventListener('click', clearAllDepartures);
+
 departuresTable?.addEventListener('click', (event) => {
     const actionButton = event.target.closest('[data-departure-action]');
     if (!actionButton) {
@@ -2565,6 +2745,7 @@ syncClockLightControls();
 syncFlapTimingControls();
 syncDelayOffsetControls();
 syncDepartureBoardRowControls();
+syncDepartureBoardLogoControls();
 renderNightMode();
 syncAutomaticNightMode();
 
@@ -2640,6 +2821,8 @@ resetAllSettingsButton.addEventListener('click', () => {
     flapTiming = normalizeFlapTiming(FLAP_TIMING_DEFAULTS);
     delayOffset = DELAY_OFFSET_DEFAULT;
     departureBoardRows = DEPARTURE_BOARD_ROW_COUNT_DEFAULT;
+    departureBoardLogo = DEPARTURE_BOARD_LOGO_DEFAULT;
+    departureBoardLogoSvg = '';
     renderNightMode();
     renderLiveControls();
     setLiveStatus('Live odjezdy byly vypnuté obnovením nastavení.');
@@ -2651,6 +2834,7 @@ resetAllSettingsButton.addEventListener('click', () => {
     syncFlapTimingControls();
     syncDelayOffsetControls();
     syncDepartureBoardRowControls();
+    syncDepartureBoardLogoControls();
     publishSettings({ persist: false });
     setFormValues(exampleState);
     exampleActive = false;

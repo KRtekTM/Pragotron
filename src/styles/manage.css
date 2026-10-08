@@ -7,6 +7,34 @@
     box-sizing: border-box;
 }
 
+.manage-header-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.manage-header-board-logo-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    height: 32px;
+}
+
+.manage-header-board-logo-wrap[hidden] {
+    display: none;
+}
+
+.manage-header-board-logo {
+    display: block;
+    height: 32px;
+    width: auto;
+    max-width: 5.5rem;
+    object-fit: contain;
+}
+
 .manage-header-logo {
     display: block;
     height: 32px;
@@ -16,6 +44,10 @@
     max-width: 519px;
     object-fit: contain;
     object-position: left center;
+}
+
+#pragotron-napis, .manage-header-board-logo {
+    margin-left: 2em;
 }
 
 .manage-header-status {
@@ -352,6 +384,90 @@
     margin-bottom: 0.15rem;
 }
 
+#boardForm #departureBoardLogoPanel {
+    margin-top: 1rem;
+}
+
+.board-logo-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.2rem, 1fr));
+    gap: 0.65rem;
+}
+
+.board-logo-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 0.45rem;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: var(--control-radius);
+    background: #111;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.82rem;
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.board-logo-option:has(input:checked) {
+    border-color: var(--control-focus);
+    box-shadow: 0 0 0 1px var(--control-focus);
+}
+
+.board-logo-option input {
+    margin: 0;
+    accent-color: var(--control-focus);
+}
+
+.board-logo-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 2.6rem;
+    padding: 0.2rem 0.35rem;
+    box-sizing: border-box;
+    overflow: hidden;
+    background: #1e3c69;
+    border-radius: 0.2rem;
+}
+
+.board-logo-preview img {
+    display: block;
+    height: 1.9rem;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.board-logo-preview img[hidden] {
+    display: none;
+}
+
+#departureBoardLogoCustomPlaceholder {
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+#departureBoardLogoSvg {
+    width: 100%;
+    min-height: 6.5rem;
+    margin-top: 0.35rem;
+    padding: 0.45rem 0.6rem;
+    box-sizing: border-box;
+    border: 1px solid #999;
+    border-radius: var(--control-radius);
+    background: #fff;
+    color: #111;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.78rem;
+    resize: vertical;
+}
+
 #departureBoardRows {
     max-width: 8rem;
 }
@@ -401,6 +517,41 @@
     padding: 0;
     font-size: 1.05rem;
     font-weight: 700;
+}
+
+.departures-panel-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-bottom: 0.7rem;
+}
+
+.departures-panel-heading > legend {
+    margin-bottom: 0;
+}
+
+#clearAllDeparturesButton {
+    flex: 0 0 auto;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+#clearAllDeparturesButton:hover:not(:disabled) {
+    background: #fff;
+}
+
+#clearAllDeparturesButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
 }
 
 .active-boards-list {
@@ -767,12 +918,20 @@ body.manage-night-mode #manage #boardForm .flap-timing-settings {
     background: #171a1e;
 }
 
+#skrin.night-mode ~ #manage #boardForm .board-logo-option,
+body.manage-night-mode #manage #boardForm .board-logo-option {
+    border-color: #3f464d;
+    background: #111417;
+}
+
 #skrin.night-mode ~ #manage #boardForm .board-form-field input,
 #skrin.night-mode ~ #manage #boardForm .board-form-field select,
+#skrin.night-mode ~ #manage #boardForm .board-form-field textarea,
 #skrin.night-mode ~ #manage #boardForm .lamp-control-select select,
 #skrin.night-mode ~ #manage #boardForm .lens-settings select,
 body.manage-night-mode #manage #boardForm .board-form-field input,
 body.manage-night-mode #manage #boardForm .board-form-field select,
+body.manage-night-mode #manage #boardForm .board-form-field textarea,
 body.manage-night-mode #manage #boardForm .lamp-control-select select,
 body.manage-night-mode #manage #boardForm .lens-settings select,
 #skrin.night-mode ~ #manage #liveDeparturesPanel input,
@@ -853,7 +1012,9 @@ body.manage-night-mode #manage .active-board-actions button {
 }
 
 #skrin.night-mode ~ #manage #departuresTable .departure-row-actions button,
-body.manage-night-mode #manage #departuresTable .departure-row-actions button {
+body.manage-night-mode #manage #departuresTable .departure-row-actions button,
+#skrin.night-mode ~ #manage #clearAllDeparturesButton,
+body.manage-night-mode #manage #clearAllDeparturesButton {
     border-color: #626d77;
     background: #30363d;
     color: #f0f2f4;
@@ -867,7 +1028,9 @@ body.manage-night-mode #manage .active-board-actions button:hover {
 #skrin.night-mode ~ #manage #departuresTable
     .departure-row-actions button:hover,
 body.manage-night-mode #manage #departuresTable
-    .departure-row-actions button:hover {
+    .departure-row-actions button:hover,
+#skrin.night-mode ~ #manage #clearAllDeparturesButton:hover:not(:disabled),
+body.manage-night-mode #manage #clearAllDeparturesButton:hover:not(:disabled) {
     background: #424b54;
 }
 

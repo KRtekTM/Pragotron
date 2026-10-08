@@ -19,7 +19,17 @@
     <script src="src/demos/platformTableManagePreload.js"></script>
 
     <div id="manageHeader">
-        <img src="images/pragotronNapis.svg" alt="PRAGOTRON" class="manage-header-logo">
+        <div class="manage-header-brand">
+            <span id="manageHeaderBoardLogoWrap" class="manage-header-board-logo-wrap">
+                <img
+                    id="manageHeaderBoardLogo"
+                    class="manage-header-board-logo"
+                    src="images/sprzel.svg"
+                    alt="Správa železnic"
+                >
+            </span>
+            <img src="images/pragotronNapis.svg" alt="PRAGOTRON" class="manage-header-logo" id="pragotron-napis">
+        </div>
         <div class="manage-header-status">
             <span
                 id="manageHeaderStation"
@@ -168,7 +178,7 @@
                             <label class="lamp-control-range" for="flapTimingVariation">
                                 <span class="lamp-control-range-header">
                                     <span>Náhodná variace</span>
-                                    <output id="flapTimingVariationOutput">±1 ms</output>
+                                    <output id="flapTimingVariationOutput">±0 ms</output>
                                 </span>
                                 <input
                                     id="flapTimingVariation"
@@ -176,7 +186,7 @@
                                     min="0"
                                     max="10"
                                     step="1"
-                                    value="1"
+                                    value="0"
                                 >
                             </label>
                         </div>
@@ -196,13 +206,13 @@
                                 min="1"
                                 max="24"
                                 step="1"
-                                value="8"
+                                value="12"
                                 inputmode="numeric"
                             >
                             <small>
-                                Kolik odjezdů se zobrazí. Výchozí je 8, rozsah 1–24.
+                                Kolik odjezdů se zobrazí. Výchozí je 12, rozsah 1–24.
                                 Stejné číslo jde nastavit i parametrem
-                                <code>?rows=12</code> u departureBoard.html.
+                                <code>?rows=16</code> u departureBoard.html.
                             </small>
                         </label>
                     </fieldset>
@@ -220,6 +230,87 @@
                         </small>
                     </fieldset>
                 </div>
+
+                <fieldset id="departureBoardLogoPanel" class="flap-timing-settings">
+                    <div><legend>Logo odjezdové tabule</legend></div>
+                    <div class="board-logo-options" role="radiogroup" aria-label="Logo odjezdové tabule">
+                        <label class="board-logo-option" for="departureBoardLogoCd">
+                            <input
+                                id="departureBoardLogoCd"
+                                type="radio"
+                                name="departureBoardLogo"
+                                value="cd"
+                            >
+                            <span class="board-logo-preview">
+                                <img src="images/CD_logo.svg" alt="">
+                            </span>
+                            <span>ČD</span>
+                        </label>
+                        <label class="board-logo-option" for="departureBoardLogoSprzel">
+                            <input
+                                id="departureBoardLogoSprzel"
+                                type="radio"
+                                name="departureBoardLogo"
+                                value="sprzel"
+                                checked
+                            >
+                            <span class="board-logo-preview">
+                                <img src="images/sprzel.svg" alt="">
+                            </span>
+                            <span>SŽ</span>
+                        </label>
+                        <label class="board-logo-option" for="departureBoardLogoSprzelWhite">
+                            <input
+                                id="departureBoardLogoSprzelWhite"
+                                type="radio"
+                                name="departureBoardLogo"
+                                value="sprzel-white"
+                            >
+                            <span class="board-logo-preview">
+                                <img src="images/sprzel_bile.svg" alt="">
+                            </span>
+                            <span>SŽ bílé</span>
+                        </label>
+                        <label class="board-logo-option" for="departureBoardLogoPragotron">
+                            <input
+                                id="departureBoardLogoPragotron"
+                                type="radio"
+                                name="departureBoardLogo"
+                                value="pragotron"
+                            >
+                            <span class="board-logo-preview">
+                                <img src="images/pragotron_bile.svg" alt="">
+                            </span>
+                            <span>Pragotron</span>
+                        </label>
+                        <label class="board-logo-option" for="departureBoardLogoCustom">
+                            <input
+                                id="departureBoardLogoCustom"
+                                type="radio"
+                                name="departureBoardLogo"
+                                value="custom"
+                            >
+                            <span class="board-logo-preview">
+                                <img id="departureBoardLogoCustomPreview" alt="" hidden>
+                                <span id="departureBoardLogoCustomPlaceholder">SVG</span>
+                            </span>
+                            <span>Vlastní SVG</span>
+                        </label>
+                    </div>
+                    <label class="board-form-field" for="departureBoardLogoSvg">
+                        Vlastní SVG
+                        <textarea
+                            id="departureBoardLogoSvg"
+                            rows="4"
+                            spellcheck="false"
+                            placeholder="<svg …></svg>"
+                        ></textarea>
+                        <small class="flap-timing-help">
+                            Vložte značku <code>&lt;svg&gt;</code>. Použije se po
+                            zvolení varianty Vlastní SVG.
+                        </small>
+                    </label>
+                </fieldset>
                 
                 <div class="board-form-actions" style="justify-content: center;">
                     <button id="nightModeButton" type="button" aria-pressed="false">
@@ -346,7 +437,12 @@
             </fieldset>
 
             <fieldset id="departuresPanel" class="manage-panel">
-            <div><legend>Odjezdy na tabulích</legend></div>
+            <div class="departures-panel-heading">
+                <legend>Odjezdy na tabulích</legend>
+                <button id="clearAllDeparturesButton" type="button" disabled>
+                    Vymazat všechny odjezdy
+                </button>
+            </div>
             <div class="departures-table-wrap">
                 <table id="departuresTable">
                     <thead>

@@ -182,7 +182,7 @@
     return `${stripTrailingVowels(filled)}.`;
   };
   var STATION_FLIP_DURATION = 190;
-  var FLAP_TIMING_VARIATION_MS = 1;
+  var FLAP_TIMING_VARIATION_MS = 0;
   var FLAP_TIMING_DURATION_MIN = 150;
   var FLAP_TIMING_DURATION_MAX = 500;
   var FLAP_TIMING_VARIATION_MIN = 0;
@@ -191,7 +191,7 @@
     duration: STATION_FLIP_DURATION,
     variation: FLAP_TIMING_VARIATION_MS
   });
-  var DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 8;
+  var DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 12;
   var DEPARTURE_BOARD_ROW_COUNT_MIN = 1;
   var DEPARTURE_BOARD_ROW_COUNT_MAX = 24;
   var normalizeDepartureBoardRowCount = (value) => clampInteger(
@@ -200,6 +200,59 @@
     DEPARTURE_BOARD_ROW_COUNT_MAX,
     DEPARTURE_BOARD_ROW_COUNT_DEFAULT
   );
+  var DEPARTURE_BOARD_LOGO_CUSTOM_ID = "custom";
+  var DEPARTURE_BOARD_LOGO_DEFAULT = "sprzel";
+  var DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH = 8e4;
+  var DEPARTURE_BOARD_LOGO_PRESETS = Object.freeze([
+    {
+      id: "cd",
+      src: "images/CD_logo.svg",
+      label: "\u010CD"
+    },
+    {
+      id: "sprzel",
+      src: "images/sprzel.svg",
+      label: "Spr\xE1va \u017Eeleznic"
+    },
+    {
+      id: "sprzel-white",
+      src: "images/sprzel_bile.svg",
+      label: "Spr\xE1va \u017Eeleznic b\xEDl\xE9"
+    },
+    {
+      id: "pragotron",
+      src: "images/pragotron_bile.svg",
+      label: "Pragotron"
+    }
+  ]);
+  var normalizeDepartureBoardLogoId = (value) => {
+    if (value === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+      return DEPARTURE_BOARD_LOGO_CUSTOM_ID;
+    }
+    return DEPARTURE_BOARD_LOGO_PRESETS.some((item) => item.id === value) ? value : DEPARTURE_BOARD_LOGO_DEFAULT;
+  };
+  var normalizeCustomBoardLogoSvg = (value) => {
+    const text = String(value ?? "").trim();
+    if (!text || text.length > DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH || !/<svg[\s>]/i.test(text) || /<script/i.test(text) || /\bon\w+\s*=/i.test(text)) {
+      return "";
+    }
+    return text;
+  };
+  var getDepartureBoardLogoLabel = (value, fallback = DEPARTURE_BOARD_LOGO_DEFAULT) => {
+    const logoId = normalizeDepartureBoardLogoId(value ?? fallback);
+    if (logoId === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+      return "Vlastn\xED logo";
+    }
+    return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.label || "Logo";
+  };
+  var getDepartureBoardLogoSrc = (value, customSvg = "", fallback = DEPARTURE_BOARD_LOGO_DEFAULT) => {
+    const logoId = normalizeDepartureBoardLogoId(value ?? fallback);
+    if (logoId === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+      const svg = normalizeCustomBoardLogoSvg(customSvg);
+      return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : "";
+    }
+    return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.src || "";
+  };
   var clampInteger = (value, minimum, maximum, fallback) => {
     const number = Number(value);
     return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, Math.round(number))) : fallback;
@@ -560,20 +613,31 @@
 
   // src/platform/audio.js
   var DEFAULT_SOUND_URL = typeof document === "undefined" ? "split-flap.wav" : new URL("split-flap.wav", document.baseURI).href;
+  var AUDIO_VOICE_LIMIT = 2;
+  var AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
   var SplitFlapAudio = class {
     constructor(source = DEFAULT_SOUND_URL) {
+      this.sourceUrl = source;
       this.template = typeof Audio === "function" ? new Audio(source) : null;
+      this.voices = [];
+      this.nextVoice = 0;
+      this.framePlays = 0;
+      this.frameReset = 0;
       this.unlocked = false;
       this.activationTarget = null;
       this.activationHandler = null;
       this.listeners = /* @__PURE__ */ new Set();
+      this.context = null;
+      this.buffer = null;
+      this.output = null;
+      this.decodePromise = null;
       if (this.template) {
         this.template.preload = "auto";
       }
     }
     getState() {
       return {
-        available: Boolean(this.template),
+        available: Boolean(this.template || this.buffer),
         unlocked: this.unlocked
       };
     }
@@ -607,7 +671,7 @@
       this.activationHandler = null;
     }
     bindUserActivation(target = globalThis.document) {
-      if (!this.template || !target?.addEventListener) {
+      if (!this.template && !AudioContextCtor || !target?.addEventListener) {
         return this;
       }
       if (this.unlocked || this.activationTarget) {
@@ -626,72 +690,287 @@
       });
       return this;
     }
+    ensureContext() {
+      if (this.context || !AudioContextCtor) {
+        return this.context;
+      }
+      this.context = new AudioContextCtor();
+      this.output = this.context.createGain();
+      this.output.gain.value = 1;
+      this.output.connect(this.context.destination);
+      return this.context;
+    }
+    decodeBuffer() {
+      if (this.buffer || this.decodePromise || !this.context) {
+        return this.decodePromise;
+      }
+      this.decodePromise = fetch(this.sourceUrl).then((response) => {
+        if (!response.ok) {
+          throw new Error(`Zvuk flapu vr\xE1til HTTP ${response.status}.`);
+        }
+        return response.arrayBuffer();
+      }).then((data) => this.context.decodeAudioData(data)).then((buffer) => {
+        this.buffer = buffer;
+        return buffer;
+      }).catch(() => {
+        this.decodePromise = null;
+        return null;
+      });
+      return this.decodePromise;
+    }
     unlock() {
-      if (!this.template || this.unlocked) {
+      if (this.unlocked && this.context?.state === "running") {
         return this.unlocked;
       }
-      const sound = this.template.cloneNode();
-      sound.preload = "auto";
+      const context = this.ensureContext();
+      if (context?.state === "suspended") {
+        context.resume().then(() => {
+          this.setUnlocked(true);
+          this.removeActivationListeners();
+        }).catch(() => {
+        });
+      }
+      this.decodeBuffer();
+      if (!this.template) {
+        return this.unlocked;
+      }
+      const sound = this.getVoice();
+      if (!sound) {
+        return this.unlocked;
+      }
       sound.muted = true;
       sound.volume = 0;
-      let cleanedUp = false;
-      const cleanup = () => {
-        if (cleanedUp) {
-          return;
-        }
-        cleanedUp = true;
-        sound.pause();
-        sound.remove();
-      };
-      const unlocked = () => {
-        this.setUnlocked(true);
-        this.removeActivationListeners();
-        cleanup();
-      };
       try {
         const playback = sound.play();
+        const finish = () => {
+          sound.pause();
+          sound.muted = false;
+          sound.volume = 1;
+          sound.currentTime = 0;
+          this.setUnlocked(true);
+          this.removeActivationListeners();
+        };
         if (playback?.then) {
-          playback.then(unlocked).catch(cleanup);
+          playback.then(finish).catch(() => {
+            sound.muted = false;
+            sound.volume = 1;
+          });
         } else {
-          unlocked();
+          finish();
         }
       } catch {
-        cleanup();
+        sound.muted = false;
+        sound.volume = 1;
       }
       return this.unlocked;
     }
-    play() {
-      if (!this.template) {
+    noteFramePlay() {
+      this.framePlays += 1;
+      if (this.frameReset) {
         return;
       }
-      const sound = this.template.cloneNode();
-      sound.preload = "auto";
-      let cleanedUp = false;
-      const cleanup = () => {
-        if (cleanedUp) {
-          return;
-        }
-        cleanedUp = true;
-        sound.remove();
+      const reset = () => {
+        this.framePlays = 0;
+        this.frameReset = 0;
       };
-      sound.addEventListener("ended", cleanup, { once: true });
-      sound.addEventListener("error", cleanup, { once: true });
+      if (typeof window.requestAnimationFrame === "function") {
+        this.frameReset = window.requestAnimationFrame(reset);
+        return;
+      }
+      this.frameReset = window.setTimeout(reset, 16);
+    }
+    getVoice() {
+      if (!this.template) {
+        return null;
+      }
+      if (this.voices.length < AUDIO_VOICE_LIMIT) {
+        const voice2 = this.template.cloneNode();
+        voice2.preload = "auto";
+        this.voices.push(voice2);
+        return voice2;
+      }
+      const voice = this.voices[this.nextVoice];
+      this.nextVoice = (this.nextVoice + 1) % this.voices.length;
+      return voice;
+    }
+    play() {
+      if (this.framePlays >= AUDIO_VOICE_LIMIT) {
+        return;
+      }
+      this.noteFramePlay();
+      if (this.buffer && this.context?.state === "running") {
+        const source = this.context.createBufferSource();
+        source.buffer = this.buffer;
+        source.connect(this.output);
+        source.onended = () => {
+          source.disconnect();
+        };
+        source.start();
+        this.setUnlocked(true);
+        return;
+      }
+      if (this.context && !this.buffer) {
+        this.decodeBuffer();
+      }
+      const sound = this.getVoice();
+      if (!sound) {
+        return;
+      }
       try {
+        sound.muted = false;
+        sound.volume = 1;
+        sound.currentTime = 0;
         const playback = sound.play();
         if (playback?.then) {
-          playback.then(() => this.setUnlocked(true)).catch(cleanup);
+          playback.then(() => this.setUnlocked(true)).catch(() => {
+          });
         } else {
           this.setUnlocked(true);
         }
       } catch {
-        cleanup();
       }
     }
     destroy() {
       this.removeActivationListeners();
       this.listeners.clear();
+      if (this.frameReset) {
+        if (typeof window.cancelAnimationFrame === "function") {
+          window.cancelAnimationFrame(this.frameReset);
+        } else {
+          window.clearTimeout(this.frameReset);
+        }
+        this.frameReset = 0;
+      }
+      this.voices.forEach((voice) => {
+        voice.pause();
+        voice.removeAttribute("src");
+        voice.load();
+      });
+      this.voices = [];
       this.template?.pause();
       this.template = null;
+      if (this.context) {
+        this.context.close?.();
+        this.context = null;
+      }
+      this.buffer = null;
+      this.output = null;
+    }
+  };
+
+  // src/platform/flap-runtime.js
+  var applyFlipTiming = (element, duration) => {
+    element.style.setProperty("--flap-half-duration", `${duration / 2}ms`);
+  };
+  var clearFlipTiming = (element) => {
+    element.style.removeProperty("--flap-half-duration");
+  };
+  var pendingFlipStarts = /* @__PURE__ */ new Set();
+  var pendingFlipAudio = /* @__PURE__ */ new Set();
+  var flipStartFrame = 0;
+  var dueFlipCallbacks = [];
+  var dueFlipFrame = 0;
+  var flipHandleId = 0;
+  var flipHandles = /* @__PURE__ */ new Map();
+  var flushFlipStarts = () => {
+    flipStartFrame = 0;
+    pendingFlipStarts.forEach((element) => {
+      element.classList.add("is-flipping");
+    });
+    pendingFlipStarts.clear();
+    pendingFlipAudio.forEach((audio2) => {
+      audio2.play?.();
+    });
+    pendingFlipAudio.clear();
+  };
+  var scheduleFlushFlipStarts = () => {
+    if (flipStartFrame) {
+      return;
+    }
+    if (typeof window.requestAnimationFrame === "function") {
+      flipStartFrame = window.requestAnimationFrame(flushFlipStarts);
+      return;
+    }
+    flipStartFrame = window.setTimeout(flushFlipStarts, 0);
+  };
+  var startFlip = (element, duration, audio2) => {
+    applyFlipTiming(element, duration);
+    element.classList.remove("is-flipping");
+    pendingFlipStarts.add(element);
+    if (audio2) {
+      pendingFlipAudio.add(audio2);
+    }
+    scheduleFlushFlipStarts();
+  };
+  var runDueFlipCallbacks = () => {
+    dueFlipFrame = 0;
+    if (!dueFlipCallbacks.length) {
+      return;
+    }
+    const batch = dueFlipCallbacks.splice(0);
+    for (let index = 0; index < batch.length; index += 1) {
+      const entry = batch[index];
+      if (!entry.cancelled) {
+        entry.callback();
+      }
+    }
+  };
+  var queueDueFlipCallback = (entry) => {
+    dueFlipCallbacks.push(entry);
+    if (dueFlipFrame) {
+      return;
+    }
+    if (typeof window.requestAnimationFrame === "function") {
+      dueFlipFrame = window.requestAnimationFrame(runDueFlipCallbacks);
+      return;
+    }
+    dueFlipFrame = window.setTimeout(runDueFlipCallbacks, 0);
+  };
+  var scheduleFlipDone = (callback, duration) => {
+    const delay = Math.max(16, Math.round(duration));
+    const id = flipHandleId += 1;
+    const entry = {
+      id,
+      callback,
+      cancelled: false
+    };
+    const token = { id };
+    const timer = window.setTimeout(() => {
+      const handle = flipHandles.get(id);
+      if (handle) {
+        flipHandles.delete(id);
+      }
+      if (entry.cancelled) {
+        return;
+      }
+      queueDueFlipCallback(entry);
+    }, delay);
+    flipHandles.set(id, { entry, timer });
+    return token;
+  };
+  var cancelFlipDone = (token) => {
+    if (token == null) {
+      return;
+    }
+    if (typeof token !== "object" || typeof token.id !== "number") {
+      window.clearTimeout(token);
+      return;
+    }
+    const handle = flipHandles.get(token.id);
+    if (!handle) {
+      return;
+    }
+    handle.entry.cancelled = true;
+    flipHandles.delete(token.id);
+    window.clearTimeout(handle.timer);
+  };
+  var setNodeText = (node, value) => {
+    if (!node) {
+      return;
+    }
+    const text = value == null ? "" : String(value);
+    if (node.textContent !== text) {
+      node.textContent = text;
     }
   };
 
@@ -705,15 +984,9 @@
   var prefersReducedMotion = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var clearTimer = (owner, property) => {
     if (owner[property] !== null) {
-      window.clearTimeout(owner[property]);
+      cancelFlipDone(owner[property]);
       owner[property] = null;
     }
-  };
-  var applyFlipTiming = (element, duration) => {
-    element.style.setProperty("--flap-half-duration", `${duration / 2}ms`);
-  };
-  var clearFlipTiming = (element) => {
-    element.style.removeProperty("--flap-half-duration");
   };
   var SplitFlapDisplay = class {
     constructor(element, {
@@ -764,12 +1037,21 @@
       return half;
     }
     renderCharacter(element, current, next) {
-      element.replaceChildren(
-        this.createHalf("flap-half--top-current", current),
-        this.createHalf("flap-half--top-next", next),
-        this.createHalf("flap-half--bottom-current", current),
-        this.createHalf("flap-half--bottom-next", next)
-      );
+      if (element.childElementCount !== 4) {
+        element.replaceChildren(
+          this.createHalf("flap-half--top-current", current),
+          this.createHalf("flap-half--top-next", next),
+          this.createHalf("flap-half--bottom-current", current),
+          this.createHalf("flap-half--bottom-next", next)
+        );
+        return;
+      }
+      const currentGlyph = this.glyphFor(current);
+      const nextGlyph = this.glyphFor(next);
+      setNodeText(element.children[0].querySelector(".flap-glyph-text"), currentGlyph);
+      setNodeText(element.children[1].querySelector(".flap-glyph-text"), nextGlyph);
+      setNodeText(element.children[2].querySelector(".flap-glyph-text"), currentGlyph);
+      setNodeText(element.children[3].querySelector(".flap-glyph-text"), nextGlyph);
     }
     createCharacter(current, next) {
       const character = document.createElement("span");
@@ -842,10 +1124,8 @@
           return;
         }
         const flipDuration = getFlapDuration(this.timing);
-        applyFlipTiming(state.element, flipDuration);
-        this.audio.play();
-        state.element.classList.add("is-flipping");
-        state.timer = window.setTimeout(() => {
+        startFlip(state.element, flipDuration, this.audio);
+        state.timer = scheduleFlipDone(() => {
           if (sequence !== state.sequence) {
             return;
           }
@@ -973,13 +1253,42 @@
       half.appendChild(content);
       return half;
     }
+    fillHalf(half, value) {
+      const content = half.firstElementChild;
+      if (!content) {
+        return;
+      }
+      if (value === "") {
+        if (content.childElementCount) {
+          content.replaceChildren();
+        }
+        return;
+      }
+      let number = content.querySelector(".delay-flap-number");
+      if (!number) {
+        number = document.createElement("span");
+        number.className = "delay-flap-number";
+        const unit = document.createElement("span");
+        unit.className = "delay-flap-unit";
+        unit.textContent = "min";
+        content.replaceChildren(number, unit);
+      }
+      setNodeText(number, value);
+    }
     render(current, next) {
-      this.element.replaceChildren(
-        this.createHalf("delay-flap-half--top-current", current),
-        this.createHalf("delay-flap-half--top-next", next),
-        this.createHalf("delay-flap-half--bottom-current", current),
-        this.createHalf("delay-flap-half--bottom-next", next)
-      );
+      if (this.element.childElementCount !== 4) {
+        this.element.replaceChildren(
+          this.createHalf("delay-flap-half--top-current", current),
+          this.createHalf("delay-flap-half--top-next", next),
+          this.createHalf("delay-flap-half--bottom-current", current),
+          this.createHalf("delay-flap-half--bottom-next", next)
+        );
+        return;
+      }
+      this.fillHalf(this.element.children[0], current);
+      this.fillHalf(this.element.children[1], next);
+      this.fillHalf(this.element.children[2], current);
+      this.fillHalf(this.element.children[3], next);
     }
     updateLabel() {
       this.element.setAttribute(
@@ -1037,10 +1346,8 @@
         return;
       }
       const flipDuration = getFlapDuration(this.timing);
-      applyFlipTiming(this.element, flipDuration);
-      this.audio.play();
-      this.element.classList.add("is-flipping");
-      this.timer = window.setTimeout(() => {
+      startFlip(this.element, flipDuration, this.audio);
+      this.timer = scheduleFlipDone(() => {
         if (sequence !== this.sequence) {
           return;
         }
@@ -1138,13 +1445,59 @@
       }
       return half;
     }
+    trainKey(type) {
+      return type.source || `${type.text || ""}|${type.suffix || ""}|${type.name || ""}`;
+    }
+    fillTrainHalf(half, type) {
+      const key = this.trainKey(type);
+      if (half.dataset.trainKey === key) {
+        return;
+      }
+      half.dataset.trainKey = key;
+      half.style.setProperty("--train-flap-background", type.background);
+      half.style.setProperty("--train-flap-foreground", type.foreground);
+      half.replaceChildren();
+      if (type.source) {
+        const image = document.createElement("img");
+        image.src = type.source;
+        image.alt = "";
+        half.appendChild(image);
+        return;
+      }
+      if (!type.text) {
+        return;
+      }
+      const content = document.createElement("span");
+      content.className = "train-flap-content";
+      const text = document.createElement("span");
+      text.className = "train-flap-text";
+      const mainText = document.createElement("span");
+      mainText.className = "train-flap-main";
+      mainText.textContent = type.text;
+      text.appendChild(mainText);
+      if (type.suffix) {
+        const suffix = document.createElement("span");
+        suffix.className = "train-flap-suffix";
+        suffix.textContent = type.suffix;
+        text.appendChild(suffix);
+      }
+      content.appendChild(text);
+      half.appendChild(content);
+    }
     render(currentType, nextType) {
-      this.element.replaceChildren(
-        this.createHalf("train-flap-half--top-current", currentType),
-        this.createHalf("train-flap-half--top-next", nextType),
-        this.createHalf("train-flap-half--bottom-current", currentType),
-        this.createHalf("train-flap-half--bottom-next", nextType)
-      );
+      if (this.element.childElementCount !== 4) {
+        this.element.replaceChildren(
+          this.createHalf("train-flap-half--top-current", currentType),
+          this.createHalf("train-flap-half--top-next", nextType),
+          this.createHalf("train-flap-half--bottom-current", currentType),
+          this.createHalf("train-flap-half--bottom-next", nextType)
+        );
+        return;
+      }
+      this.fillTrainHalf(this.element.children[0], currentType);
+      this.fillTrainHalf(this.element.children[1], nextType);
+      this.fillTrainHalf(this.element.children[2], currentType);
+      this.fillTrainHalf(this.element.children[3], nextType);
     }
     updateLabel() {
       const currentType = this.types[this.currentIndex];
@@ -1170,10 +1523,8 @@
         return;
       }
       const flipDuration = getFlapDuration(this.timing);
-      applyFlipTiming(this.element, flipDuration);
-      this.audio.play();
-      this.element.classList.add("is-flipping");
-      this.timer = window.setTimeout(() => {
+      startFlip(this.element, flipDuration, this.audio);
+      this.timer = scheduleFlipDone(() => {
         if (sequence !== this.sequence) {
           return;
         }
@@ -1271,12 +1622,21 @@
       return half;
     }
     render(current, next) {
-      this.element.replaceChildren(
-        this.createHalf("time-flap-half--top-current", current),
-        this.createHalf("time-flap-half--top-next", next),
-        this.createHalf("time-flap-half--bottom-current", current),
-        this.createHalf("time-flap-half--bottom-next", next)
-      );
+      if (this.element.childElementCount !== 4) {
+        this.element.replaceChildren(
+          this.createHalf("time-flap-half--top-current", current),
+          this.createHalf("time-flap-half--top-next", next),
+          this.createHalf("time-flap-half--bottom-current", current),
+          this.createHalf("time-flap-half--bottom-next", next)
+        );
+        return;
+      }
+      const currentText = current === "" ? "" : String(current);
+      const nextText = next === "" ? "" : String(next);
+      setNodeText(this.element.children[0].querySelector(".time-flap-value"), currentText);
+      setNodeText(this.element.children[1].querySelector(".time-flap-value"), nextText);
+      setNodeText(this.element.children[2].querySelector(".time-flap-value"), currentText);
+      setNodeText(this.element.children[3].querySelector(".time-flap-value"), nextText);
     }
     set(value) {
       const nextTarget = this.parse(value);
@@ -1334,10 +1694,8 @@
         return;
       }
       const flipDuration = getFlapDuration(this.timing);
-      applyFlipTiming(this.element, flipDuration);
-      this.audio.play();
-      this.element.classList.add("is-flipping");
-      this.timer = window.setTimeout(() => {
+      startFlip(this.element, flipDuration, this.audio);
+      this.timer = scheduleFlipDone(() => {
         if (sequence !== this.sequence) {
           return;
         }
@@ -1366,9 +1724,11 @@
   var DepartureTimeDisplay = class {
     constructor(element, {
       audio: audio2 = new SplitFlapAudio(),
-      timing = FLAP_TIMING_DEFAULTS
+      timing = FLAP_TIMING_DEFAULTS,
+      label = "Odjezd"
     } = {}) {
       this.element = element;
+      this.label = label || "Odjezd";
       this.defaultHours = Number(element.dataset.hours);
       this.defaultMinutes = Number(element.dataset.minutes);
       this.hour = new SequentialNumericFlap(
@@ -1389,7 +1749,7 @@
         9,
         { audio: audio2, timing }
       );
-      this.element.setAttribute("aria-label", "Odjezd");
+      this.element.setAttribute("aria-label", this.label);
     }
     setTiming(timing) {
       const normalized = normalizeFlapTiming(timing);
@@ -1417,7 +1777,7 @@
     updateLabel(hours, minutes) {
       this.element.setAttribute(
         "aria-label",
-        `Odjezd ${hours}.${String(minutes).padStart(2, "0")}`
+        `${this.label} ${hours}.${String(minutes).padStart(2, "0")}`
       );
     }
     set(hours, minutes) {
@@ -1439,13 +1799,13 @@
       this.hour.clear();
       this.minuteTens.clear();
       this.minuteOnes.clear();
-      this.element.setAttribute("aria-label", "Odjezd");
+      this.element.setAttribute("aria-label", this.label);
     }
     clearImmediate() {
       this.hour.clearImmediate();
       this.minuteTens.clearImmediate();
       this.minuteOnes.clearImmediate();
-      this.element.setAttribute("aria-label", "Odjezd");
+      this.element.setAttribute("aria-label", this.label);
     }
     getValue() {
       const values = [
@@ -1899,15 +2259,9 @@
   var prefersReducedMotion2 = () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var clearTimer2 = (owner, property) => {
     if (owner[property] !== null) {
-      window.clearTimeout(owner[property]);
+      cancelFlipDone(owner[property]);
       owner[property] = null;
     }
-  };
-  var applyFlipTiming2 = (element, duration) => {
-    element.style.setProperty("--flap-half-duration", `${duration / 2}ms`);
-  };
-  var clearFlipTiming2 = (element) => {
-    element.style.removeProperty("--flap-half-duration");
   };
   var createCatalogCards = (values) => values.map((value) => ({
     key: value || "blank",
@@ -2117,13 +2471,34 @@
       half.appendChild(content);
       return half;
     }
-    render(current, next) {
-      this.element.replaceChildren(
-        this.createHalf("catalog-flap-half--top-current", current),
-        this.createHalf("catalog-flap-half--top-next", next),
-        this.createHalf("catalog-flap-half--bottom-current", current),
-        this.createHalf("catalog-flap-half--bottom-next", next)
+    fillCatalogHalf(half, card) {
+      half.style.setProperty(
+        "--catalog-flap-background",
+        card.background || "var(--flap-background)"
       );
+      half.style.setProperty(
+        "--catalog-flap-foreground",
+        card.foreground || "var(--flap-foreground)"
+      );
+      setNodeText(
+        half.firstElementChild,
+        card.value === "" ? "\xA0" : card.value
+      );
+    }
+    render(current, next) {
+      if (this.element.childElementCount !== 4) {
+        this.element.replaceChildren(
+          this.createHalf("catalog-flap-half--top-current", current),
+          this.createHalf("catalog-flap-half--top-next", next),
+          this.createHalf("catalog-flap-half--bottom-current", current),
+          this.createHalf("catalog-flap-half--bottom-next", next)
+        );
+        return;
+      }
+      this.fillCatalogHalf(this.element.children[0], current);
+      this.fillCatalogHalf(this.element.children[1], next);
+      this.fillCatalogHalf(this.element.children[2], current);
+      this.fillCatalogHalf(this.element.children[3], next);
     }
     set(value) {
       this.targetIndex = this.indexFor(value);
@@ -2131,7 +2506,7 @@
       const sequence = this.sequence;
       clearTimer2(this, "timer");
       this.element.classList.remove("is-flipping");
-      clearFlipTiming2(this.element);
+      clearFlipTiming(this.element);
       this.advance(sequence);
       return this.cards[this.targetIndex].value;
     }
@@ -2142,7 +2517,7 @@
       this.currentIndex = targetIndex;
       this.targetIndex = targetIndex;
       this.element.classList.remove("is-flipping");
-      clearFlipTiming2(this.element);
+      clearFlipTiming(this.element);
       this.render(this.cards[targetIndex], this.cards[targetIndex]);
     }
     clear() {
@@ -2165,11 +2540,9 @@
         scheduleFrame2(() => this.advance(sequence));
         return;
       }
-      const flipDuration = this.timing.duration + Math.floor(Math.random() * (this.timing.variation * 2 + 1)) - this.timing.variation;
-      applyFlipTiming2(this.element, flipDuration);
-      this.audio.play();
-      this.element.classList.add("is-flipping");
-      this.timer = window.setTimeout(() => {
+      const flipDuration = getFlapDuration(this.timing);
+      startFlip(this.element, flipDuration, this.audio);
+      this.timer = scheduleFlipDone(() => {
         if (sequence !== this.sequence) {
           return;
         }
@@ -3013,6 +3386,70 @@
   var delayOffset = normalizeDelayOffset(
     savedSettings.delayOffset ?? DELAY_OFFSET_DEFAULT
   );
+  var boardLogoImage = documentRef.querySelector("#departureBoardLogo");
+  var applyBoardLogo = (settings = savedSettings) => {
+    if (!boardLogoImage) {
+      return;
+    }
+    const logoId = normalizeDepartureBoardLogoId(
+      settings?.departureBoardLogo ?? DEPARTURE_BOARD_LOGO_DEFAULT
+    );
+    const src = getDepartureBoardLogoSrc(
+      logoId,
+      settings?.departureBoardLogoSvg || ""
+    );
+    const label = getDepartureBoardLogoLabel(logoId);
+    if (!src) {
+      boardLogoImage.hidden = true;
+      boardLogoImage.removeAttribute("src");
+      boardLogoImage.alt = "";
+      return;
+    }
+    boardLogoImage.hidden = false;
+    boardLogoImage.src = src;
+    boardLogoImage.alt = label;
+  };
+  applyBoardLogo();
+  var clockRoot = documentRef.querySelector("#departureBoardClock");
+  var boardClock = clockRoot ? new DepartureTimeDisplay(clockRoot, {
+    audio,
+    timing: initialTiming,
+    label: "Aktu\xE1ln\xED \u010Das"
+  }) : null;
+  var boardClockTimer = null;
+  var lastBoardClockStamp = "";
+  var tickBoardClock = (immediate = false) => {
+    if (!boardClock) {
+      return;
+    }
+    const now = /* @__PURE__ */ new Date();
+    const stamp = `${now.getHours()}:${now.getMinutes()}`;
+    if (stamp === lastBoardClockStamp) {
+      return;
+    }
+    lastBoardClockStamp = stamp;
+    if (immediate) {
+      boardClock.setImmediate(now.getHours(), now.getMinutes());
+      return;
+    }
+    boardClock.set(now.getHours(), now.getMinutes());
+  };
+  var scheduleBoardClock = (immediate = false) => {
+    tickBoardClock(immediate);
+    const now = /* @__PURE__ */ new Date();
+    const delay = (60 - now.getSeconds()) * 1e3 - now.getMilliseconds();
+    boardClockTimer = window.setTimeout(
+      () => scheduleBoardClock(false),
+      Math.max(50, delay)
+    );
+  };
+  scheduleBoardClock(true);
+  documentRef.addEventListener("visibilitychange", () => {
+    if (!documentRef.hidden) {
+      lastBoardClockStamp = "";
+      tickBoardClock(true);
+    }
+  });
   var display = new DepartureBoardDisplay(root, {
     audio,
     timing: initialTiming,
@@ -3182,6 +3619,7 @@
     if (source.flapTiming) {
       boardTiming = normalizeFlapTiming(source.flapTiming);
       display.setTiming(boardTiming);
+      boardClock?.setTiming(boardTiming);
       snapshotSignature = getSnapshotSignature(departures, boardTiming);
     }
     if (source.departureBoardRows != null && !urlLocksRowCount) {
@@ -3194,6 +3632,9 @@
         display.setDelayOffset(delayOffset);
         updateDisplay();
       }
+    }
+    if (source.departureBoardLogo != null || source.departureBoardLogoSvg != null) {
+      applyBoardLogo(source);
     }
   };
   var applyDepartureSnapshot = (nextDepartures, nextRevision, { immediate = false, timing = null } = {}) => {
@@ -3401,6 +3842,8 @@
     refresh: updateDisplay,
     destroy: () => {
       destroyed = true;
+      window.clearTimeout(boardClockTimer);
+      boardClockTimer = null;
       clearLensActivationTimer();
       window.clearInterval(heartbeatTimer);
       heartbeatTimer = null;

@@ -7,7 +7,12 @@ import {
     getBoardIdentityKey,
     getEffectiveDepartureDate,
     DELAY_OFFSET_DEFAULT,
+    DEPARTURE_BOARD_LOGO_DEFAULT,
+    DepartureTimeDisplay,
+    getDepartureBoardLogoLabel,
+    getDepartureBoardLogoSrc,
     normalizeDelayOffset,
+    normalizeDepartureBoardLogoId,
     normalizeDepartureBoardRowCount,
     normalizeFlapTiming
 } from '../platform/index.js';
@@ -41,6 +46,83 @@ const initialRowCount = urlLocksRowCount
 let delayOffset = normalizeDelayOffset(
     savedSettings.delayOffset ?? DELAY_OFFSET_DEFAULT
 );
+const boardLogoImage = documentRef.querySelector('#departureBoardLogo');
+
+const applyBoardLogo = (settings = savedSettings) => {
+    if (!boardLogoImage) {
+        return;
+    }
+
+    const logoId = normalizeDepartureBoardLogoId(
+        settings?.departureBoardLogo ?? DEPARTURE_BOARD_LOGO_DEFAULT
+    );
+    const src = getDepartureBoardLogoSrc(
+        logoId,
+        settings?.departureBoardLogoSvg || ''
+    );
+    const label = getDepartureBoardLogoLabel(logoId);
+    if (!src) {
+        boardLogoImage.hidden = true;
+        boardLogoImage.removeAttribute('src');
+        boardLogoImage.alt = '';
+        return;
+    }
+
+    boardLogoImage.hidden = false;
+    boardLogoImage.src = src;
+    boardLogoImage.alt = label;
+};
+
+applyBoardLogo();
+const clockRoot = documentRef.querySelector('#departureBoardClock');
+const boardClock = clockRoot
+    ? new DepartureTimeDisplay(clockRoot, {
+        audio,
+        timing: initialTiming,
+        label: 'Aktuální čas'
+    })
+    : null;
+let boardClockTimer = null;
+let lastBoardClockStamp = '';
+
+const tickBoardClock = (immediate = false) => {
+    if (!boardClock) {
+        return;
+    }
+
+    const now = new Date();
+    const stamp = `${now.getHours()}:${now.getMinutes()}`;
+    if (stamp === lastBoardClockStamp) {
+        return;
+    }
+
+    lastBoardClockStamp = stamp;
+    if (immediate) {
+        boardClock.setImmediate(now.getHours(), now.getMinutes());
+        return;
+    }
+
+    boardClock.set(now.getHours(), now.getMinutes());
+};
+
+const scheduleBoardClock = (immediate = false) => {
+    tickBoardClock(immediate);
+    const now = new Date();
+    const delay = ((60 - now.getSeconds()) * 1000) - now.getMilliseconds();
+    boardClockTimer = window.setTimeout(
+        () => scheduleBoardClock(false),
+        Math.max(50, delay)
+    );
+};
+
+scheduleBoardClock(true);
+documentRef.addEventListener('visibilitychange', () => {
+    if (!documentRef.hidden) {
+        lastBoardClockStamp = '';
+        tickBoardClock(true);
+    }
+});
+
 const display = new DepartureBoardDisplay(root, {
     audio,
     timing: initialTiming,
@@ -287,6 +369,7 @@ const applyBoardSettings = (settings = {}) => {
     if (source.flapTiming) {
         boardTiming = normalizeFlapTiming(source.flapTiming);
         display.setTiming(boardTiming);
+        boardClock?.setTiming(boardTiming);
         snapshotSignature = getSnapshotSignature(departures, boardTiming);
     }
     if (source.departureBoardRows != null && !urlLocksRowCount) {
@@ -299,6 +382,10 @@ const applyBoardSettings = (settings = {}) => {
             display.setDelayOffset(delayOffset);
             updateDisplay();
         }
+    }
+    if (source.departureBoardLogo != null
+        || source.departureBoardLogoSvg != null) {
+        applyBoardLogo(source);
     }
 };
 
@@ -547,6 +634,8 @@ window.pragotronDepartureBoard = {
     refresh: updateDisplay,
     destroy: () => {
         destroyed = true;
+        window.clearTimeout(boardClockTimer);
+        boardClockTimer = null;
         clearLensActivationTimer();
         window.clearInterval(heartbeatTimer);
         heartbeatTimer = null;
