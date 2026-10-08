@@ -335,7 +335,6 @@ body.departure-board-page {
     background: var(--flap-dark-background);
     perspective: 8em;
     transform-style: preserve-3d;
-    contain: layout style;
 }
 
 #tabule.departure-board
@@ -434,7 +433,6 @@ body.departure-board-page {
     .catalog-flap-half--top-current {
     animation: departure-flap-top
         var(--flap-half-duration, 80ms) ease-in forwards;
-    will-change: transform;
 }
 
 #tabule.departure-board .catalog-flap.is-flipping
@@ -442,7 +440,6 @@ body.departure-board-page {
     animation: departure-flap-bottom
         var(--flap-half-duration, 80ms) ease-out
         var(--flap-half-duration, 80ms) forwards;
-    will-change: transform;
 }
 
 @keyframes departure-flap-top {

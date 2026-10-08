@@ -601,7 +601,6 @@
 
   // src/platform/audio.js
   var DEFAULT_SOUND_URL = typeof document === "undefined" ? "split-flap.wav" : new URL("split-flap.wav", document.baseURI).href;
-  var AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
 
   // src/platform/lenses.js
   var LENS_COLORS = Object.freeze({

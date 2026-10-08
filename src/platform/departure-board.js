@@ -13,17 +13,9 @@ import {
     normalizeDelayOffset,
     normalizeDepartureBoardRowCount,
     normalizeFlapTiming,
-    getFlapDuration,
     parseDelayMinutes
 } from './data.js';
 import { SplitFlapAudio } from './audio.js';
-import {
-    cancelFlipDone,
-    clearFlipTiming,
-    scheduleFlipDone,
-    setNodeText,
-    startFlip
-} from './flap-runtime.js';
 import {
     DelayFlapDisplay,
     DepartureTimeDisplay,
@@ -78,11 +70,18 @@ const prefersReducedMotion = () =>
 
 const clearTimer = (owner, property) => {
     if (owner[property] !== null) {
-        cancelFlipDone(owner[property]);
+        window.clearTimeout(owner[property]);
         owner[property] = null;
     }
 };
 
+const applyFlipTiming = (element, duration) => {
+    element.style.setProperty('--flap-half-duration', `${duration / 2}ms`);
+};
+
+const clearFlipTiming = (element) => {
+    element.style.removeProperty('--flap-half-duration');
+};
 
 const createCatalogCards = (values) => values.map((value) => ({
     key: value || 'blank',
@@ -358,36 +357,13 @@ export class CatalogFlapDisplay {
         return half;
     }
 
-    fillCatalogHalf(half, card) {
-        half.style.setProperty(
-            '--catalog-flap-background',
-            card.background || 'var(--flap-background)'
-        );
-        half.style.setProperty(
-            '--catalog-flap-foreground',
-            card.foreground || 'var(--flap-foreground)'
-        );
-        setNodeText(
-            half.firstElementChild,
-            card.value === '' ? '\u00a0' : card.value
-        );
-    }
-
     render(current, next) {
-        if (this.element.childElementCount !== 4) {
-            this.element.replaceChildren(
-                this.createHalf('catalog-flap-half--top-current', current),
-                this.createHalf('catalog-flap-half--top-next', next),
-                this.createHalf('catalog-flap-half--bottom-current', current),
-                this.createHalf('catalog-flap-half--bottom-next', next)
-            );
-            return;
-        }
-
-        this.fillCatalogHalf(this.element.children[0], current);
-        this.fillCatalogHalf(this.element.children[1], next);
-        this.fillCatalogHalf(this.element.children[2], current);
-        this.fillCatalogHalf(this.element.children[3], next);
+        this.element.replaceChildren(
+            this.createHalf('catalog-flap-half--top-current', current),
+            this.createHalf('catalog-flap-half--top-next', next),
+            this.createHalf('catalog-flap-half--bottom-current', current),
+            this.createHalf('catalog-flap-half--bottom-next', next)
+        );
     }
 
     set(value) {
@@ -439,10 +415,14 @@ export class CatalogFlapDisplay {
             return;
         }
 
-        const flipDuration = getFlapDuration(this.timing);
-        startFlip(this.element, flipDuration, this.audio);
+        const flipDuration = this.timing.duration
+            + Math.floor(Math.random() * (this.timing.variation * 2 + 1))
+            - this.timing.variation;
+        applyFlipTiming(this.element, flipDuration);
+        this.audio.play();
+        this.element.classList.add('is-flipping');
 
-        this.timer = scheduleFlipDone(() => {
+        this.timer = window.setTimeout(() => {
             if (sequence !== this.sequence) {
                 return;
             }

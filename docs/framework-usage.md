@@ -133,9 +133,6 @@ měl před dalším odesláním dat počkat na `board.isSettled()`.
 náhodnou mechanickou odchylku podle `variation`. Všechny klapky jednoho slova
 nebo řádku začínají flipovat naráz; odchylka mění jen délku jednotlivých
 flipů, ne jejich start. Platí to i pro číslice času, typ vlaku a zpoždění.
-Každý krok drží nastavenou délku (výchozí `190 ms`) a po záseku se
-nedohání zrychlením — další flap počká celý interval. DOM karet se
-recykluje a start i konec vlny se slučují do jednoho snímku.
 
 Timing lze pro konkrétní `BoardRuntime` změnit bez zásahu do komponent:
 
@@ -678,9 +675,8 @@ stavu. Správa zůstává výhradně na `platformTableManage.html`.
 
 ## Audio
 
-`SplitFlapAudio` přehraje flap přes Web Audio (po odemčení) nebo přes
-malý pool HTMLAudio hlasů. Současné flipy v jednom snímku sdílejí jeden
-klik, aby prohlížeč nezahltil desítkami `play()` najednou:
+`SplitFlapAudio` přehraje pro každý flip samostatný klon zvuku. Díky tomu
+může hrát více flapů současně:
 
 ```js
 const audio = new SplitFlapAudio('assets/split-flap.wav');
