@@ -62,7 +62,7 @@
 
 .lens.is-on .lens-light {
     opacity: 1;
-    transform: scale(1);
+    transform: translateZ(0) scale(1);
 }
 
 .lens.is-on.is-blinking .lens-light {
@@ -70,19 +70,18 @@
     animation-delay: var(--lens-blink-delay, 0s);
     animation-fill-mode: both;
     transition: none;
+    transform: translateZ(0) scale(1);
 }
 
 @keyframes lens-blink {
     0%,
     49.999% {
         opacity: 0.95;
-        transform: scale(1);
     }
 
     50%,
     100% {
         opacity: 0;
-        transform: scale(0.72);
     }
 }
 

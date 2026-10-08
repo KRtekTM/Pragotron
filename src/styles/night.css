@@ -61,8 +61,12 @@
     border-top-color: #4a4c4a;
 }
 
-#skrin.night-mode #tabule td:not(#clockBlock) {
+#skrin.night-mode #tabule td:not(#clockBlock):not(:has(.lens-display)) {
     filter: brightness(0.78) saturate(0.92);
+}
+
+#skrin.night-mode #tabule td:has(.lens-display) {
+    opacity: 0.86;
 }
 
 #skrin.night-mode #tabule td.light {

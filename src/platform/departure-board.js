@@ -17,11 +17,14 @@ import {
     parseDelayMinutes
 } from './data.js';
 import { SplitFlapAudio } from './audio.js';
+import { nextFlapDeadline, scheduleFlapStepAt } from './flap-clock.js';
 import {
     DelayFlapDisplay,
     DepartureTimeDisplay,
     SplitFlapDisplay,
-    TrainFlapDisplay
+    TrainFlapDisplay,
+    clearFlapAnimation,
+    restartFlapAnimation
 } from './displays.js';
 import {
     LensDisplay,
@@ -70,19 +73,19 @@ const prefersReducedMotion = () =>
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const clearTimer = (owner, property) => {
-    if (owner[property] !== null) {
-        window.clearTimeout(owner[property]);
-        owner[property] = null;
+    const timer = owner[property];
+    if (timer == null) {
+        return;
     }
+
+    if (typeof timer.cancel === 'function') {
+        timer.cancel();
+    } else {
+        window.clearTimeout(timer);
+    }
+    owner[property] = null;
 };
 
-const applyFlipTiming = (element, duration) => {
-    element.style.setProperty('--flap-half-duration', `${duration / 2}ms`);
-};
-
-const clearFlipTiming = (element) => {
-    element.style.removeProperty('--flap-half-duration');
-};
 
 const createCatalogCards = (values) => values.map((value) => ({
     key: value || 'blank',
@@ -360,32 +363,46 @@ export class CatalogFlapDisplay {
         return index;
     }
 
-    createHalf(className, card) {
-        const half = document.createElement('span');
-        half.className = `catalog-flap-half ${className}`;
-        half.style.setProperty(
+    ensureFaces() {
+        if (this.faces) {
+            return;
+        }
+
+        this.element.replaceChildren();
+        this.faces = [
+            'catalog-flap-half--top-current',
+            'catalog-flap-half--top-next',
+            'catalog-flap-half--bottom-current',
+            'catalog-flap-half--bottom-next'
+        ].map((className) => {
+            const half = document.createElement('span');
+            half.className = `catalog-flap-half ${className}`;
+            const content = document.createElement('span');
+            content.className = 'catalog-flap-content';
+            half.appendChild(content);
+            this.element.appendChild(half);
+            return { half, content };
+        });
+    }
+
+    paintFace(face, card) {
+        face.half.style.setProperty(
             '--catalog-flap-background',
             card.background || 'var(--flap-background)'
         );
-        half.style.setProperty(
+        face.half.style.setProperty(
             '--catalog-flap-foreground',
             card.foreground || 'var(--flap-foreground)'
         );
-
-        const content = document.createElement('span');
-        content.className = 'catalog-flap-content';
-        content.textContent = card.value === '' ? '\u00a0' : card.value;
-        half.appendChild(content);
-        return half;
+        face.content.textContent = card.value === '' ? '\u00a0' : card.value;
     }
 
     render(current, next) {
-        this.element.replaceChildren(
-            this.createHalf('catalog-flap-half--top-current', current),
-            this.createHalf('catalog-flap-half--top-next', next),
-            this.createHalf('catalog-flap-half--bottom-current', current),
-            this.createHalf('catalog-flap-half--bottom-next', next)
-        );
+        this.ensureFaces();
+        this.paintFace(this.faces[0], current);
+        this.paintFace(this.faces[1], next);
+        this.paintFace(this.faces[2], current);
+        this.paintFace(this.faces[3], next);
     }
 
     set(value) {
@@ -394,8 +411,7 @@ export class CatalogFlapDisplay {
         const sequence = this.sequence;
 
         clearTimer(this, 'timer');
-        this.element.classList.remove('is-flipping');
-        clearFlipTiming(this.element);
+        clearFlapAnimation(this.element);
         this.advance(sequence);
         return this.cards[this.targetIndex].value;
     }
@@ -406,8 +422,7 @@ export class CatalogFlapDisplay {
         clearTimer(this, 'timer');
         this.currentIndex = targetIndex;
         this.targetIndex = targetIndex;
-        this.element.classList.remove('is-flipping');
-        clearFlipTiming(this.element);
+        clearFlapAnimation(this.element);
         this.render(this.cards[targetIndex], this.cards[targetIndex]);
     }
 
@@ -419,7 +434,7 @@ export class CatalogFlapDisplay {
         this.setImmediate('');
     }
 
-    advance(sequence) {
+    advance(sequence, tickNow = performance.now()) {
         if (sequence !== this.sequence
             || this.currentIndex === this.targetIndex) {
             return;
@@ -428,6 +443,7 @@ export class CatalogFlapDisplay {
         const nextIndex = (this.currentIndex + 1) % this.cards.length;
         const current = this.cards[this.currentIndex];
         const next = this.cards[nextIndex];
+        clearFlapAnimation(this.element);
         this.render(current, next);
 
         if (this.reducedMotion) {
@@ -440,23 +456,29 @@ export class CatalogFlapDisplay {
         const flipDuration = this.timing.duration
             + Math.floor(Math.random() * (this.timing.variation * 2 + 1))
             - this.timing.variation;
-        applyFlipTiming(this.element, flipDuration);
+        restartFlapAnimation(this.element, flipDuration);
         if (!this.audio.muted) {
             this.audio.play('pitched', flipDuration);
         }
-        this.element.classList.add('is-flipping');
 
-        this.timer = window.setTimeout(() => {
-            if (sequence !== this.sequence) {
-                return;
+        this.timer = scheduleFlapStepAt(
+            nextFlapDeadline(tickNow, flipDuration),
+            (nextTick) => {
+                if (sequence !== this.sequence) {
+                    return;
+                }
+
+                this.currentIndex = nextIndex;
+                this.timer = null;
+                if (this.currentIndex === this.targetIndex) {
+                    clearFlapAnimation(this.element);
+                    this.render(next, next);
+                    return;
+                }
+
+                this.advance(sequence, nextTick);
             }
-
-            this.render(next, next);
-            this.element.classList.remove('is-flipping');
-            this.currentIndex = nextIndex;
-            this.timer = null;
-            this.advance(sequence);
-        }, flipDuration);
+        );
     }
 
     getValue() {
@@ -470,6 +492,7 @@ export class CatalogFlapDisplay {
     destroy() {
         this.sequence += 1;
         clearTimer(this, 'timer');
+        this.faces = null;
         this.element.replaceChildren();
 
         if (this.ownsAudio) {

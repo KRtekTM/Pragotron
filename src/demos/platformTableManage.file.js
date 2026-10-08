@@ -959,9 +959,32 @@
       return this.set(value);
     }
     setPreDepartureActive(isActive) {
-      this.preDepartureActive = Boolean(isActive);
-      this.render();
+      const nextValue = Boolean(isActive);
+      if (nextValue === this.preDepartureActive && this.element.childElementCount === this.state.lenses.length) {
+        return this.preDepartureActive;
+      }
+      this.preDepartureActive = nextValue;
+      this.applyActivity();
       return this.preDepartureActive;
+    }
+    applyActivity() {
+      const lenses = this.element.querySelectorAll(":scope > .lens");
+      if (lenses.length !== this.state.lenses.length) {
+        this.render();
+        return;
+      }
+      const preDepartureActive = !this.state.preDeparture.enabled || this.preDepartureActive;
+      this.state.lenses.forEach((setting, index) => {
+        const lens = lenses[index];
+        lens.classList.toggle(
+          "is-on",
+          setting.enabled && preDepartureActive
+        );
+        lens.classList.toggle(
+          "is-blinking",
+          setting.enabled && setting.blinking && preDepartureActive
+        );
+      });
     }
     clear() {
       return this.set("");

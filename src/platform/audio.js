@@ -7,6 +7,7 @@ const soundUrl = (fileName) => (
 const DEFAULT_SOUND_URL = soundUrl('split-flap.wav');
 const PITCHED_SOUND_URL = soundUrl('split-flap_pitched_down.wav');
 const FLAP_SOUND_DURATION_MS = 170;
+const FLAP_SOUND_POOL_SIZE = 48;
 
 const AUDIO_MUTE_STORAGE_KEY = 'pragotron.board.audioMuted.v1';
 
@@ -41,11 +42,46 @@ export class SplitFlapAudio {
         this.activationHandler = null;
         this.listeners = new Set();
 
+        this.voices = [];
+        this.pitchedVoices = [];
+        this.pendingPlays = [];
+        this.flushingPlays = false;
         [this.template, this.pitchedTemplate].forEach((template) => {
             if (template) {
                 template.preload = 'auto';
             }
         });
+        this.fillPool(this.voices, this.template);
+        this.fillPool(this.pitchedVoices, this.pitchedTemplate);
+    }
+
+    fillPool(pool, template) {
+        if (!template) {
+            return;
+        }
+
+        while (pool.length < FLAP_SOUND_POOL_SIZE) {
+            const sound = template.cloneNode();
+            sound.preload = 'auto';
+            sound.preservesPitch = true;
+            const voice = { sound, busy: false };
+            const release = () => {
+                voice.busy = false;
+            };
+            sound.addEventListener('ended', release);
+            sound.addEventListener('error', release);
+            pool.push(voice);
+        }
+    }
+
+    claimVoice(pool) {
+        for (let index = 0; index < pool.length; index += 1) {
+            if (!pool[index].busy) {
+                return pool[index];
+            }
+        }
+
+        return null;
     }
 
     getState() {
@@ -166,55 +202,84 @@ export class SplitFlapAudio {
     }
 
     play(variant, durationMs) {
-        const template = variant === 'pitched'
-            ? this.pitchedTemplate
-            : this.template;
-        if (!template || this.muted) {
+        if (this.muted) {
             return;
         }
 
-        const sound = template.cloneNode();
-        sound.preload = 'auto';
+        this.pendingPlays.push({ variant, durationMs });
+        if (this.flushingPlays) {
+            return;
+        }
+
+        this.flushingPlays = true;
+        const flush = () => {
+            this.flushingPlays = false;
+            const queued = this.pendingPlays.splice(0);
+            queued.forEach((item) => this.playNow(item.variant, item.durationMs));
+        };
+        if (typeof queueMicrotask === 'function') {
+            queueMicrotask(flush);
+        } else {
+            setTimeout(flush, 0);
+        }
+    }
+
+    playNow(variant, durationMs) {
+        const pool = variant === 'pitched' ? this.pitchedVoices : this.voices;
+        if (this.muted || pool.length === 0) {
+            return;
+        }
+
+        const voice = this.claimVoice(pool);
+        if (!voice) {
+            return;
+        }
+
+        const sound = voice.sound;
+        voice.busy = true;
         const duration = Number(durationMs);
         if (Number.isFinite(duration) && duration > 0) {
-            const rate = Math.min(
+            sound.playbackRate = Math.min(
                 16,
                 Math.max(0.0625, FLAP_SOUND_DURATION_MS / duration)
             );
-            sound.playbackRate = rate;
-            sound.preservesPitch = true;
         }
 
-        let cleanedUp = false;
-        const cleanup = () => {
-            if (cleanedUp) {
-                return;
-            }
-
-            cleanedUp = true;
-            sound.remove();
+        const release = () => {
+            voice.busy = false;
         };
 
-        sound.addEventListener('ended', cleanup, { once: true });
-        sound.addEventListener('error', cleanup, { once: true });
+        try {
+            if (sound.ended || sound.paused) {
+                if (sound.currentTime !== 0) {
+                    sound.currentTime = 0;
+                }
+            }
+        } catch {
+            // The clip can still start from the beginning once playback begins.
+        }
 
         try {
             const playback = sound.play();
             if (playback?.then) {
                 playback
                     .then(() => this.setUnlocked(true))
-                    .catch(cleanup);
+                    .catch(release);
             } else {
                 this.setUnlocked(true);
             }
         } catch {
-            cleanup();
+            release();
         }
     }
 
     destroy() {
         this.removeActivationListeners();
         this.listeners.clear();
+        this.pendingPlays = [];
+        this.flushingPlays = false;
+        this.voices.splice(0).forEach((voice) => voice.sound.pause());
+        this.pitchedVoices.splice(0).forEach((voice) => voice.sound.pause());
         this.template?.pause();
         this.pitchedTemplate?.pause();
         this.template = null;

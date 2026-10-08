@@ -133,6 +133,11 @@
     padding-top: 10px;
 }
 
+#tabule .delay-flap-number.is-blank,
+#tabule .delay-flap-unit.is-blank {
+    display: none !important;
+}
+
 #tabule .flap-character::after,
 #tabule .time-flap::after,
 #tabule .train-flap-display::after,
@@ -236,6 +241,12 @@
 #tabule .train-flap-half--bottom-current img,
 #tabule .train-flap-half--bottom-next img {
     top: -100%;
+}
+
+#tabule .train-flap-content--image {
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
 }
 
 #tabule .train-flap-content,
@@ -361,10 +372,37 @@
     }
 }
 
+@keyframes flap-top-b {
+    from {
+        transform: rotateX(0deg);
+    }
+
+    to {
+        transform: rotateX(-90deg);
+    }
+}
+
+@keyframes flap-bottom-b {
+    from {
+        transform: rotateX(90deg);
+    }
+
+    to {
+        transform: rotateX(0deg);
+    }
+}
+
 #tabule .flap-character.is-flipping .flap-half--top-current,
 #tabule .train-flap-display.is-flipping .train-flap-half--top-current,
 #tabule .delay-flap-display.is-flipping .delay-flap-half--top-current {
     animation: flap-top var(--flap-half-duration, 80ms) ease-in forwards;
+    animation-delay: 0s;
+}
+
+#tabule .flap-character.is-flipping-b .flap-half--top-current,
+#tabule .train-flap-display.is-flipping-b .train-flap-half--top-current,
+#tabule .delay-flap-display.is-flipping-b .delay-flap-half--top-current {
+    animation: flap-top-b var(--flap-half-duration, 80ms) ease-in forwards;
     animation-delay: 0s;
 }
 
@@ -375,12 +413,28 @@
     animation-delay: var(--flap-half-duration, 80ms);
 }
 
+#tabule .flap-character.is-flipping-b .flap-half--bottom-next,
+#tabule .train-flap-display.is-flipping-b .train-flap-half--bottom-next,
+#tabule .delay-flap-display.is-flipping-b .delay-flap-half--bottom-next {
+    animation: flap-bottom-b var(--flap-half-duration, 80ms) ease-out forwards;
+    animation-delay: var(--flap-half-duration, 80ms);
+}
+
 #tabule .time-flap.is-flipping .time-flap-half--top-current {
     animation: flap-top var(--flap-half-duration, 80ms) ease-in forwards;
 }
 
+#tabule .time-flap.is-flipping-b .time-flap-half--top-current {
+    animation: flap-top-b var(--flap-half-duration, 80ms) ease-in forwards;
+}
+
 #tabule .time-flap.is-flipping .time-flap-half--bottom-next {
     animation: flap-bottom var(--flap-half-duration, 80ms) ease-out
+        var(--flap-half-duration, 80ms) forwards;
+}
+
+#tabule .time-flap.is-flipping-b .time-flap-half--bottom-next {
+    animation: flap-bottom-b var(--flap-half-duration, 80ms) ease-out
         var(--flap-half-duration, 80ms) forwards;
 }
 

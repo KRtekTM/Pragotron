@@ -435,9 +435,22 @@ body.departure-board-page {
         var(--flap-half-duration, 80ms) ease-in forwards;
 }
 
+#tabule.departure-board .catalog-flap.is-flipping-b
+    .catalog-flap-half--top-current {
+    animation: departure-flap-top-b
+        var(--flap-half-duration, 80ms) ease-in forwards;
+}
+
 #tabule.departure-board .catalog-flap.is-flipping
     .catalog-flap-half--bottom-next {
     animation: departure-flap-bottom
+        var(--flap-half-duration, 80ms) ease-out
+        var(--flap-half-duration, 80ms) forwards;
+}
+
+#tabule.departure-board .catalog-flap.is-flipping-b
+    .catalog-flap-half--bottom-next {
+    animation: departure-flap-bottom-b
         var(--flap-half-duration, 80ms) ease-out
         var(--flap-half-duration, 80ms) forwards;
 }
@@ -453,6 +466,26 @@ body.departure-board-page {
 }
 
 @keyframes departure-flap-bottom {
+    from {
+        transform: rotateX(90deg);
+    }
+
+    to {
+        transform: rotateX(0deg);
+    }
+}
+
+@keyframes departure-flap-top-b {
+    from {
+        transform: rotateX(0deg);
+    }
+
+    to {
+        transform: rotateX(-90deg);
+    }
+}
+
+@keyframes departure-flap-bottom-b {
     from {
         transform: rotateX(90deg);
     }
