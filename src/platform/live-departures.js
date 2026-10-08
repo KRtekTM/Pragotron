@@ -3,7 +3,7 @@ import {
     DEPARTURE_SECTOR_VALUES,
     DEPARTURE_TRACK_VALUES,
     formatStationName,
-    TRAIN_TYPES
+    resolveCanonicalTrainType
 } from './data.js';
 
 export const LIVE_SOURCE_ORIGIN = 'https://provoz.spravazeleznic.cz';
@@ -173,81 +173,6 @@ const splitTrainPrimary = (value) => {
         prefix: match[1].trim(),
         remainder: `${match[2]}${match[3]}`.trim()
     };
-};
-
-const findKnownTrainType = (value) => {
-    const sourceType = String(value ?? '').trim();
-    if (!sourceType) {
-        return '';
-    }
-
-    const lower = sourceType.toLocaleLowerCase('cs-CZ');
-    return TRAIN_TYPES.find((candidate) => candidate.name === sourceType)?.name
-        || TRAIN_TYPES.find((candidate) =>
-            candidate.name.toLocaleLowerCase('cs-CZ') === lower
-        )?.name
-        || TRAIN_TYPES.find((candidate) =>
-            candidate.text
-            && candidate.text.toLocaleLowerCase('cs-CZ') === lower
-        )?.name
-        || '';
-};
-
-const normalizeOperatorKey = (value) => String(value ?? '')
-    .toLocaleLowerCase('cs-CZ')
-    .replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, '');
-
-const isRegioJetOperator = (operator) => {
-    const normalized = normalizeOperatorKey(operator);
-    return normalized.includes('regiojet')
-        || normalized === 'rjet'
-        || normalized === 'rj';
-};
-
-const isCDOperator = (operator) => {
-    const normalized = normalizeOperatorKey(operator);
-    return normalized === 'čd'
-        || normalized === 'cd'
-        || normalized.includes('českédráhy')
-        || normalized.includes('ceskedrahy');
-};
-
-const resolveCanonicalTrainType = (sourceType, operator) => {
-    const original = String(sourceType ?? '').trim();
-    const lower = original.toLocaleLowerCase('cs-CZ');
-
-    if (lower === 'ic' || lower === 'intercity') {
-        return 'Intercity';
-    }
-    if (lower === 'ec' || lower === 'eurocity') {
-        return 'Eurocity';
-    }
-    if (lower === 'sc' || lower === 'supercity') {
-        return 'SuperCity';
-    }
-    if (lower === 'en' || lower === 'euronight') {
-        return 'EuroNight';
-    }
-    if (lower === 'nj' || lower === 'nightjet') {
-        return 'nj';
-    }
-    if (lower === 'railjet') {
-        return 'rj';
-    }
-    if (lower === 'regiojet') {
-        return 'RJ';
-    }
-    if (lower === 'rj') {
-        if (isRegioJetOperator(operator)) {
-            return 'RJ';
-        }
-        if (isCDOperator(operator)) {
-            return 'rj';
-        }
-        return original === 'RJ' ? 'RJ' : 'rj';
-    }
-
-    return findKnownTrainType(original);
 };
 
 const parseTrainCell = (cellHtml) => {

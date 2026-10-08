@@ -323,11 +323,9 @@
     accent-color: var(--control-focus);
 }
 
-#boardForm button:disabled,
-#boardForm.is-updating .board-form-actions button {
+#boardForm button:disabled {
     cursor: wait;
     opacity: 0.48;
-    pointer-events: none;
 }
 
 #boardForm .lens-settings {
@@ -597,6 +595,7 @@
 .active-board-actions {
     display: flex;
     justify-content: flex-end;
+    gap: 0.35rem;
 }
 
 .active-board-actions button {
@@ -637,6 +636,23 @@
     color: #d4a92c;
     opacity: 1;
     filter: drop-shadow(0 0 0.28rem #ffd866);
+}
+
+.board-audio-icon {
+    display: block;
+    width: 1.2rem;
+    height: 1.2rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
+.mute-board-button[aria-pressed='true'] {
+    background: #6d2424;
+    border-color: #c45c5c;
+    color: #fff;
 }
 
 .manage-empty-state {
@@ -1011,6 +1027,13 @@ body.manage-night-mode #manage .active-board-actions button {
     color: #f0f2f4;
 }
 
+#skrin.night-mode ~ #manage .mute-board-button[aria-pressed='true'],
+body.manage-night-mode #manage .mute-board-button[aria-pressed='true'] {
+    background: #6d2424;
+    border-color: #c45c5c;
+    color: #fff;
+}
+
 #skrin.night-mode ~ #manage #departuresTable .departure-row-actions button,
 body.manage-night-mode #manage #departuresTable .departure-row-actions button,
 #skrin.night-mode ~ #manage #clearAllDeparturesButton,
@@ -1023,6 +1046,11 @@ body.manage-night-mode #manage #clearAllDeparturesButton {
 #skrin.night-mode ~ #manage .active-board-actions button:hover,
 body.manage-night-mode #manage .active-board-actions button:hover {
     background: #424b54;
+}
+
+#skrin.night-mode ~ #manage .mute-board-button[aria-pressed='true']:hover,
+body.manage-night-mode #manage .mute-board-button[aria-pressed='true']:hover {
+    background: #8a3030;
 }
 
 #skrin.night-mode ~ #manage #departuresTable

@@ -166,7 +166,7 @@ body.departure-board-page {
 #tabule.departure-board .departure-row-lenses {
     width: 100%;
     height: var(--departure-flap-height);
-    gap: 0.35rem;
+    gap: 1.45rem;
     padding: 0;
 }
 

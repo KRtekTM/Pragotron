@@ -3,6 +3,9 @@
   var STATION_CHARACTER_COUNT = 14;
   var STATION_FLAP_SEQUENCE = Object.freeze([
     " ",
+    ".",
+    "-",
+    "/",
     "A",
     "\xC1",
     "\xC4",
@@ -52,22 +55,9 @@
     "\u0178",
     "Z",
     "\u017D",
-    "0",
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    ".",
     ",",
     ":",
     ";",
-    "-",
-    "/",
     "+",
     "(",
     ")",
@@ -78,7 +68,17 @@
     "%",
     "&",
     "#",
-    "'"
+    "'",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9"
   ]);
   var STATION_NAME_VOWELS = Object.freeze(/* @__PURE__ */ new Set([
     "A",
@@ -183,7 +183,7 @@
   };
   var STATION_FLIP_DURATION = 190;
   var FLAP_TIMING_VARIATION_MS = 0;
-  var FLAP_TIMING_DURATION_MIN = 150;
+  var FLAP_TIMING_DURATION_MIN = 50;
   var FLAP_TIMING_DURATION_MAX = 500;
   var FLAP_TIMING_VARIATION_MIN = 0;
   var FLAP_TIMING_VARIATION_MAX = 10;
@@ -306,6 +306,16 @@
   ]);
   var DELAY_DISPLAY_THRESHOLD = 5;
   var DELAY_OFFSET_DEFAULT = false;
+  var RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1e3;
+  var hasPositiveDelay = (delay) => {
+    const actualDelay = parseDelayMinutes(delay);
+    return Number.isFinite(actualDelay) && actualDelay > 0;
+  };
+  var minutesSinceClock = (clockDate, reference) => {
+    const referenceMinute = new Date(reference.getTime());
+    referenceMinute.setSeconds(0, 0);
+    return referenceMinute.getTime() - clockDate.getTime();
+  };
   var normalizeDelayOffset = (value) => value === true;
   var parseDelayMinutes = (value) => {
     if (value === "" || value === null || value === void 0) {
@@ -340,14 +350,16 @@
     if (Number.isNaN(reference.getTime())) {
       return null;
     }
-    const date = new Date(reference.getTime());
-    date.setSeconds(0, 0);
-    date.setHours(hours, minutes, 0, 0);
+    const clock = new Date(reference.getTime());
+    clock.setSeconds(0, 0);
+    clock.setHours(hours, minutes, 0, 0);
+    const date = new Date(clock.getTime());
     const displayedDelay = getDisplayedDelay(delay, DELAY_VALUES, applyOffset);
     if (displayedDelay !== "") {
       date.setMinutes(date.getMinutes() + Number(displayedDelay));
     }
-    if (date.getTime() < reference.getTime()) {
+    const recentUndelayed = !hasPositiveDelay(delay) && minutesSinceClock(clock, reference) <= RECENT_DEPARTURE_GRACE_MS;
+    if (date.getTime() < reference.getTime() && !recentUndelayed) {
       date.setDate(date.getDate() + 1);
     }
     return date;
@@ -367,7 +379,7 @@
     date.setHours(hours, minutes, 0, 0);
     const actualDelay = parseDelayMinutes(delay);
     const hasDelay = Number.isFinite(actualDelay) && actualDelay > 0;
-    if (date.getTime() < reference.getTime() && !hasDelay) {
+    if (!hasDelay && minutesSinceClock(date, reference) > RECENT_DEPARTURE_GRACE_MS) {
       date.setDate(date.getDate() + 1);
     }
     return date.getTime();
@@ -567,6 +579,62 @@
     ...createTrainNumberDigitCards("sp"),
     ...createTrainNumberDigitCards("red")
   ]);
+  var normalizeOperatorKey = (value) => String(value ?? "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, "");
+  var isRegioJetOperator = (operator) => {
+    const normalized = normalizeOperatorKey(operator);
+    return normalized.includes("regiojet") || normalized === "rjet" || normalized === "rj";
+  };
+  var isCDOperator = (operator) => {
+    const normalized = normalizeOperatorKey(operator);
+    return normalized === "\u010Dd" || normalized === "cd" || normalized.includes("\u010Desk\xE9dr\xE1hy") || normalized.includes("ceskedrahy");
+  };
+  var findKnownTrainTypeName = (value) => {
+    const sourceType = String(value ?? "").trim();
+    if (!sourceType) {
+      return "";
+    }
+    const lower = sourceType.toLocaleLowerCase("cs-CZ");
+    return TRAIN_TYPES.find((candidate) => candidate.name === sourceType)?.name || TRAIN_TYPES.find(
+      (candidate) => candidate.name.toLocaleLowerCase("cs-CZ") === lower
+    )?.name || TRAIN_TYPES.find(
+      (candidate) => candidate.text && candidate.text.toLocaleLowerCase("cs-CZ") === lower
+    )?.name || "";
+  };
+  var resolveCanonicalTrainType = (sourceType, operator = "") => {
+    const original = String(sourceType ?? "").trim();
+    const lower = original.toLocaleLowerCase("cs-CZ");
+    if (lower === "ic" || lower === "intercity") {
+      return "Intercity";
+    }
+    if (lower === "ec" || lower === "eurocity") {
+      return "Eurocity";
+    }
+    if (lower === "sc" || lower === "supercity") {
+      return "SuperCity";
+    }
+    if (lower === "en" || lower === "euronight") {
+      return "EuroNight";
+    }
+    if (lower === "nj" || lower === "nightjet") {
+      return "nj";
+    }
+    if (lower === "railjet") {
+      return "rj";
+    }
+    if (lower === "regiojet") {
+      return "RJ";
+    }
+    if (lower === "rj") {
+      if (isRegioJetOperator(operator)) {
+        return "RJ";
+      }
+      if (isCDOperator(operator)) {
+        return "rj";
+      }
+      return original === "RJ" ? "RJ" : "rj";
+    }
+    return findKnownTrainTypeName(original);
+  };
   var NIGHT_FADE_MODES = Object.freeze([
     { value: "none", label: "Bez pohas\xEDn\xE1n\xED (st\xE1l\xFD svit)" },
     { value: "soft", label: "Jemn\xE9 kol\xEDs\xE1n\xED" },
@@ -600,7 +668,9 @@
   });
 
   // src/platform/audio.js
-  var DEFAULT_SOUND_URL = typeof document === "undefined" ? "split-flap.wav" : new URL("split-flap.wav", document.baseURI).href;
+  var soundUrl = (fileName) => typeof document === "undefined" ? fileName : new URL(fileName, document.baseURI).href;
+  var DEFAULT_SOUND_URL = soundUrl("split-flap.wav");
+  var PITCHED_SOUND_URL = soundUrl("split-flap_pitched_down.wav");
 
   // src/platform/lenses.js
   var LENS_COLORS = Object.freeze({
@@ -669,33 +739,6 @@
     ) || fallback;
   };
   var positiveModulo = (value, divisor) => (value % divisor + divisor) % divisor;
-  var LENS_CLOCK_INTERVAL_MS = 40;
-  var activeLensDisplays = /* @__PURE__ */ new Set();
-  var lensClockTimer = null;
-  var scheduleLensClock = () => {
-    if (lensClockTimer !== null || activeLensDisplays.size === 0) {
-      return;
-    }
-    lensClockTimer = window.setTimeout(() => {
-      lensClockTimer = null;
-      const now = Date.now();
-      activeLensDisplays.forEach((display) => {
-        display.applyBlinkPhase(now);
-      });
-      scheduleLensClock();
-    }, LENS_CLOCK_INTERVAL_MS);
-  };
-  var registerLensDisplay = (display) => {
-    activeLensDisplays.add(display);
-    scheduleLensClock();
-  };
-  var unregisterLensDisplay = (display) => {
-    activeLensDisplays.delete(display);
-    if (activeLensDisplays.size === 0 && lensClockTimer !== null) {
-      window.clearTimeout(lensClockTimer);
-      lensClockTimer = null;
-    }
-  };
   var getLensBlinkPhase = ({
     now = Date.now(),
     lensIndex = 0,
@@ -816,7 +859,6 @@
       this.defaultState = defaultState || createDefaultLensState(this.count, defaultOverrides);
       this.state = this.normalize(this.defaultState);
       this.preDepartureActive = true;
-      this.clockRegistered = false;
       this.render();
     }
     normalize(value) {
@@ -893,56 +935,8 @@
       );
       const lightElement = document.createElement("span");
       lightElement.className = "lens-light";
-      if (setting.enabled && setting.blinking && preDepartureActive) {
-        lightElement.classList.toggle(
-          "is-phase-on",
-          getLensBlinkPhase({
-            now,
-            lensIndex: index,
-            rowIndex: this.rowIndex,
-            synchronizeRows: this.state.synchronizeRows
-          }) < setting.blinkInterval
-        );
-        lightElement.classList.toggle(
-          "is-phase-off",
-          !lightElement.classList.contains("is-phase-on")
-        );
-      }
       lens.appendChild(lightElement);
       return lens;
-    }
-    hasActiveBlinking() {
-      return this.element.isConnected !== false && this.state.lenses.some(
-        (setting) => setting.enabled && setting.blinking && (!this.state.preDeparture.enabled || this.preDepartureActive)
-      );
-    }
-    syncClockRegistration() {
-      const shouldRegister = this.hasActiveBlinking();
-      if (shouldRegister && !this.clockRegistered) {
-        this.clockRegistered = true;
-        registerLensDisplay(this);
-      } else if (!shouldRegister && this.clockRegistered) {
-        this.clockRegistered = false;
-        unregisterLensDisplay(this);
-      }
-    }
-    applyBlinkPhase(now = Date.now()) {
-      if (!this.clockRegistered) {
-        return;
-      }
-      this.element.querySelectorAll(".lens").forEach((lens, index) => {
-        const setting = this.state.lenses[index];
-        const isBlinking = setting?.enabled && setting.blinking && (!this.state.preDeparture.enabled || this.preDepartureActive);
-        const isOn = isBlinking && getLensBlinkPhase({
-          now,
-          lensIndex: index,
-          rowIndex: this.rowIndex,
-          synchronizeRows: this.state.synchronizeRows
-        }) < setting.blinkInterval;
-        const light = lens.querySelector(".lens-light");
-        light?.classList.toggle("is-phase-on", isOn);
-        light?.classList.toggle("is-phase-off", isBlinking && !isOn);
-      });
     }
     render() {
       const now = Date.now();
@@ -955,8 +949,6 @@
         "aria-label",
         `${this.state.lenses.length} signaliza\u010Dn\xEDch \u010Do\u010Dek`
       );
-      this.applyBlinkPhase(now);
-      this.syncClockRegistration();
     }
     set(value) {
       this.state = this.normalize(value);
@@ -985,10 +977,6 @@
       return true;
     }
     destroy() {
-      if (this.clockRegistered) {
-        this.clockRegistered = false;
-        unregisterLensDisplay(this);
-      }
       this.element.replaceChildren();
       this.element.removeAttribute("aria-label");
     }
@@ -4130,6 +4118,7 @@
   var sectorInput = documentRef.querySelector("#sectorValue");
   var trainTypeInput = documentRef.querySelector("#trainType");
   var trainNumberInput = documentRef.querySelector("#trainNumber");
+  var operatorInput = documentRef.querySelector("#operatorValue");
   var departureTimeInput = documentRef.querySelector("#departureTime");
   var delayValueInput = documentRef.querySelector("#delayValue");
   var flapTimingDurationInput = documentRef.querySelector(
@@ -4240,6 +4229,8 @@
   var pendingIdentificationActions = /* @__PURE__ */ new Map();
   var activeBoards = /* @__PURE__ */ new Map();
   var departures = Array.isArray(savedState.departures) ? savedState.departures : [];
+  var formDepartureId = "";
+  var formDepartureLocked = false;
   var desiredStates = savedState.desired && typeof savedState.desired === "object" ? savedState.desired : {};
   var nextRevision = Number(savedState.revision) || 0;
   var globalResetRevision = Number(savedState.globalResetRevision) || 0;
@@ -4253,6 +4244,7 @@
   var exampleState = {
     stations: ["PRAHA", "BRATISLAVA"],
     train: "Eurocity",
+    operator: "",
     delay: "12",
     target: {
       platform: "1",
@@ -4270,6 +4262,11 @@
     const text = String(value ?? "").trim();
     return /^\d{1,4}$/.test(text) ? text : "";
   };
+  var normalizeOperator = (value) => String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 24);
+  var resolveTrainTypeValue = (train, operator) => {
+    const resolved = resolveCanonicalTrainType(train, operator);
+    return TRAIN_TYPES.some((type) => type.name === resolved) ? resolved : "";
+  };
   var setBoardFormStatus = (message, isError = false) => {
     boardFormStatus.textContent = message;
     boardFormStatus.classList.toggle("is-error", isError);
@@ -4281,7 +4278,8 @@
     platformInput.value = state.target?.platform || "";
     trackInput.value = state.target?.track || "";
     sectorInput.value = state.target?.sector || "";
-    trainTypeInput.value = state.train;
+    operatorInput.value = state.operator || "";
+    trainTypeInput.value = resolveTrainTypeValue(state.train, state.operator);
     trainNumberInput.value = normalizeTrainNumber(state.trainNumber);
     departureTimeInput.value = state.departureTime ? `${String(state.departureTime.hours).padStart(2, "0")}:${String(state.departureTime.minutes).padStart(2, "0")}` : "";
     delayValueInput.value = state.delay === "" ? "" : String(state.delay);
@@ -4289,7 +4287,8 @@
   var setSavedFormValues = (formState) => {
     const stationOne = typeof formState.stationOne === "string" ? formatStationName(formState.stationOne) : exampleState.stations[0];
     const stationTwo = typeof formState.stationTwo === "string" ? formatStationName(formState.stationTwo) : exampleState.stations[1];
-    const train = TRAIN_TYPES.some((type) => type.name === formState.train) ? formState.train : exampleState.train;
+    const operator = normalizeOperator(formState.operator);
+    const train = resolveTrainTypeValue(formState.train, operator) || exampleState.train;
     const departureTime = typeof formState.departureTime === "string" && DEPARTURE_TIME_PATTERN.test(formState.departureTime) ? formState.departureTime : `${String(exampleState.departureTime.hours).padStart(2, "0")}:${String(exampleState.departureTime.minutes).padStart(2, "0")}`;
     const parsedDelay = parseDelayMinutes(formState.delay);
     const delay = parsedDelay === null ? exampleState.delay : parsedDelay === "" ? "" : String(parsedDelay);
@@ -4304,6 +4303,7 @@
     platformInput.value = typeof target.platform === "string" ? target.platform.slice(0, 20) : exampleState.target.platform;
     trackInput.value = typeof target.track === "string" ? target.track.slice(0, 20) : exampleState.target.track;
     sectorInput.value = typeof target.sector === "string" ? target.sector.slice(0, 20) : exampleState.target.sector;
+    operatorInput.value = operator;
     trainTypeInput.value = train;
     trainNumberInput.value = trainNumber;
     departureTimeInput.value = departureTime;
@@ -4318,7 +4318,8 @@
     departureBoardRows,
     delayOffset,
     departureBoardLogo,
-    departureBoardLogoSvg
+    departureBoardLogoSvg,
+    lenses: getManagedLensState()
   });
   var normalizeManagedLensState = (value) => {
     const fallback = createDefaultLensState();
@@ -4351,6 +4352,7 @@
     sector: sectorInput.value,
     train: trainTypeInput.value,
     trainNumber: trainNumberInput.value,
+    operator: operatorInput.value,
     departureTime: departureTimeInput.value,
     delay: delayValueInput.value
   });
@@ -4411,17 +4413,21 @@
     const departureTime = normalizeDepartureTime(source.departureTime) || normalizeDepartureTime(desiredState.departureTime);
     const rawDelay = source.delay ?? desiredState.delay;
     const parsedDelay = parseDelayMinutes(rawDelay);
+    const operator = normalizeOperator(
+      source.operator ?? desiredState.operator
+    );
     const rawTrain = source.train ?? desiredState.train;
-    const train = TRAIN_TYPES.some((type) => type.name === rawTrain) ? rawTrain : "";
+    const train = resolveTrainTypeValue(rawTrain, operator);
     const trainNumber = normalizeTrainNumber(
       source.trainNumber ?? desiredState.trainNumber
     );
     const stations = Array.isArray(source.stations) ? source.stations : [];
     const isLive = source.source === "live" || Boolean(source.liveKey);
     const liveKey = isLive ? String(source.liveKey || source.id || "") : "";
+    const manualId = String(source.id || "").trim() || (target.platform && target.track ? getBoardIdentityKey(target) : `manual:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`);
     const sourceTrainNumber = isLive ? String(source.sourceTrainNumber || "").replace(/\D/g, "") : "";
     return {
-      id: isLive ? String(source.id || `live:${liveKey}`) : getBoardIdentityKey(target),
+      id: isLive ? String(source.id || `live:${liveKey}`) : manualId,
       source: isLive ? "live" : "manual",
       liveKey,
       liveStationKey: isLive ? String(source.liveStationKey || LIVE_STATION_DEFAULTS.key) : "",
@@ -4438,7 +4444,7 @@
       ],
       train,
       trainNumber,
-      operator: String(source.operator || "").trim(),
+      operator,
       delay: parsedDelay === null ? "" : parsedDelay,
       departureTime,
       lenses: normalizeManagedLensState(
@@ -4448,9 +4454,7 @@
       updatedAt: Number(value?.updatedAt) || 0
     };
   };
-  departures = departures.map(normalizeDeparture).filter(
-    (departure) => departure.departureTime && (departure.source === "live" || departure.target.platform && departure.target.track)
-  );
+  departures = departures.map(normalizeDeparture).filter((departure) => departure.departureTime);
   var persistState = () => {
     const settings = getSettingsState();
     storage.save({
@@ -4500,6 +4504,7 @@
     }
     flapTimingDurationInput.min = String(FLAP_TIMING_DURATION_MIN);
     flapTimingDurationInput.max = String(FLAP_TIMING_DURATION_MAX);
+    flapTimingDurationInput.step = "10";
     flapTimingVariationInput.min = String(FLAP_TIMING_VARIATION_MIN);
     flapTimingVariationInput.max = String(FLAP_TIMING_VARIATION_MAX);
     flapTimingDurationInput.value = String(flapTiming.duration);
@@ -4791,7 +4796,7 @@
     departuresEmptyState.hidden = rows.length > 0;
     departuresTable.hidden = rows.length === 0;
     if (clearAllDeparturesButton) {
-      const disabled = boardActionInProgress || rows.length === 0;
+      const disabled = rows.length === 0;
       clearAllDeparturesButton.disabled = disabled;
       clearAllDeparturesButton.setAttribute("aria-disabled", String(disabled));
     }
@@ -4808,7 +4813,7 @@
     });
   };
   var toggleBoardIdentification = (boardPresence) => {
-    if (!boardPresence || boardPresence.identificationPending) {
+    if (!boardPresence) {
       return;
     }
     const forceOn = boardPresence.identificationActive !== true;
@@ -4885,14 +4890,15 @@
       status.className = "active-board-status";
       status.textContent = !isDepartureBoard && boardPresence.configured === false ? "Nen\xED nakonfigurovan\xE1" : "Online";
       const audioStatus = documentRef.createElement("span");
+      const audioMuted = boardPresence.audioState?.muted === true;
       const audioUnlocked = boardPresence.audioState?.unlocked === true;
       audioStatus.className = "active-board-audio";
-      audioStatus.textContent = audioUnlocked ? "\u{1F50A}" : "\u{1F508}";
-      audioStatus.title = audioUnlocked ? "P\u0159ehr\xE1v\xE1n\xED zvuku je povolen\xE9" : "P\u0159ehr\xE1v\xE1n\xED zvuku \u010Dek\xE1 na kliknut\xED do tabule";
+      audioStatus.textContent = audioMuted ? "\u{1F507}" : audioUnlocked ? "\u{1F50A}" : "\u{1F508}";
+      audioStatus.title = audioMuted ? "Zvuk flap\u016F je ztlumen\xFD" : audioUnlocked ? "P\u0159ehr\xE1v\xE1n\xED zvuku je povolen\xE9" : "P\u0159ehr\xE1v\xE1n\xED zvuku \u010Dek\xE1 na kliknut\xED do tabule";
       audioStatus.setAttribute("role", "img");
       audioStatus.setAttribute(
         "aria-label",
-        audioUnlocked ? "Zvuk povolen" : "Zvuk nepovolen"
+        audioMuted ? "Zvuk ztlumen" : audioUnlocked ? "Zvuk povolen" : "Zvuk nepovolen"
       );
       const actions = documentRef.createElement("div");
       actions.className = "active-board-actions";
@@ -4903,7 +4909,7 @@
       identifyButton.replaceChildren(
         createEyeIcon(boardPresence.identificationActive === true)
       );
-      identifyButton.disabled = boardPresence.identificationPending || boardPresence.configured === false;
+      identifyButton.disabled = boardPresence.configured === false;
       identifyButton.setAttribute(
         "aria-pressed",
         String(boardPresence.identificationActive === true)
@@ -4912,12 +4918,64 @@
         "aria-label",
         boardPresence.identificationActive ? "Vr\xE1tit \u010Do\u010Dky do p\u016Fvodn\xEDho stavu" : "Force rozsv\xEDtit \u010Do\u010Dky pro identifikaci tabule"
       );
-      actions.appendChild(identifyButton);
+      const muteButton = documentRef.createElement("button");
+      muteButton.type = "button";
+      muteButton.className = "mute-board-button";
+      muteButton.dataset.boardInstanceId = boardPresence.instanceId;
+      muteButton.replaceChildren(createSpeakerIcon(audioMuted));
+      muteButton.setAttribute("aria-pressed", String(audioMuted));
+      muteButton.setAttribute(
+        "aria-label",
+        audioMuted ? "Zapnout zvuk flap\u016F na t\xE9to tabuli" : "Ztlumit zvuk flap\u016F na t\xE9to tabuli"
+      );
+      actions.append(identifyButton, muteButton);
       item.append(identity, details, status, audioStatus, actions);
       activeBoardsList.appendChild(item);
     });
   };
+  var createSpeakerIcon = (muted) => {
+    const icon = documentRef.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+    icon.classList.add("board-audio-icon");
+    icon.classList.toggle("is-muted", muted);
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = muted ? '<path d="M4 10h3l4-4v12l-4-4H4z"></path><path d="M16 10l4 4"></path><path d="M20 10l-4 4"></path>' : '<path d="M4 10h3l4-4v12l-4-4H4z"></path><path d="M16 9.5a4 4 0 0 1 0 5"></path><path d="M18.2 7a7 7 0 0 1 0 10"></path>';
+    return icon;
+  };
+  var toggleBoardMute = (boardPresence) => {
+    if (!boardPresence) {
+      return;
+    }
+    const muted = boardPresence.audioState?.muted !== true;
+    boardPresence.audioState = {
+      ...boardPresence.audioState || {},
+      muted
+    };
+    renderActiveBoards();
+    transport.publish("board:command", {
+      action: "set-audio-muted",
+      muted
+    }, {
+      target: {
+        source: boardPresence.instanceId
+      }
+    });
+    setBoardFormStatus(
+      muted ? "Zvuk flap\u016F na tabuli je ztlumen\xFD." : "Zvuk flap\u016F na tabuli je zapnut\xFD."
+    );
+  };
   activeBoardsList?.addEventListener("click", (event) => {
+    const muteButton = event.target.closest(".mute-board-button");
+    if (muteButton) {
+      const boardPresence2 = [...activeBoards.values()].find(
+        (presence) => presence.instanceId === muteButton.dataset.boardInstanceId
+      );
+      toggleBoardMute(boardPresence2);
+      return;
+    }
     const button = event.target.closest(".identify-board-button");
     if (!button) {
       return;
@@ -4932,6 +4990,8 @@
     if (!departure) {
       return;
     }
+    formDepartureId = departure.id;
+    formDepartureLocked = true;
     setFormValues(departure);
     lensDisplay.set(departure.lenses);
     syncLensControls();
@@ -5399,16 +5459,19 @@
   ];
   var setBoardActionBusy = (isBusy) => {
     boardActionInProgress = isBusy;
-    boardForm.classList.toggle("is-updating", isBusy);
-    boardForm.setAttribute("aria-busy", String(isBusy));
+    boardForm.classList.remove("is-updating");
+    boardForm.setAttribute("aria-busy", "false");
     boardActionButtons.forEach((button) => {
-      const emptyClear = button === clearAllDeparturesButton && departures.length === 0;
-      button.disabled = isBusy || emptyClear;
-      button.setAttribute("aria-disabled", String(button.disabled));
+      if (!button) {
+        return;
+      }
+      const disabled = button === clearAllDeparturesButton && departures.length === 0;
+      button.disabled = disabled;
+      button.setAttribute("aria-disabled", String(disabled));
     });
     documentRef.querySelectorAll("[data-departure-action]").forEach((button) => {
-      button.disabled = isBusy;
-      button.setAttribute("aria-disabled", String(isBusy));
+      button.disabled = false;
+      button.setAttribute("aria-disabled", "false");
     });
   };
   var getDesiredStateForBoard = (identity) => {
@@ -5555,7 +5618,6 @@
     window.clearTimeout(pending.timeout);
     pendingActions.delete(requestId);
     setBoardActionBusy(false);
-    setBoardFormStatus(pending.completedMessage);
     pending.onComplete?.();
     renderActiveBoards();
     renderDeparturesTable();
@@ -5656,6 +5718,9 @@
         if (typeof message.payload?.identificationActive === "boolean") {
           boardPresence.identificationActive = message.payload.identificationActive;
         }
+        if (message.payload?.audio) {
+          boardPresence.audioState = message.payload.audio;
+        }
         boardPresence.lastSeen = Date.now();
         const desired = getDesiredStateForBoard(boardPresence.identity);
         if (desired && Number(desired.revision) <= boardPresence.appliedRevision) {
@@ -5675,12 +5740,11 @@
     onComplete,
     onTimeout
   } = {}) => {
-    if (boardActionInProgress) {
-      return null;
-    }
-    setBoardActionBusy(true);
     if (persist) {
       persistState();
+    }
+    if (completedMessage) {
+      setBoardFormStatus(completedMessage);
     }
     const expectedInstances = new Set(
       target ? findMatchingBoards(target).map(
@@ -5706,10 +5770,6 @@
       }
       pendingActions.delete(requestId);
       setBoardActionBusy(false);
-      setBoardFormStatus(
-        "Tabule nen\xED p\u0159ipojena nebo nepotvrdila dokon\u010Den\xED akce.",
-        true
-      );
       pending.onTimeout?.();
     }, 1e4);
     pendingActions.set(requestId, {
@@ -5720,7 +5780,6 @@
       onTimeout,
       timeout
     });
-    setBoardFormStatus("Tabule se p\u0159enastavuje\u2026");
     return requestId;
   };
   var sendBackgroundBoardAction = (action, state, target, revision) => {
@@ -5768,10 +5827,12 @@
   var getFormState = () => {
     const [hours, minutes] = departureTimeInput.value.split(":").map(Number);
     const parsedDelay = parseDelayMinutes(delayValueInput.value);
+    const operator = normalizeOperator(operatorInput.value);
     return {
       stations: stationInputs.map((input) => input.value),
-      train: trainTypeInput.value,
+      train: resolveTrainTypeValue(trainTypeInput.value, operator),
       trainNumber: trainNumberInput.value.trim(),
+      operator,
       delay: parsedDelay === "" ? "" : parsedDelay,
       departureTime: { hours, minutes },
       lenses: getManagedLensState()
@@ -5788,6 +5849,7 @@
     ],
     train: departure.train,
     trainNumber: departure.trainNumber,
+    operator: departure.operator || "",
     delay: departure.delay,
     departureTime: departure.departureTime ? { ...departure.departureTime } : null,
     lenses: departure.lenses
@@ -6111,11 +6173,62 @@
       desiredStatesRepaired = true;
     }
   });
-  var upsertDeparture = (state, target) => {
+  var isSameManualTrain = (departure, state) => {
+    const leftNumber = normalizeTrainNumber(departure?.trainNumber);
+    const rightNumber = normalizeTrainNumber(state?.trainNumber);
+    if (leftNumber || rightNumber) {
+      return leftNumber === rightNumber;
+    }
+    return formatDepartureTime(departure?.departureTime) === formatDepartureTime(state?.departureTime) && (departure?.stations?.[0] || "") === (state?.stations?.[0] || "");
+  };
+  var resolveFormDeparture = (state, target) => {
+    const bound = formDepartureId ? getDepartureById(formDepartureId) : null;
+    if (bound && (formDepartureLocked || isSameManualTrain(bound, state))) {
+      return bound;
+    }
+    if (bound) {
+      return null;
+    }
+    if (!isConfiguredTarget(target)) {
+      return null;
+    }
+    return departures.find(
+      (item) => item.source !== "live" && isConfiguredTarget(item.target) && sameTarget(item.target, target)
+    ) || null;
+  };
+  var upsertDeparture = (state, target, existing = null) => {
+    const previous = existing?.id ? getDepartureById(existing.id) : null;
+    if (previous && isConfiguredTarget(previous.target) && !sameTarget(previous.target, target)) {
+      const stillUsed = departures.some(
+        (item) => item.id !== previous.id && isConfiguredTarget(item.target) && sameTarget(item.target, previous.target)
+      );
+      if (!stillUsed) {
+        const resetRevision = nextStateRevision();
+        setDesiredState(
+          previous.target,
+          "reset-board",
+          getEmptyState(),
+          resetRevision
+        );
+        void sendBackgroundBoardAction(
+          "reset-board",
+          getEmptyState(),
+          previous.target,
+          resetRevision
+        );
+      }
+    }
     const revision = nextStateRevision();
     const departure = normalizeDeparture({
-      target,
+      ...previous || {},
       ...state,
+      id: previous?.id,
+      source: previous?.source === "live" ? "live" : "manual",
+      liveKey: previous?.liveKey || "",
+      liveStationKey: previous?.liveStationKey || "",
+      dateKey: previous?.dateKey || "",
+      sourceTrainNumber: previous?.sourceTrainNumber || "",
+      target,
       revision,
       updatedAt: Date.now()
     });
@@ -6123,19 +6236,21 @@
       ...departures.filter((item) => item.id !== departure.id),
       departure
     ];
-    setDesiredState(
-      target,
-      "apply-board",
-      getBoardStateFromDeparture(departure),
-      revision
-    );
+    if (isConfiguredTarget(target)) {
+      setDesiredState(
+        target,
+        "apply-board",
+        getBoardStateFromDeparture(departure),
+        revision
+      );
+    }
     persistState();
     renderDeparturesTable();
     publishDepartureSnapshot();
     return departure;
   };
   var resetDeparture = (departure) => {
-    if (!departure || boardActionInProgress) {
+    if (!departure) {
       return;
     }
     const revision = nextStateRevision();
@@ -6149,18 +6264,18 @@
     persistState();
     renderDeparturesTable();
     publishDepartureSnapshot();
-    sendBoardAction(
+    void sendBackgroundBoardAction(
       "reset-board",
       getEmptyState(),
-      `Tabule pro ${formatBoardIdentity(departure.target)} byla resetov\xE1na.`,
-      {
-        target: departure.target,
-        revision
-      }
+      departure.target,
+      revision
+    );
+    setBoardFormStatus(
+      `Odjezd pro ${formatBoardIdentity(departure.target)} byl smaz\xE1n.`
     );
   };
   var clearAllDepartures = () => {
-    if (boardActionInProgress || departures.length === 0) {
+    if (departures.length === 0) {
       return;
     }
     const confirmed = window.confirm(
@@ -6272,6 +6387,8 @@
   startButton.addEventListener("click", () => {
     const showExample = !exampleActive;
     exampleActive = showExample;
+    formDepartureId = "";
+    formDepartureLocked = false;
     if (showExample) {
       setFormValues(exampleState);
       const target2 = getFormTarget();
@@ -6315,9 +6432,6 @@
     );
   });
   resetAllSettingsButton.addEventListener("click", () => {
-    if (boardActionInProgress) {
-      return;
-    }
     storage.clear();
     legacyStorage.clear();
     stopLivePolling();
@@ -6327,6 +6441,8 @@
     liveStationName = LIVE_STATION_DEFAULTS.name;
     departures = [];
     desiredStates = {};
+    formDepartureId = "";
+    formDepartureLocked = false;
     lighting.reset();
     lensDisplay.setImmediate(createDefaultLensState());
     nightMode = false;
@@ -6375,9 +6491,6 @@
   });
   boardForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (boardActionInProgress) {
-      return;
-    }
     if (!DEPARTURE_TIME_PATTERN.test(departureTimeInput.value)) {
       setBoardFormStatus(
         "Zadejte \u010Das odjezdu ve form\xE1tu HH:MM (00:00\u201323:59).",
@@ -6402,19 +6515,28 @@
       trainNumberInput.focus();
       return;
     }
-    const target = getFormTarget();
-    if (!target.platform || !target.track) {
-      setBoardFormStatus(
-        "Vypl\u0148te n\xE1stupi\u0161t\u011B a kolej, pro kter\xE9 se odjezd odes\xEDl\xE1.",
-        true
-      );
-      (!target.platform ? platformInput : trackInput).focus();
-      return;
+    const state = getFormState();
+    if (state.train) {
+      trainTypeInput.value = state.train;
     }
-    const departure = upsertDeparture(getFormState(), target);
+    operatorInput.value = state.operator;
+    const target = getFormTarget();
+    const departure = upsertDeparture(
+      state,
+      target,
+      resolveFormDeparture(state, target)
+    );
+    formDepartureId = departure.id;
+    formDepartureLocked = false;
     exampleActive = true;
     startButton.textContent = "Resetovat tabuli";
     startButton.setAttribute("aria-pressed", "true");
+    if (!isConfiguredTarget(target)) {
+      setBoardFormStatus(
+        "Odjezd byl ulo\u017Een. N\xE1stupi\u0161t\u011B a kolej lze doplnit pozd\u011Bji."
+      );
+      return;
+    }
     sendBoardAction(
       "apply-board",
       getBoardStateFromDeparture(departure),
@@ -6432,6 +6554,7 @@
     sectorInput,
     trainTypeInput,
     trainNumberInput,
+    operatorInput,
     departureTimeInput,
     delayValueInput
   ].forEach((input) => {

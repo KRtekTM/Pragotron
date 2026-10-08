@@ -66,6 +66,31 @@ assertDate(
     '2026-10-09T00:15:00'
 );
 
+const lateMorning = at('2026-10-08T09:57:40');
+assertDate(
+    'undelayed train 10 minutes ago stays today',
+    getEffectiveDepartureDate({ hours: 9, minutes: 47 }, '', lateMorning),
+    '2026-10-08T09:47:00'
+);
+assertDate(
+    'undelayed train 11 minutes ago is tomorrow',
+    getEffectiveDepartureDate({ hours: 9, minutes: 46 }, '', lateMorning),
+    '2026-10-09T09:46:00'
+);
+
+const keptOnBoard = [
+    { id: 'older', departureTime: { hours: 8, minutes: 0 }, delay: '' },
+    { id: 'recent', departureTime: { hours: 9, minutes: 47 }, delay: '' },
+    { id: 'later', departureTime: { hours: 10, minutes: 5 }, delay: '' }
+].sort((first, second) => compareDeparturesByTime(first, second, lateMorning))
+    .map((departure) => departure.id);
+
+if (JSON.stringify(keptOnBoard) !== JSON.stringify(['recent', 'later', 'older'])) {
+    throw new Error(
+        `recent undelayed departure was treated as tomorrow: ${keptOnBoard.join(', ')}`
+    );
+}
+
 const sorted = [
     { id: 'overnight', departureTime: { hours: 0, minutes: 15 }, delay: '' },
     { id: 'evening', departureTime: { hours: 23, minutes: 10 }, delay: '' },

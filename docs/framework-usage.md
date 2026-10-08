@@ -144,7 +144,7 @@ board.setFlapTiming({
 ```
 
 `duration` je délka jednoho flapu v milisekundách a podporovaný rozsah je
-`150–500`. `variation` určuje náhodnou odchylku na každém flapu v rozsahu
+`50–500` s krokem `10 ms`. `variation` určuje náhodnou odchylku na každém flapu v rozsahu
 `0–10 ms`. Výchozí hodnoty jsou `190` a `0`; hodnoty se zaokrouhlí a omezí
 na povolený rozsah.
 
@@ -164,13 +164,14 @@ Aktuální pořadí fyzické klapky je:
 ```js
 [
     ' ',
+    '.', '-', '/',
     'A', 'Á', 'Ä', 'B', 'C', 'Č', 'D', 'Ď', 'E', 'É', 'Ě', 'Ë',
     'F', 'G', 'H', 'I', 'Í', 'Ï', 'J', 'K', 'L', 'Ľ', 'M', 'N', 'Ň',
     'O', 'Ó', 'Ö', 'P', 'Q', 'R', 'Ř', 'Ŕ', 'S', 'Š', 'T', 'Ť',
     'U', 'Ú', 'Ů', 'Ü', 'V', 'W', 'X', 'Y', 'Ý', 'Ÿ', 'Z', 'Ž',
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    '.', ',', ':', ';', '-', '/', '+', '(', ')', '[', ']',
-    '!', '?', '%', '&', '#', "'"
+    ',', ':', ';', '+', '(', ')', '[', ']',
+    '!', '?', '%', '&', '#', "'",
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
 ]
 ```
 
@@ -515,7 +516,8 @@ zhasnutá. Blok `preDeparture` obsahuje `enabled` a `seconds` v rozsahu
 v okamžiku `odjezd − zobrazené zpoždění − seconds`; po aktivaci blikají
 až do dalšího nastavení tabule. Odjezd, jehož čas (včetně zobrazeného
 zpoždění) už dnes uplynul, se bere jako zítřejší, aby noční spoje po
-půlnoci nerozsvítily čočky večer předem. Nastavení změněné v manage UI
+půlnoci nerozsvítily čočky večer předem. Odjezd bez zpoždění, který je
+nejvýše 10 minut v minulosti včetně, zůstává dnešní a na tabuli. Nastavení změněné v manage UI
 se na tabuli neposílá okamžitě, ale až akcí „Odeslat na tabuli“.
 
 ## Typ vlaku
@@ -592,6 +594,8 @@ se volí v manage (ČD, SŽ, SŽ bílé, Pragotron nebo vlastní SVG) a
 ukládá se do `board:settings` jako `departureBoardLogo` a
 `departureBoardLogoSvg`. V záhlaví vedle loga běží aktuální čas
 jako stejný split-flap jako čas odjezdu.
+Barva čoček se při načtení vezme z nastavení manage (`settings.lenses`)
+a platí hned, i na prázdných řádcích. Rozsvícení dál řídí konkrétní odjezd.
 Každý řádek (`DepartureBoardRow`) obsahuje čočky, typ vlaku, číslo vlaku,
 dvě stanice, čas, zpoždění, nástupiště, kolej a sektor. Controlleru stačí
 předat pole odjezdů:
@@ -684,6 +688,10 @@ const registry = createDefaultRegistry({ audio });
 ```
 
 Výchozí cesta je `split-flap.wav` relativně k aktuálnímu dokumentu.
+Jednoznakové klapky ho používají dál. Typ vlaku, zpoždění, nástupiště, kolej
+a sektor volají `play('pitched')` a hrají `split-flap_pitched_down.wav`.
+Oba soubory trvají 170 ms; `playbackRate` je `170 / délka flapu`, takže zvuk
+skončí zároveň s otočením i při jiné nastavené rychlosti.
 Vlastní audio objekt lze předat všem display komponentám nebo sdílet přes
 `createDefaultRegistry()`.
 
@@ -693,8 +701,12 @@ navázat na kořen tabule a stav zobrazit ve vzdáleném manage:
 ```js
 audio.bindUserActivation(boardRoot);
 audio.subscribe((state) => console.log(state.unlocked));
-audio.getState(); // { available, unlocked }
+audio.getState(); // { available, unlocked, muted }
 ```
+
+`setMuted(true)` zvuk flapů na dané tabuli úplně vypne: `play()` se nespustí.
+Stav se pamatuje v `sessionStorage` daného okna. V manage seznamu připojených
+tabulí je u každé instance tlačítko pro ztlumení a opětovné zapnutí.
 
 Pro vypnutí zvuku v testu lze předat vlastní audio objekt s prázdnou metodou:
 
@@ -1047,7 +1059,9 @@ U každé aktivní tabule je v manage stránce také administrátorské tlačít
 `Identifikovat čočky`. Cíleně rozsvítí všechny čočky dané instance bez
 blikání. Na odjezdové tabuli se rozsvítí všechny čočky na všech řádcích.
 Druhé stisknutí obnoví původní stav podle právě platných odjezdů;
-identifikace proto nemění uložené nastavení ani odjezd.
+identifikace proto nemění uložené nastavení ani odjezd. Vedle něj je tlačítko
+pro ztlumení zvuku flapů jen u této instance. Ztlumená tabule zvuk vůbec
+nespouští.
 
 V manage editoru je volba `Bliká` záměrně pouze informativní a zůstává vždy
 zaškrtnutá; blikání čoček je součástí jejich komponentového chování.
@@ -1071,9 +1085,9 @@ stanice z `LStationName` jako odkaz na právě použitou URL. Nový snapshot:
   manage tabulky,
 - `IC` mapuje na Intercity, `EC` na Eurocity, `SC` na SuperCity,
   `EN` na EuroNight, `nj`/`NJ`/`NightJet` na NightJet,
-- `rj` s dopravcem ČD je railjet a `rj`/`RJ` s dopravcem RegioJet je
-  regiojet; parser bere kód i bez mezery (`nj456`) a velikost písmen
-  z tabule SŽ (`rj` vs `RJ`); Intercity, SuperCity mají bílé pozadí a logo, railjet červené
+- `rj` s dopravcem ČD je railjet a `rj`/`RJ` s dopravcem RegioJet (`RJET`) je
+  regiojet; klapka na tabuli bere přesnou shodu `rj`/`RJ`, ne jen malá písmena;
+  parser bere kód i bez mezery (`nj456`); Intercity, SuperCity mají bílé pozadí a logo, railjet červené
   `#D80300`, regiojet žluté `#F1B504` a NightJet modré `#1e3c69`,
 - rozliší odjezdy podle dne a čísla vlaku, takže změna zpoždění nebo
   doplnění nástupiště/koleje/sektoru aktualizuje stejný záznam,
@@ -1082,8 +1096,9 @@ stanice z `LStationName` jako odkaz na právě použitou URL. Nový snapshot:
 Změna nástupiště, koleje nebo sektoru proto upraví stejný řádek podle
 `liveKey`; nevzniká nový odjezd. Odjezdy bez přiděleného nástupiště nebo koleje
 zůstávají v manage i na odjezdové tabuli, ale nemohou být směrovány na
-konkrétní nástupištní tabuli. Při změně cílové identity controller nejprve
-resetuje starou tabuli a potom odešle nový stav na novou identitu.
+konkrétní nástupištní tabuli. Stejně se chová ruční formulář: nástupiště a kolej
+nejsou povinné a dopravce se zadává do pole `Dopravce`. Při změně cílové identity
+controller nejprve resetuje starou tabuli a potom odešle nový stav na novou identitu.
 
 Parser je samostatně použitelný:
 

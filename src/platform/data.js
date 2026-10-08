@@ -2,13 +2,14 @@ export const STATION_CHARACTER_COUNT = 14;
 
 export const STATION_FLAP_SEQUENCE = Object.freeze([
     ' ',
+    '.', '-', '/',
     'A', 'Á', 'Ä', 'B', 'C', 'Č', 'D', 'Ď', 'E', 'É', 'Ě', 'Ë',
     'F', 'G', 'H', 'I', 'Í', 'Ï', 'J', 'K', 'L', 'Ľ', 'M', 'N', 'Ň',
     'O', 'Ó', 'Ö', 'P', 'Q', 'R', 'Ř', 'Ŕ', 'S', 'Š', 'T', 'Ť',
     'U', 'Ú', 'Ů', 'Ü', 'V', 'W', 'X', 'Y', 'Ý', 'Ÿ', 'Z', 'Ž',
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    '.', ',', ':', ';', '-', '/', '+', '(', ')', '[', ']',
-    '!', '?', '%', '&', '#', "'"
+    ',', ':', ';', '+', '(', ')', '[', ']',
+    '!', '?', '%', '&', '#', "'",
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
 ]);
 
 const STATION_NAME_VOWELS = Object.freeze(new Set([
@@ -132,7 +133,7 @@ export const formatStationName = (
 export const STATION_FLIP_DURATION = 190;
 export const FLAP_TIMING_VARIATION_MS = 0;
 
-export const FLAP_TIMING_DURATION_MIN = 150;
+export const FLAP_TIMING_DURATION_MIN = 50;
 export const FLAP_TIMING_DURATION_MAX = 500;
 export const FLAP_TIMING_VARIATION_MIN = 0;
 export const FLAP_TIMING_VARIATION_MAX = 10;
@@ -273,6 +274,18 @@ export const DELAY_VALUES = Object.freeze([
 
 export const DELAY_DISPLAY_THRESHOLD = 5;
 export const DELAY_OFFSET_DEFAULT = false;
+const RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1000;
+
+const hasPositiveDelay = (delay) => {
+    const actualDelay = parseDelayMinutes(delay);
+    return Number.isFinite(actualDelay) && actualDelay > 0;
+};
+
+const minutesSinceClock = (clockDate, reference) => {
+    const referenceMinute = new Date(reference.getTime());
+    referenceMinute.setSeconds(0, 0);
+    return referenceMinute.getTime() - clockDate.getTime();
+};
 
 export const normalizeDelayOffset = (value) => value === true;
 
@@ -340,10 +353,11 @@ export const getEffectiveDepartureDate = (
         return null;
     }
 
-    const date = new Date(reference.getTime());
-    date.setSeconds(0, 0);
-    date.setHours(hours, minutes, 0, 0);
+    const clock = new Date(reference.getTime());
+    clock.setSeconds(0, 0);
+    clock.setHours(hours, minutes, 0, 0);
 
+    const date = new Date(clock.getTime());
     const displayedDelay = getDisplayedDelay(delay, DELAY_VALUES, applyOffset);
     if (displayedDelay !== '') {
         date.setMinutes(date.getMinutes() + Number(displayedDelay));
@@ -351,7 +365,11 @@ export const getEffectiveDepartureDate = (
 
     // Clock times that already passed today and are not held by delay are
     // overnight services, so they belong to the next calendar day.
-    if (date.getTime() < reference.getTime()) {
+    // An undelayed departure up to 10 minutes ago inclusive is still today,
+    // so a train that has not left yet stays on the board.
+    const recentUndelayed = !hasPositiveDelay(delay)
+        && minutesSinceClock(clock, reference) <= RECENT_DEPARTURE_GRACE_MS;
+    if (date.getTime() < reference.getTime() && !recentUndelayed) {
         date.setDate(date.getDate() + 1);
     }
 
@@ -387,7 +405,8 @@ export const getDepartureSortTimestamp = (
     // Undelayed clock times that already passed today are overnight
     // services and sort after the rest of today's departures.
     // Display offset must not hide a train that still has real delay.
-    if (date.getTime() < reference.getTime() && !hasDelay) {
+    // Keep an undelayed departure from the last 10 minutes on today.
+    if (!hasDelay && minutesSinceClock(date, reference) > RECENT_DEPARTURE_GRACE_MS) {
         date.setDate(date.getDate() + 1);
     }
 
@@ -585,6 +604,118 @@ export const TRAIN_NUMBER_FLAP_CARDS = Object.freeze([
     ...createTrainNumberDigitCards('sp'),
     ...createTrainNumberDigitCards('red')
 ]);
+
+const normalizeOperatorKey = (value) => String(value ?? '')
+    .toLocaleLowerCase('cs-CZ')
+    .replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, '');
+
+const isRegioJetOperator = (operator) => {
+    const normalized = normalizeOperatorKey(operator);
+    return normalized.includes('regiojet')
+        || normalized === 'rjet'
+        || normalized === 'rj';
+};
+
+const isCDOperator = (operator) => {
+    const normalized = normalizeOperatorKey(operator);
+    return normalized === 'čd'
+        || normalized === 'cd'
+        || normalized.includes('českédráhy')
+        || normalized.includes('ceskedrahy');
+};
+
+const findKnownTrainTypeName = (value) => {
+    const sourceType = String(value ?? '').trim();
+    if (!sourceType) {
+        return '';
+    }
+
+    const lower = sourceType.toLocaleLowerCase('cs-CZ');
+    return TRAIN_TYPES.find((candidate) => candidate.name === sourceType)?.name
+        || TRAIN_TYPES.find((candidate) =>
+            candidate.name.toLocaleLowerCase('cs-CZ') === lower
+        )?.name
+        || TRAIN_TYPES.find((candidate) =>
+            candidate.text
+            && candidate.text.toLocaleLowerCase('cs-CZ') === lower
+        )?.name
+        || '';
+};
+
+export const resolveCanonicalTrainType = (sourceType, operator = '') => {
+    const original = String(sourceType ?? '').trim();
+    const lower = original.toLocaleLowerCase('cs-CZ');
+
+    if (lower === 'ic' || lower === 'intercity') {
+        return 'Intercity';
+    }
+    if (lower === 'ec' || lower === 'eurocity') {
+        return 'Eurocity';
+    }
+    if (lower === 'sc' || lower === 'supercity') {
+        return 'SuperCity';
+    }
+    if (lower === 'en' || lower === 'euronight') {
+        return 'EuroNight';
+    }
+    if (lower === 'nj' || lower === 'nightjet') {
+        return 'nj';
+    }
+    if (lower === 'railjet') {
+        return 'rj';
+    }
+    if (lower === 'regiojet') {
+        return 'RJ';
+    }
+    if (lower === 'rj') {
+        if (isRegioJetOperator(operator)) {
+            return 'RJ';
+        }
+        if (isCDOperator(operator)) {
+            return 'rj';
+        }
+        return original === 'RJ' ? 'RJ' : 'rj';
+    }
+
+    return findKnownTrainTypeName(original);
+};
+
+export const findTrainType = (value, types = TRAIN_TYPES) => {
+    const requested = String(value ?? '').trim();
+    if (!requested) {
+        return types.find((type) => type.name === '') || types[0] || null;
+    }
+
+    const exact = types.find((type) =>
+        type.name === requested || type.source === requested
+    );
+    if (exact) {
+        return exact;
+    }
+
+    const normalized = requested.toLocaleLowerCase('cs-CZ');
+    const aliasName = normalized === 'railjet'
+        ? 'rj'
+        : normalized === 'regiojet'
+            ? 'RJ'
+            : '';
+    if (aliasName) {
+        const aliased = types.find((type) => type.name === aliasName);
+        if (aliased) {
+            return aliased;
+        }
+    }
+
+    const insensitive = types.filter((type) =>
+        type.name.toLocaleLowerCase('cs-CZ') === normalized
+    );
+    if (insensitive.length === 1) {
+        return insensitive[0];
+    }
+
+    const canonicalName = resolveCanonicalTrainType(requested);
+    return types.find((type) => type.name === canonicalName) || null;
+};
 
 export const getTrainNumberCardStyle = (train) => {
     const name = String(train ?? '');

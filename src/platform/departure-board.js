@@ -9,6 +9,7 @@ import {
     TRAIN_TYPES,
     compareDeparturesByTime,
     formatStationName,
+    resolveCanonicalTrainType,
     getTrainNumberCardStyle,
     normalizeDelayOffset,
     normalizeDepartureBoardRowCount,
@@ -217,9 +218,15 @@ const normalizeDeparture = (value) => {
                     || ''
             )
         ],
-        train: TRAIN_TYPES.some((type) => type.name === source.train)
-            ? source.train
-            : '',
+        train: (() => {
+            const resolved = resolveCanonicalTrainType(
+                source.train,
+                source.operator
+            );
+            return TRAIN_TYPES.some((type) => type.name === resolved)
+                ? resolved
+                : '';
+        })(),
         trainNumber: /^\d{1,4}$/.test(String(source.trainNumber || ''))
             ? String(source.trainNumber)
             : '',
@@ -275,6 +282,21 @@ const sameRowExceptPreDeparture = (first, second) => {
     secondSnapshot.preDepartureActive = true;
     return JSON.stringify(firstSnapshot) === JSON.stringify(secondSnapshot)
         && first.preDepartureActive !== second.preDepartureActive;
+};
+
+const withManagedLensColors = (state, template) => {
+    const colors = template?.lenses;
+    if (!Array.isArray(colors) || colors.length === 0 || !state?.lenses) {
+        return state;
+    }
+
+    return {
+        ...state,
+        lenses: state.lenses.map((lens, index) => ({
+            ...lens,
+            color: colors[index]?.color || colors[0]?.color || lens.color
+        }))
+    };
 };
 
 const setComponentValue = (component, value, immediate) => {
@@ -419,7 +441,9 @@ export class CatalogFlapDisplay {
             + Math.floor(Math.random() * (this.timing.variation * 2 + 1))
             - this.timing.variation;
         applyFlipTiming(this.element, flipDuration);
-        this.audio.play();
+        if (!this.audio.muted) {
+            this.audio.play('pitched', flipDuration);
+        }
         this.element.classList.add('is-flipping');
 
         this.timer = window.setTimeout(() => {
@@ -549,12 +573,14 @@ export class DepartureBoardRow {
             audio = new SplitFlapAudio(),
             timing = FLAP_TIMING_DEFAULTS,
             rowIndex = 0,
-            applyDelayOffset = DELAY_OFFSET_DEFAULT
+            applyDelayOffset = DELAY_OFFSET_DEFAULT,
+            lensColorTemplate = null
         } = {}
     ) {
         this.element = element;
         this.timing = normalizeFlapTiming(timing);
         this.rowIndex = Math.max(0, Math.floor(Number(rowIndex) || 0));
+        this.lensColorTemplate = lensColorTemplate;
         this.stationOne = new SplitFlapDisplay(
             element.querySelector('[data-departure-slot="stationOne"]'),
             { audio, maxLength: 14, timing: this.timing }
@@ -604,7 +630,10 @@ export class DepartureBoardRow {
             element.querySelector('[data-departure-slot="lenses"]'),
             {
                 count: 2,
-                defaultState: createEmptyLensState(),
+                defaultState: withManagedLensColors(
+                    createEmptyLensState(),
+                    this.lensColorTemplate
+                ),
                 rowIndex: this.rowIndex
             }
         );
@@ -636,16 +665,26 @@ export class DepartureBoardRow {
         this.lenses.setPreDepartureActive(isActive);
     }
 
+    setLensColorTemplate(template) {
+        this.lensColorTemplate = template?.lenses ? template : null;
+        const current = this.lenses.getValue();
+        this.lenses.set(withManagedLensColors(current, this.lensColorTemplate));
+    }
+
+    paintLenses(state, { preDepartureActive = true } = {}) {
+        this.lenses.set(withManagedLensColors(state, this.lensColorTemplate));
+        this.lenses.setPreDepartureActive(preDepartureActive);
+    }
+
     applyIdentificationLenses() {
         this.lenses.set(toIdentificationLensState(this.lenses.getValue()));
         this.lenses.setPreDepartureActive(true);
     }
 
     restoreOperationalLenses(departure) {
-        this.lenses.set(departure?.lenses || createEmptyLensState());
-        this.lenses.setPreDepartureActive(
-            departure?.preDepartureActive !== false
-        );
+        this.paintLenses(departure?.lenses || createEmptyLensState(), {
+            preDepartureActive: departure?.preDepartureActive !== false
+        });
     }
 
     setData(value, {
@@ -716,15 +755,15 @@ export class DepartureBoardRow {
         }
 
         if (identificationActive) {
-            this.lenses.set(toIdentificationLensState(
+            this.paintLenses(toIdentificationLensState(
                 departure?.lenses || createEmptyLensState()
             ));
-            this.lenses.setPreDepartureActive(true);
             return;
         }
 
-        this.lenses.set(departure?.lenses || createEmptyLensState());
-        this.lenses.setPreDepartureActive(preDepartureActive);
+        this.paintLenses(departure?.lenses || createEmptyLensState(), {
+            preDepartureActive
+        });
     }
 
     isSettled() {
@@ -748,7 +787,8 @@ export class DepartureBoardDisplay {
             timing = FLAP_TIMING_DEFAULTS,
             rowSelector = '[data-departure-row]',
             rowCount = DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
-            applyDelayOffset = DELAY_OFFSET_DEFAULT
+            applyDelayOffset = DELAY_OFFSET_DEFAULT,
+            lensSettings = null
         } = {}
     ) {
         if (!root) {
@@ -759,13 +799,15 @@ export class DepartureBoardDisplay {
         this.audio = audio;
         this.timing = normalizeFlapTiming(timing);
         this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
+        this.lensSettings = lensSettings?.lenses ? lensSettings : null;
         this.rowSelector = rowSelector;
         this.rows = [...root.querySelectorAll(rowSelector)].map(
             (element, index) => new DepartureBoardRow(element, {
                 audio,
                 timing: this.timing,
                 rowIndex: index,
-                applyDelayOffset: this.applyDelayOffset
+                applyDelayOffset: this.applyDelayOffset,
+                lensColorTemplate: this.lensSettings
             })
         );
         this.displayedRows = Array.from(
@@ -794,6 +836,15 @@ export class DepartureBoardDisplay {
         this.applyDelayOffset = normalizeDelayOffset(enabled);
         this.rows.forEach((row) => row.setDelayOffset(this.applyDelayOffset));
         return this.applyDelayOffset;
+    }
+
+    setLensSettings(value) {
+        this.lensSettings = value?.lenses ? value : null;
+        this.rows.forEach((row) => row.setLensColorTemplate(this.lensSettings));
+        if (this.identificationActive) {
+            this.applyIdentificationLenses();
+        }
+        return this.lensSettings;
     }
 
     getRowContainer() {
@@ -839,7 +890,8 @@ export class DepartureBoardDisplay {
                 audio: this.audio,
                 timing: this.timing,
                 rowIndex: index,
-                applyDelayOffset: this.applyDelayOffset
+                applyDelayOffset: this.applyDelayOffset,
+                lensColorTemplate: this.lensSettings
             }));
             this.displayedRows.push(null);
             this.targetRows.push(null);

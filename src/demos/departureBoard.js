@@ -127,7 +127,8 @@ const display = new DepartureBoardDisplay(root, {
     audio,
     timing: initialTiming,
     rowCount: initialRowCount,
-    applyDelayOffset: delayOffset
+    applyDelayOffset: delayOffset,
+    lensSettings: savedSettings.lenses
 });
 const transport = new BoardTransport();
 
@@ -387,6 +388,9 @@ const applyBoardSettings = (settings = {}) => {
         || source.departureBoardLogoSvg != null) {
         applyBoardLogo(source);
     }
+    if (source.lenses) {
+        display.setLensSettings(source.lenses);
+    }
 };
 
 const applyDepartureSnapshot = (
@@ -470,9 +474,22 @@ const setIdentificationActive = (forceOn) => {
 };
 
 const handleCommand = (message) => {
-    const { action, forceOn } = message.payload || {};
-    if (action !== 'identify-lenses'
-        || message.target?.source !== transport.id) {
+    const { action, forceOn, muted } = message.payload || {};
+    if (message.target?.source !== transport.id) {
+        return;
+    }
+
+    if (action === 'set-audio-muted') {
+        audio.setMuted(muted === true);
+        acknowledge(message, {
+            ok: true,
+            audio: audio.getState()
+        });
+        publishHeartbeat();
+        return;
+    }
+
+    if (action !== 'identify-lenses') {
         return;
     }
 

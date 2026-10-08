@@ -1,25 +1,71 @@
-const DEFAULT_SOUND_URL = typeof document === 'undefined'
-    ? 'split-flap.wav'
-    : new URL('split-flap.wav', document.baseURI).href;
+const soundUrl = (fileName) => (
+    typeof document === 'undefined'
+        ? fileName
+        : new URL(fileName, document.baseURI).href
+);
+
+const DEFAULT_SOUND_URL = soundUrl('split-flap.wav');
+const PITCHED_SOUND_URL = soundUrl('split-flap_pitched_down.wav');
+const FLAP_SOUND_DURATION_MS = 170;
+
+const AUDIO_MUTE_STORAGE_KEY = 'pragotron.board.audioMuted.v1';
+
+const readStoredMute = () => {
+    try {
+        return globalThis.sessionStorage?.getItem(AUDIO_MUTE_STORAGE_KEY) === '1';
+    } catch {
+        return false;
+    }
+};
+
+const writeStoredMute = (muted) => {
+    try {
+        globalThis.sessionStorage?.setItem(
+            AUDIO_MUTE_STORAGE_KEY,
+            muted ? '1' : '0'
+        );
+    } catch {
+        // The board can still mute for this page view.
+    }
+};
 
 export class SplitFlapAudio {
     constructor(source = DEFAULT_SOUND_URL) {
         this.template = typeof Audio === 'function' ? new Audio(source) : null;
+        this.pitchedTemplate = typeof Audio === 'function'
+            ? new Audio(PITCHED_SOUND_URL)
+            : null;
         this.unlocked = false;
+        this.muted = readStoredMute();
         this.activationTarget = null;
         this.activationHandler = null;
         this.listeners = new Set();
 
-        if (this.template) {
-            this.template.preload = 'auto';
-        }
+        [this.template, this.pitchedTemplate].forEach((template) => {
+            if (template) {
+                template.preload = 'auto';
+            }
+        });
     }
 
     getState() {
         return {
             available: Boolean(this.template),
-            unlocked: this.unlocked
+            unlocked: this.unlocked,
+            muted: this.muted
         };
+    }
+
+    setMuted(value) {
+        const nextValue = Boolean(value);
+        if (nextValue === this.muted) {
+            return this.muted;
+        }
+
+        this.muted = nextValue;
+        writeStoredMute(nextValue);
+        this.listeners.forEach((listener) => listener(this.getState()));
+        return this.muted;
     }
 
     setUnlocked(value) {
@@ -119,13 +165,25 @@ export class SplitFlapAudio {
         return this.unlocked;
     }
 
-    play() {
-        if (!this.template) {
+    play(variant, durationMs) {
+        const template = variant === 'pitched'
+            ? this.pitchedTemplate
+            : this.template;
+        if (!template || this.muted) {
             return;
         }
 
-        const sound = this.template.cloneNode();
+        const sound = template.cloneNode();
         sound.preload = 'auto';
+        const duration = Number(durationMs);
+        if (Number.isFinite(duration) && duration > 0) {
+            const rate = Math.min(
+                16,
+                Math.max(0.0625, FLAP_SOUND_DURATION_MS / duration)
+            );
+            sound.playbackRate = rate;
+            sound.preservesPitch = true;
+        }
 
         let cleanedUp = false;
         const cleanup = () => {
@@ -158,7 +216,9 @@ export class SplitFlapAudio {
         this.removeActivationListeners();
         this.listeners.clear();
         this.template?.pause();
+        this.pitchedTemplate?.pause();
         this.template = null;
+        this.pitchedTemplate = null;
     }
 }
 

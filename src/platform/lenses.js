@@ -76,38 +76,6 @@ const resolveColor = (setting, fallback) => {
 const positiveModulo = (value, divisor) =>
     ((value % divisor) + divisor) % divisor;
 
-const LENS_CLOCK_INTERVAL_MS = 40;
-const activeLensDisplays = new Set();
-let lensClockTimer = null;
-
-const scheduleLensClock = () => {
-    if (lensClockTimer !== null || activeLensDisplays.size === 0) {
-        return;
-    }
-
-    lensClockTimer = window.setTimeout(() => {
-        lensClockTimer = null;
-        const now = Date.now();
-        activeLensDisplays.forEach((display) => {
-            display.applyBlinkPhase(now);
-        });
-        scheduleLensClock();
-    }, LENS_CLOCK_INTERVAL_MS);
-};
-
-const registerLensDisplay = (display) => {
-    activeLensDisplays.add(display);
-    scheduleLensClock();
-};
-
-const unregisterLensDisplay = (display) => {
-    activeLensDisplays.delete(display);
-    if (activeLensDisplays.size === 0 && lensClockTimer !== null) {
-        window.clearTimeout(lensClockTimer);
-        lensClockTimer = null;
-    }
-};
-
 /**
  * Return the phase that should be used for a lens animation at this instant.
  *
@@ -266,7 +234,6 @@ export class LensDisplay {
             || createDefaultLensState(this.count, defaultOverrides);
         this.state = this.normalize(this.defaultState);
         this.preDepartureActive = true;
-        this.clockRegistered = false;
         this.render();
     }
 
@@ -352,73 +319,9 @@ export class LensDisplay {
 
         const lightElement = document.createElement('span');
         lightElement.className = 'lens-light';
-        if (setting.enabled && setting.blinking && preDepartureActive) {
-            lightElement.classList.toggle(
-                'is-phase-on',
-                getLensBlinkPhase({
-                    now,
-                    lensIndex: index,
-                    rowIndex: this.rowIndex,
-                    synchronizeRows: this.state.synchronizeRows
-                }) < setting.blinkInterval
-            );
-            lightElement.classList.toggle(
-                'is-phase-off',
-                !lightElement.classList.contains('is-phase-on')
-            );
-        }
         lens.appendChild(lightElement);
 
         return lens;
-    }
-
-    hasActiveBlinking() {
-        return this.element.isConnected !== false
-            && this.state.lenses.some((setting) =>
-                setting.enabled
-                && setting.blinking
-                && (
-                    !this.state.preDeparture.enabled
-                    || this.preDepartureActive
-                )
-            );
-    }
-
-    syncClockRegistration() {
-        const shouldRegister = this.hasActiveBlinking();
-        if (shouldRegister && !this.clockRegistered) {
-            this.clockRegistered = true;
-            registerLensDisplay(this);
-        } else if (!shouldRegister && this.clockRegistered) {
-            this.clockRegistered = false;
-            unregisterLensDisplay(this);
-        }
-    }
-
-    applyBlinkPhase(now = Date.now()) {
-        if (!this.clockRegistered) {
-            return;
-        }
-
-        this.element.querySelectorAll('.lens').forEach((lens, index) => {
-            const setting = this.state.lenses[index];
-            const isBlinking = setting?.enabled
-                && setting.blinking
-                && (
-                    !this.state.preDeparture.enabled
-                    || this.preDepartureActive
-                );
-            const isOn = isBlinking
-                && getLensBlinkPhase({
-                    now,
-                    lensIndex: index,
-                    rowIndex: this.rowIndex,
-                    synchronizeRows: this.state.synchronizeRows
-                }) < setting.blinkInterval;
-            const light = lens.querySelector('.lens-light');
-            light?.classList.toggle('is-phase-on', isOn);
-            light?.classList.toggle('is-phase-off', isBlinking && !isOn);
-        });
     }
 
     render() {
@@ -433,8 +336,6 @@ export class LensDisplay {
             'aria-label',
             `${this.state.lenses.length} signalizačních čoček`
         );
-        this.applyBlinkPhase(now);
-        this.syncClockRegistration();
     }
 
     set(value) {
@@ -470,10 +371,6 @@ export class LensDisplay {
     }
 
     destroy() {
-        if (this.clockRegistered) {
-            this.clockRegistered = false;
-            unregisterLensDisplay(this);
-        }
         this.element.replaceChildren();
         this.element.removeAttribute('aria-label');
     }

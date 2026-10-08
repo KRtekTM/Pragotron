@@ -2,7 +2,12 @@ import {
     extractStationName,
     parseStationTable
 } from '../src/platform/live-departures.js';
-import { TRAIN_TYPES, getTrainNumberCardStyle } from '../src/platform/data.js';
+import {
+    TRAIN_TYPES,
+    findTrainType,
+    getTrainNumberCardStyle,
+    resolveCanonicalTrainType
+} from '../src/platform/data.js';
 
 const expectedVisuals = {
     Intercity: { source: 'images/intercity.svg', background: '#fff' },
@@ -118,6 +123,31 @@ if (
 
 if (extractStationName('<table></table>') !== '') {
     throw new Error('Missing station name should stay empty');
+}
+
+if (resolveCanonicalTrainType('RJ', 'RJET') !== 'RJ') {
+    throw new Error('RJ from RJET must stay RegioJet');
+}
+if (resolveCanonicalTrainType('rj', 'RJET') !== 'RJ') {
+    throw new Error('rj from RJET must become RegioJet');
+}
+if (resolveCanonicalTrainType('RJ', 'ČD') !== 'rj') {
+    throw new Error('RJ from ČD must become railjet');
+}
+if (resolveCanonicalTrainType('rj', 'ČD') !== 'rj') {
+    throw new Error('rj from ČD must stay railjet');
+}
+
+const regiojetType = findTrainType('RJ');
+const railjetType = findTrainType('rj');
+if (regiojetType?.source !== 'images/regiojet.svg') {
+    throw new Error(`RJ flap is ${regiojetType?.source}, expected regiojet`);
+}
+if (railjetType?.source !== 'images/railjet.svg') {
+    throw new Error(`rj flap is ${railjetType?.source}, expected railjet`);
+}
+if (findTrainType('regiojet')?.name !== 'RJ' || findTrainType('railjet')?.name !== 'rj') {
+    throw new Error('Train type aliases were not resolved');
 }
 
 console.log(JSON.stringify(parsed, null, 2));

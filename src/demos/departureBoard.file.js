@@ -3,6 +3,9 @@
   var STATION_CHARACTER_COUNT = 14;
   var STATION_FLAP_SEQUENCE = Object.freeze([
     " ",
+    ".",
+    "-",
+    "/",
     "A",
     "\xC1",
     "\xC4",
@@ -52,22 +55,9 @@
     "\u0178",
     "Z",
     "\u017D",
-    "0",
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    ".",
     ",",
     ":",
     ";",
-    "-",
-    "/",
     "+",
     "(",
     ")",
@@ -78,7 +68,17 @@
     "%",
     "&",
     "#",
-    "'"
+    "'",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9"
   ]);
   var STATION_NAME_VOWELS = Object.freeze(/* @__PURE__ */ new Set([
     "A",
@@ -183,7 +183,7 @@
   };
   var STATION_FLIP_DURATION = 190;
   var FLAP_TIMING_VARIATION_MS = 0;
-  var FLAP_TIMING_DURATION_MIN = 150;
+  var FLAP_TIMING_DURATION_MIN = 50;
   var FLAP_TIMING_DURATION_MAX = 500;
   var FLAP_TIMING_VARIATION_MIN = 0;
   var FLAP_TIMING_VARIATION_MAX = 10;
@@ -310,6 +310,16 @@
   ]);
   var DELAY_DISPLAY_THRESHOLD = 5;
   var DELAY_OFFSET_DEFAULT = false;
+  var RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1e3;
+  var hasPositiveDelay = (delay) => {
+    const actualDelay = parseDelayMinutes(delay);
+    return Number.isFinite(actualDelay) && actualDelay > 0;
+  };
+  var minutesSinceClock = (clockDate, reference) => {
+    const referenceMinute = new Date(reference.getTime());
+    referenceMinute.setSeconds(0, 0);
+    return referenceMinute.getTime() - clockDate.getTime();
+  };
   var normalizeDelayOffset = (value) => value === true;
   var parseDelayMinutes = (value) => {
     if (value === "" || value === null || value === void 0) {
@@ -344,14 +354,16 @@
     if (Number.isNaN(reference.getTime())) {
       return null;
     }
-    const date = new Date(reference.getTime());
-    date.setSeconds(0, 0);
-    date.setHours(hours, minutes, 0, 0);
+    const clock = new Date(reference.getTime());
+    clock.setSeconds(0, 0);
+    clock.setHours(hours, minutes, 0, 0);
+    const date = new Date(clock.getTime());
     const displayedDelay = getDisplayedDelay(delay, DELAY_VALUES, applyOffset);
     if (displayedDelay !== "") {
       date.setMinutes(date.getMinutes() + Number(displayedDelay));
     }
-    if (date.getTime() < reference.getTime()) {
+    const recentUndelayed = !hasPositiveDelay(delay) && minutesSinceClock(clock, reference) <= RECENT_DEPARTURE_GRACE_MS;
+    if (date.getTime() < reference.getTime() && !recentUndelayed) {
       date.setDate(date.getDate() + 1);
     }
     return date;
@@ -371,7 +383,7 @@
     date.setHours(hours, minutes, 0, 0);
     const actualDelay = parseDelayMinutes(delay);
     const hasDelay = Number.isFinite(actualDelay) && actualDelay > 0;
-    if (date.getTime() < reference.getTime() && !hasDelay) {
+    if (!hasDelay && minutesSinceClock(date, reference) > RECENT_DEPARTURE_GRACE_MS) {
       date.setDate(date.getDate() + 1);
     }
     return date.getTime();
@@ -571,6 +583,90 @@
     ...createTrainNumberDigitCards("sp"),
     ...createTrainNumberDigitCards("red")
   ]);
+  var normalizeOperatorKey = (value) => String(value ?? "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, "");
+  var isRegioJetOperator = (operator) => {
+    const normalized = normalizeOperatorKey(operator);
+    return normalized.includes("regiojet") || normalized === "rjet" || normalized === "rj";
+  };
+  var isCDOperator = (operator) => {
+    const normalized = normalizeOperatorKey(operator);
+    return normalized === "\u010Dd" || normalized === "cd" || normalized.includes("\u010Desk\xE9dr\xE1hy") || normalized.includes("ceskedrahy");
+  };
+  var findKnownTrainTypeName = (value) => {
+    const sourceType = String(value ?? "").trim();
+    if (!sourceType) {
+      return "";
+    }
+    const lower = sourceType.toLocaleLowerCase("cs-CZ");
+    return TRAIN_TYPES.find((candidate) => candidate.name === sourceType)?.name || TRAIN_TYPES.find(
+      (candidate) => candidate.name.toLocaleLowerCase("cs-CZ") === lower
+    )?.name || TRAIN_TYPES.find(
+      (candidate) => candidate.text && candidate.text.toLocaleLowerCase("cs-CZ") === lower
+    )?.name || "";
+  };
+  var resolveCanonicalTrainType = (sourceType, operator = "") => {
+    const original = String(sourceType ?? "").trim();
+    const lower = original.toLocaleLowerCase("cs-CZ");
+    if (lower === "ic" || lower === "intercity") {
+      return "Intercity";
+    }
+    if (lower === "ec" || lower === "eurocity") {
+      return "Eurocity";
+    }
+    if (lower === "sc" || lower === "supercity") {
+      return "SuperCity";
+    }
+    if (lower === "en" || lower === "euronight") {
+      return "EuroNight";
+    }
+    if (lower === "nj" || lower === "nightjet") {
+      return "nj";
+    }
+    if (lower === "railjet") {
+      return "rj";
+    }
+    if (lower === "regiojet") {
+      return "RJ";
+    }
+    if (lower === "rj") {
+      if (isRegioJetOperator(operator)) {
+        return "RJ";
+      }
+      if (isCDOperator(operator)) {
+        return "rj";
+      }
+      return original === "RJ" ? "RJ" : "rj";
+    }
+    return findKnownTrainTypeName(original);
+  };
+  var findTrainType = (value, types = TRAIN_TYPES) => {
+    const requested = String(value ?? "").trim();
+    if (!requested) {
+      return types.find((type) => type.name === "") || types[0] || null;
+    }
+    const exact = types.find(
+      (type) => type.name === requested || type.source === requested
+    );
+    if (exact) {
+      return exact;
+    }
+    const normalized = requested.toLocaleLowerCase("cs-CZ");
+    const aliasName = normalized === "railjet" ? "rj" : normalized === "regiojet" ? "RJ" : "";
+    if (aliasName) {
+      const aliased = types.find((type) => type.name === aliasName);
+      if (aliased) {
+        return aliased;
+      }
+    }
+    const insensitive = types.filter(
+      (type) => type.name.toLocaleLowerCase("cs-CZ") === normalized
+    );
+    if (insensitive.length === 1) {
+      return insensitive[0];
+    }
+    const canonicalName = resolveCanonicalTrainType(requested);
+    return types.find((type) => type.name === canonicalName) || null;
+  };
   var getTrainNumberCardStyle = (train) => {
     const name = String(train ?? "");
     const normalized = name.toLocaleLowerCase("cs-CZ");
@@ -612,23 +708,58 @@
   });
 
   // src/platform/audio.js
-  var DEFAULT_SOUND_URL = typeof document === "undefined" ? "split-flap.wav" : new URL("split-flap.wav", document.baseURI).href;
+  var soundUrl = (fileName) => typeof document === "undefined" ? fileName : new URL(fileName, document.baseURI).href;
+  var DEFAULT_SOUND_URL = soundUrl("split-flap.wav");
+  var PITCHED_SOUND_URL = soundUrl("split-flap_pitched_down.wav");
+  var FLAP_SOUND_DURATION_MS = 170;
+  var AUDIO_MUTE_STORAGE_KEY = "pragotron.board.audioMuted.v1";
+  var readStoredMute = () => {
+    try {
+      return globalThis.sessionStorage?.getItem(AUDIO_MUTE_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  };
+  var writeStoredMute = (muted) => {
+    try {
+      globalThis.sessionStorage?.setItem(
+        AUDIO_MUTE_STORAGE_KEY,
+        muted ? "1" : "0"
+      );
+    } catch {
+    }
+  };
   var SplitFlapAudio = class {
     constructor(source = DEFAULT_SOUND_URL) {
       this.template = typeof Audio === "function" ? new Audio(source) : null;
+      this.pitchedTemplate = typeof Audio === "function" ? new Audio(PITCHED_SOUND_URL) : null;
       this.unlocked = false;
+      this.muted = readStoredMute();
       this.activationTarget = null;
       this.activationHandler = null;
       this.listeners = /* @__PURE__ */ new Set();
-      if (this.template) {
-        this.template.preload = "auto";
-      }
+      [this.template, this.pitchedTemplate].forEach((template) => {
+        if (template) {
+          template.preload = "auto";
+        }
+      });
     }
     getState() {
       return {
         available: Boolean(this.template),
-        unlocked: this.unlocked
+        unlocked: this.unlocked,
+        muted: this.muted
       };
+    }
+    setMuted(value) {
+      const nextValue = Boolean(value);
+      if (nextValue === this.muted) {
+        return this.muted;
+      }
+      this.muted = nextValue;
+      writeStoredMute(nextValue);
+      this.listeners.forEach((listener) => listener(this.getState()));
+      return this.muted;
     }
     setUnlocked(value) {
       const nextValue = Boolean(value);
@@ -713,12 +844,22 @@
       }
       return this.unlocked;
     }
-    play() {
-      if (!this.template) {
+    play(variant, durationMs) {
+      const template = variant === "pitched" ? this.pitchedTemplate : this.template;
+      if (!template || this.muted) {
         return;
       }
-      const sound = this.template.cloneNode();
+      const sound = template.cloneNode();
       sound.preload = "auto";
+      const duration = Number(durationMs);
+      if (Number.isFinite(duration) && duration > 0) {
+        const rate = Math.min(
+          16,
+          Math.max(0.0625, FLAP_SOUND_DURATION_MS / duration)
+        );
+        sound.playbackRate = rate;
+        sound.preservesPitch = true;
+      }
       let cleanedUp = false;
       const cleanup = () => {
         if (cleanedUp) {
@@ -744,7 +885,9 @@
       this.removeActivationListeners();
       this.listeners.clear();
       this.template?.pause();
+      this.pitchedTemplate?.pause();
       this.template = null;
+      this.pitchedTemplate = null;
     }
   };
 
@@ -896,7 +1039,9 @@
         }
         const flipDuration = getFlapDuration(this.timing);
         applyFlipTiming(state.element, flipDuration);
-        this.audio.play();
+        if (!this.audio.muted) {
+          this.audio.play(void 0, flipDuration);
+        }
         state.element.classList.add("is-flipping");
         state.timer = window.setTimeout(() => {
           if (sequence !== state.sequence) {
@@ -1091,7 +1236,9 @@
       }
       const flipDuration = getFlapDuration(this.timing);
       applyFlipTiming(this.element, flipDuration);
-      this.audio.play();
+      if (!this.audio.muted) {
+        this.audio.play("pitched", flipDuration);
+      }
       this.element.classList.add("is-flipping");
       this.timer = window.setTimeout(() => {
         if (sequence !== this.sequence) {
@@ -1148,11 +1295,8 @@
       if (value === "" || value === null || value === void 0) {
         return 0;
       }
-      const requested = String(value).trim();
-      const normalized = requested.toLocaleLowerCase("cs-CZ");
-      const index = this.types.findIndex(
-        (type) => type.name.toLocaleLowerCase("cs-CZ") === normalized || type.source === requested
-      );
+      const match = findTrainType(value, this.types);
+      const index = match ? this.types.indexOf(match) : -1;
       if (index === -1) {
         throw new RangeError(
           `Nepodporovan\xFD typ vlaku "${value}". Povolen\xE9 typy: ${this.types.map((type) => type.name || "(pr\xE1zdn\xE9)").join(", ")}`
@@ -1224,7 +1368,9 @@
       }
       const flipDuration = getFlapDuration(this.timing);
       applyFlipTiming(this.element, flipDuration);
-      this.audio.play();
+      if (!this.audio.muted) {
+        this.audio.play("pitched", flipDuration);
+      }
       this.element.classList.add("is-flipping");
       this.timer = window.setTimeout(() => {
         if (sequence !== this.sequence) {
@@ -1388,7 +1534,9 @@
       }
       const flipDuration = getFlapDuration(this.timing);
       applyFlipTiming(this.element, flipDuration);
-      this.audio.play();
+      if (!this.audio.muted) {
+        this.audio.play(void 0, flipDuration);
+      }
       this.element.classList.add("is-flipping");
       this.timer = window.setTimeout(() => {
         if (sequence !== this.sequence) {
@@ -1594,33 +1742,6 @@
     ) || fallback;
   };
   var positiveModulo = (value, divisor) => (value % divisor + divisor) % divisor;
-  var LENS_CLOCK_INTERVAL_MS = 40;
-  var activeLensDisplays = /* @__PURE__ */ new Set();
-  var lensClockTimer = null;
-  var scheduleLensClock = () => {
-    if (lensClockTimer !== null || activeLensDisplays.size === 0) {
-      return;
-    }
-    lensClockTimer = window.setTimeout(() => {
-      lensClockTimer = null;
-      const now = Date.now();
-      activeLensDisplays.forEach((display2) => {
-        display2.applyBlinkPhase(now);
-      });
-      scheduleLensClock();
-    }, LENS_CLOCK_INTERVAL_MS);
-  };
-  var registerLensDisplay = (display2) => {
-    activeLensDisplays.add(display2);
-    scheduleLensClock();
-  };
-  var unregisterLensDisplay = (display2) => {
-    activeLensDisplays.delete(display2);
-    if (activeLensDisplays.size === 0 && lensClockTimer !== null) {
-      window.clearTimeout(lensClockTimer);
-      lensClockTimer = null;
-    }
-  };
   var getLensBlinkPhase = ({
     now = Date.now(),
     lensIndex = 0,
@@ -1741,7 +1862,6 @@
       this.defaultState = defaultState || createDefaultLensState(this.count, defaultOverrides);
       this.state = this.normalize(this.defaultState);
       this.preDepartureActive = true;
-      this.clockRegistered = false;
       this.render();
     }
     normalize(value) {
@@ -1818,56 +1938,8 @@
       );
       const lightElement = document.createElement("span");
       lightElement.className = "lens-light";
-      if (setting.enabled && setting.blinking && preDepartureActive) {
-        lightElement.classList.toggle(
-          "is-phase-on",
-          getLensBlinkPhase({
-            now,
-            lensIndex: index,
-            rowIndex: this.rowIndex,
-            synchronizeRows: this.state.synchronizeRows
-          }) < setting.blinkInterval
-        );
-        lightElement.classList.toggle(
-          "is-phase-off",
-          !lightElement.classList.contains("is-phase-on")
-        );
-      }
       lens.appendChild(lightElement);
       return lens;
-    }
-    hasActiveBlinking() {
-      return this.element.isConnected !== false && this.state.lenses.some(
-        (setting) => setting.enabled && setting.blinking && (!this.state.preDeparture.enabled || this.preDepartureActive)
-      );
-    }
-    syncClockRegistration() {
-      const shouldRegister = this.hasActiveBlinking();
-      if (shouldRegister && !this.clockRegistered) {
-        this.clockRegistered = true;
-        registerLensDisplay(this);
-      } else if (!shouldRegister && this.clockRegistered) {
-        this.clockRegistered = false;
-        unregisterLensDisplay(this);
-      }
-    }
-    applyBlinkPhase(now = Date.now()) {
-      if (!this.clockRegistered) {
-        return;
-      }
-      this.element.querySelectorAll(".lens").forEach((lens, index) => {
-        const setting = this.state.lenses[index];
-        const isBlinking = setting?.enabled && setting.blinking && (!this.state.preDeparture.enabled || this.preDepartureActive);
-        const isOn = isBlinking && getLensBlinkPhase({
-          now,
-          lensIndex: index,
-          rowIndex: this.rowIndex,
-          synchronizeRows: this.state.synchronizeRows
-        }) < setting.blinkInterval;
-        const light = lens.querySelector(".lens-light");
-        light?.classList.toggle("is-phase-on", isOn);
-        light?.classList.toggle("is-phase-off", isBlinking && !isOn);
-      });
     }
     render() {
       const now = Date.now();
@@ -1880,8 +1952,6 @@
         "aria-label",
         `${this.state.lenses.length} signaliza\u010Dn\xEDch \u010Do\u010Dek`
       );
-      this.applyBlinkPhase(now);
-      this.syncClockRegistration();
     }
     set(value) {
       this.state = this.normalize(value);
@@ -1910,10 +1980,6 @@
       return true;
     }
     destroy() {
-      if (this.clockRegistered) {
-        this.clockRegistered = false;
-        unregisterLensDisplay(this);
-      }
       this.element.replaceChildren();
       this.element.removeAttribute("aria-label");
     }
@@ -2072,7 +2138,13 @@
           source.stations?.[1] || source.stationTwo || ""
         )
       ],
-      train: TRAIN_TYPES.some((type) => type.name === source.train) ? source.train : "",
+      train: (() => {
+        const resolved = resolveCanonicalTrainType(
+          source.train,
+          source.operator
+        );
+        return TRAIN_TYPES.some((type) => type.name === resolved) ? resolved : "";
+      })(),
       trainNumber: /^\d{1,4}$/.test(String(source.trainNumber || "")) ? String(source.trainNumber) : "",
       delay: parsedDelay === null ? "" : parsedDelay,
       departureTime,
@@ -2109,6 +2181,19 @@
     firstSnapshot.preDepartureActive = true;
     secondSnapshot.preDepartureActive = true;
     return JSON.stringify(firstSnapshot) === JSON.stringify(secondSnapshot) && first.preDepartureActive !== second.preDepartureActive;
+  };
+  var withManagedLensColors = (state, template) => {
+    const colors = template?.lenses;
+    if (!Array.isArray(colors) || colors.length === 0 || !state?.lenses) {
+      return state;
+    }
+    return {
+      ...state,
+      lenses: state.lenses.map((lens, index) => ({
+        ...lens,
+        color: colors[index]?.color || colors[0]?.color || lens.color
+      }))
+    };
   };
   var setComponentValue = (component, value, immediate) => {
     if (immediate && typeof component.setImmediate === "function") {
@@ -2222,7 +2307,9 @@
       }
       const flipDuration = this.timing.duration + Math.floor(Math.random() * (this.timing.variation * 2 + 1)) - this.timing.variation;
       applyFlipTiming2(this.element, flipDuration);
-      this.audio.play();
+      if (!this.audio.muted) {
+        this.audio.play("pitched", flipDuration);
+      }
       this.element.classList.add("is-flipping");
       this.timer = window.setTimeout(() => {
         if (sequence !== this.sequence) {
@@ -2323,11 +2410,13 @@
       audio: audio2 = new SplitFlapAudio(),
       timing = FLAP_TIMING_DEFAULTS,
       rowIndex = 0,
-      applyDelayOffset = DELAY_OFFSET_DEFAULT
+      applyDelayOffset = DELAY_OFFSET_DEFAULT,
+      lensColorTemplate = null
     } = {}) {
       this.element = element;
       this.timing = normalizeFlapTiming(timing);
       this.rowIndex = Math.max(0, Math.floor(Number(rowIndex) || 0));
+      this.lensColorTemplate = lensColorTemplate;
       this.stationOne = new SplitFlapDisplay(
         element.querySelector('[data-departure-slot="stationOne"]'),
         { audio: audio2, maxLength: 14, timing: this.timing }
@@ -2377,7 +2466,10 @@
         element.querySelector('[data-departure-slot="lenses"]'),
         {
           count: 2,
-          defaultState: createEmptyLensState(),
+          defaultState: withManagedLensColors(
+            createEmptyLensState(),
+            this.lensColorTemplate
+          ),
           rowIndex: this.rowIndex
         }
       );
@@ -2405,15 +2497,23 @@
     setPreDepartureActive(isActive) {
       this.lenses.setPreDepartureActive(isActive);
     }
+    setLensColorTemplate(template) {
+      this.lensColorTemplate = template?.lenses ? template : null;
+      const current = this.lenses.getValue();
+      this.lenses.set(withManagedLensColors(current, this.lensColorTemplate));
+    }
+    paintLenses(state, { preDepartureActive = true } = {}) {
+      this.lenses.set(withManagedLensColors(state, this.lensColorTemplate));
+      this.lenses.setPreDepartureActive(preDepartureActive);
+    }
     applyIdentificationLenses() {
       this.lenses.set(toIdentificationLensState(this.lenses.getValue()));
       this.lenses.setPreDepartureActive(true);
     }
     restoreOperationalLenses(departure) {
-      this.lenses.set(departure?.lenses || createEmptyLensState());
-      this.lenses.setPreDepartureActive(
-        departure?.preDepartureActive !== false
-      );
+      this.paintLenses(departure?.lenses || createEmptyLensState(), {
+        preDepartureActive: departure?.preDepartureActive !== false
+      });
     }
     setData(value, {
       immediate = false,
@@ -2480,14 +2580,14 @@
         this.sector.set(departure?.target.sector || "");
       }
       if (identificationActive2) {
-        this.lenses.set(toIdentificationLensState(
+        this.paintLenses(toIdentificationLensState(
           departure?.lenses || createEmptyLensState()
         ));
-        this.lenses.setPreDepartureActive(true);
         return;
       }
-      this.lenses.set(departure?.lenses || createEmptyLensState());
-      this.lenses.setPreDepartureActive(preDepartureActive);
+      this.paintLenses(departure?.lenses || createEmptyLensState(), {
+        preDepartureActive
+      });
     }
     isSettled() {
       return this.components.every(
@@ -2505,7 +2605,8 @@
       timing = FLAP_TIMING_DEFAULTS,
       rowSelector = "[data-departure-row]",
       rowCount = DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
-      applyDelayOffset = DELAY_OFFSET_DEFAULT
+      applyDelayOffset = DELAY_OFFSET_DEFAULT,
+      lensSettings = null
     } = {}) {
       if (!root2) {
         throw new TypeError("DepartureBoardDisplay vy\u017Eaduje root element.");
@@ -2514,13 +2615,15 @@
       this.audio = audio2;
       this.timing = normalizeFlapTiming(timing);
       this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
+      this.lensSettings = lensSettings?.lenses ? lensSettings : null;
       this.rowSelector = rowSelector;
       this.rows = [...root2.querySelectorAll(rowSelector)].map(
         (element, index) => new DepartureBoardRow(element, {
           audio: audio2,
           timing: this.timing,
           rowIndex: index,
-          applyDelayOffset: this.applyDelayOffset
+          applyDelayOffset: this.applyDelayOffset,
+          lensColorTemplate: this.lensSettings
         })
       );
       this.displayedRows = Array.from(
@@ -2547,6 +2650,14 @@
       this.applyDelayOffset = normalizeDelayOffset(enabled);
       this.rows.forEach((row) => row.setDelayOffset(this.applyDelayOffset));
       return this.applyDelayOffset;
+    }
+    setLensSettings(value) {
+      this.lensSettings = value?.lenses ? value : null;
+      this.rows.forEach((row) => row.setLensColorTemplate(this.lensSettings));
+      if (this.identificationActive) {
+        this.applyIdentificationLenses();
+      }
+      return this.lensSettings;
     }
     getRowContainer() {
       return this.root.tBodies?.[0] || this.root.querySelector("tbody") || this.root;
@@ -2584,7 +2695,8 @@
           audio: this.audio,
           timing: this.timing,
           rowIndex: index,
-          applyDelayOffset: this.applyDelayOffset
+          applyDelayOffset: this.applyDelayOffset,
+          lensColorTemplate: this.lensSettings
         }));
         this.displayedRows.push(null);
         this.targetRows.push(null);
@@ -3136,7 +3248,8 @@
     audio,
     timing: initialTiming,
     rowCount: initialRowCount,
-    applyDelayOffset: delayOffset
+    applyDelayOffset: delayOffset,
+    lensSettings: savedSettings.lenses
   });
   var transport = new BoardTransport();
   var recoverDepartures = (values, desiredStates = savedDesiredStates, { includeMissing = true } = {}) => {
@@ -3318,6 +3431,9 @@
     if (source.departureBoardLogo != null || source.departureBoardLogoSvg != null) {
       applyBoardLogo(source);
     }
+    if (source.lenses) {
+      display.setLensSettings(source.lenses);
+    }
   };
   var applyDepartureSnapshot = (nextDepartures, nextRevision, { immediate = false, timing = null } = {}) => {
     const numericRevision = Number(nextRevision) || 0;
@@ -3387,8 +3503,20 @@
     return identificationActive;
   };
   var handleCommand = (message) => {
-    const { action, forceOn } = message.payload || {};
-    if (action !== "identify-lenses" || message.target?.source !== transport.id) {
+    const { action, forceOn, muted } = message.payload || {};
+    if (message.target?.source !== transport.id) {
+      return;
+    }
+    if (action === "set-audio-muted") {
+      audio.setMuted(muted === true);
+      acknowledge(message, {
+        ok: true,
+        audio: audio.getState()
+      });
+      publishHeartbeat();
+      return;
+    }
+    if (action !== "identify-lenses") {
       return;
     }
     try {

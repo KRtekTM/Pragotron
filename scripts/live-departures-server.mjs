@@ -60,6 +60,9 @@ const fetchIpv4 = async (url, options = {}) => {
 };
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+// Cache musí vypršet dřív, než manage pošle další minutový požadavek.
+// Jinak ho server odbaví z cache a zdroj se stáhne až za dvě minuty.
+const LIVE_CACHE_TTL_MS = Math.max(15_000, LIVE_POLL_INTERVAL_MS - 10_000);
 const requestedPort = Number(process.env.PORT);
 const liveCache = new Map();
 let listeningPort = Number.isInteger(requestedPort) && requestedPort > 0
@@ -99,6 +102,7 @@ const getCachedLiveDepartures = async (sourceUrl) => {
         return cached.inflight;
     }
 
+    const startedAt = Date.now();
     const inflight = fetchStationTable({
         url: sourceUrl,
         fetchImpl: fetchIpv4
@@ -106,7 +110,7 @@ const getCachedLiveDepartures = async (sourceUrl) => {
         .then((payload) => {
             liveCache.set(sourceUrl, {
                 payload,
-                expiresAt: Date.now() + LIVE_POLL_INTERVAL_MS,
+                expiresAt: startedAt + LIVE_CACHE_TTL_MS,
                 inflight: null
             });
             return payload;

@@ -10,6 +10,7 @@ import {
     STATION_CHARACTER_COUNT,
     STATION_FLAP_SEQUENCE,
     TRAIN_TYPES,
+    findTrainType,
     formatStationName
 } from './data.js';
 import { SplitFlapAudio } from './audio.js';
@@ -197,7 +198,9 @@ export class SplitFlapDisplay {
 
             const flipDuration = getFlapDuration(this.timing);
             applyFlipTiming(state.element, flipDuration);
-            this.audio.play();
+            if (!this.audio.muted) {
+                this.audio.play(undefined, flipDuration);
+            }
             state.element.classList.add('is-flipping');
 
             state.timer = window.setTimeout(() => {
@@ -441,7 +444,9 @@ export class DelayFlapDisplay {
 
         const flipDuration = getFlapDuration(this.timing);
         applyFlipTiming(this.element, flipDuration);
-        this.audio.play();
+        if (!this.audio.muted) {
+            this.audio.play('pitched', flipDuration);
+        }
         this.element.classList.add('is-flipping');
 
         this.timer = window.setTimeout(() => {
@@ -512,12 +517,8 @@ export class TrainFlapDisplay {
             return 0;
         }
 
-        const requested = String(value).trim();
-        const normalized = requested.toLocaleLowerCase('cs-CZ');
-        const index = this.types.findIndex((type) =>
-            type.name.toLocaleLowerCase('cs-CZ') === normalized
-            || type.source === requested
-        );
+        const match = findTrainType(value, this.types);
+        const index = match ? this.types.indexOf(match) : -1;
 
         if (index === -1) {
             throw new RangeError(
@@ -606,7 +607,9 @@ export class TrainFlapDisplay {
 
         const flipDuration = getFlapDuration(this.timing);
         applyFlipTiming(this.element, flipDuration);
-        this.audio.play();
+        if (!this.audio.muted) {
+            this.audio.play('pitched', flipDuration);
+        }
         this.element.classList.add('is-flipping');
 
         this.timer = window.setTimeout(() => {
@@ -807,7 +810,9 @@ export class SequentialNumericFlap {
 
         const flipDuration = getFlapDuration(this.timing);
         applyFlipTiming(this.element, flipDuration);
-        this.audio.play();
+        if (!this.audio.muted) {
+            this.audio.play(undefined, flipDuration);
+        }
         this.element.classList.add('is-flipping');
 
         this.timer = window.setTimeout(() => {

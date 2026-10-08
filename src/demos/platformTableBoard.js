@@ -452,6 +452,7 @@ const handleCommand = async (message) => {
         settings,
         revision,
         forceOn,
+        muted,
         immediate = false
     } = message.payload || {};
 
@@ -459,13 +460,14 @@ const handleCommand = async (message) => {
         const isTargetedAction = action === 'apply-board'
             || action === 'reset-board';
         const isIdentificationAction = action === 'identify-lenses';
+        const isAudioMuteAction = action === 'set-audio-muted';
         if (isTargetedAction) {
             if (!message.payload?.target
                 || !identitiesMatch(boardIdentity, message.payload.target)) {
                 return;
             }
         }
-        if (isIdentificationAction
+        if ((isIdentificationAction || isAudioMuteAction)
             && message.target?.source !== transport.id) {
             return;
         }
@@ -474,9 +476,20 @@ const handleCommand = async (message) => {
             'apply-board',
             'reset-board',
             'reset-all',
-            'identify-lenses'
+            'identify-lenses',
+            'set-audio-muted'
         ].includes(action)) {
             throw new Error('Neznámá akce tabule.');
+        }
+
+        if (isAudioMuteAction) {
+            audio.setMuted(muted === true);
+            acknowledge(message, {
+                ok: true,
+                audio: audio.getState()
+            });
+            publishHeartbeat();
+            return;
         }
 
         if (isIdentificationAction) {
@@ -536,9 +549,9 @@ transport.subscribe((message) => {
     }
 
     if (message.type === 'board:command') {
-        if (message.payload?.action === 'identify-lenses') {
-            // Lens identification is an administrative instance-level action.
-            // It must remain responsive while a long flap animation is queued.
+        if (message.payload?.action === 'identify-lenses'
+            || message.payload?.action === 'set-audio-muted') {
+            // Instance actions must stay responsive during a long flap animation.
             void handleCommand(message);
         } else {
             commandQueue = commandQueue.then(() => handleCommand(message));

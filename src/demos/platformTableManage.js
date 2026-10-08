@@ -30,6 +30,7 @@ import {
     DEPARTURE_PLATFORM_VALUES,
     TRAIN_TYPES,
     formatStationName,
+    resolveCanonicalTrainType,
     BoardTransport,
     formatBoardIdentity,
     getBoardIdentityKey,
@@ -85,6 +86,7 @@ const trackInput = documentRef.querySelector('#trackValue');
 const sectorInput = documentRef.querySelector('#sectorValue');
 const trainTypeInput = documentRef.querySelector('#trainType');
 const trainNumberInput = documentRef.querySelector('#trainNumber');
+const operatorInput = documentRef.querySelector('#operatorValue');
 const departureTimeInput = documentRef.querySelector('#departureTime');
 const delayValueInput = documentRef.querySelector('#delayValue');
 const flapTimingDurationInput = documentRef.querySelector(
@@ -217,6 +219,8 @@ const activeBoards = new Map();
 let departures = Array.isArray(savedState.departures)
     ? savedState.departures
     : [];
+let formDepartureId = '';
+let formDepartureLocked = false;
 let desiredStates = savedState.desired
     && typeof savedState.desired === 'object'
     ? savedState.desired
@@ -234,6 +238,7 @@ let lensActivationTimer = null;
 const exampleState = {
     stations: ['PRAHA', 'BRATISLAVA'],
     train: 'Eurocity',
+    operator: '',
     delay: '12',
     target: {
         platform: '1',
@@ -254,6 +259,16 @@ const normalizeTrainNumber = (value) => {
     return /^\d{1,4}$/.test(text) ? text : '';
 };
 
+const normalizeOperator = (value) =>
+    String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 24);
+
+const resolveTrainTypeValue = (train, operator) => {
+    const resolved = resolveCanonicalTrainType(train, operator);
+    return TRAIN_TYPES.some((type) => type.name === resolved)
+        ? resolved
+        : '';
+};
+
 const setBoardFormStatus = (message, isError = false) => {
     boardFormStatus.textContent = message;
     boardFormStatus.classList.toggle('is-error', isError);
@@ -266,7 +281,8 @@ const setFormValues = (state) => {
     platformInput.value = state.target?.platform || '';
     trackInput.value = state.target?.track || '';
     sectorInput.value = state.target?.sector || '';
-    trainTypeInput.value = state.train;
+    operatorInput.value = state.operator || '';
+    trainTypeInput.value = resolveTrainTypeValue(state.train, state.operator);
     trainNumberInput.value = normalizeTrainNumber(state.trainNumber);
     departureTimeInput.value = state.departureTime
         ? `${String(state.departureTime.hours).padStart(2, '0')}:${
@@ -283,9 +299,9 @@ const setSavedFormValues = (formState) => {
     const stationTwo = typeof formState.stationTwo === 'string'
         ? formatStationName(formState.stationTwo)
         : exampleState.stations[1];
-    const train = TRAIN_TYPES.some((type) => type.name === formState.train)
-        ? formState.train
-        : exampleState.train;
+    const operator = normalizeOperator(formState.operator);
+    const train = resolveTrainTypeValue(formState.train, operator)
+        || exampleState.train;
     const departureTime = typeof formState.departureTime === 'string'
         && DEPARTURE_TIME_PATTERN.test(formState.departureTime)
         ? formState.departureTime
@@ -318,6 +334,7 @@ const setSavedFormValues = (formState) => {
     sectorInput.value = typeof target.sector === 'string'
         ? target.sector.slice(0, 20)
         : exampleState.target.sector;
+    operatorInput.value = operator;
     trainTypeInput.value = train;
     trainNumberInput.value = trainNumber;
     departureTimeInput.value = departureTime;
@@ -333,7 +350,8 @@ const getLightingSettingsState = () => ({
     departureBoardRows,
     delayOffset,
     departureBoardLogo,
-    departureBoardLogoSvg
+    departureBoardLogoSvg,
+    lenses: getManagedLensState()
 });
 
 const normalizeManagedLensState = (value) => {
@@ -373,6 +391,7 @@ const getDraftFormState = () => ({
     sector: sectorInput.value,
     train: trainTypeInput.value,
     trainNumber: trainNumberInput.value,
+    operator: operatorInput.value,
     departureTime: departureTimeInput.value,
     delay: delayValueInput.value
 });
@@ -469,10 +488,11 @@ const normalizeDeparture = (value) => {
         || normalizeDepartureTime(desiredState.departureTime);
     const rawDelay = source.delay ?? desiredState.delay;
     const parsedDelay = parseDelayMinutes(rawDelay);
+    const operator = normalizeOperator(
+        source.operator ?? desiredState.operator
+    );
     const rawTrain = source.train ?? desiredState.train;
-    const train = TRAIN_TYPES.some((type) => type.name === rawTrain)
-        ? rawTrain
-        : '';
+    const train = resolveTrainTypeValue(rawTrain, operator);
     const trainNumber = normalizeTrainNumber(
         source.trainNumber ?? desiredState.trainNumber
     );
@@ -483,13 +503,21 @@ const normalizeDeparture = (value) => {
     const isLive = source.source === 'live'
         || Boolean(source.liveKey);
     const liveKey = isLive ? String(source.liveKey || source.id || '') : '';
+    const manualId = String(source.id || '').trim()
+        || (
+            target.platform && target.track
+                ? getBoardIdentityKey(target)
+                : `manual:${Date.now().toString(36)}:${
+                    Math.random().toString(36).slice(2, 8)
+                }`
+        );
     const sourceTrainNumber = isLive
         ? String(source.sourceTrainNumber || '').replace(/\D/g, '')
         : '';
     return {
         id: isLive
             ? String(source.id || `live:${liveKey}`)
-            : getBoardIdentityKey(target),
+            : manualId,
         source: isLive ? 'live' : 'manual',
         liveKey,
         liveStationKey: isLive
@@ -514,7 +542,7 @@ const normalizeDeparture = (value) => {
         ],
         train,
         trainNumber,
-        operator: String(source.operator || '').trim(),
+        operator,
         delay: parsedDelay === null ? '' : parsedDelay,
         departureTime,
         lenses: normalizeManagedLensState(
@@ -527,16 +555,7 @@ const normalizeDeparture = (value) => {
 
 departures = departures
     .map(normalizeDeparture)
-    .filter((departure) =>
-        departure.departureTime
-        && (
-            departure.source === 'live'
-            || (
-                departure.target.platform
-                && departure.target.track
-            )
-        )
-    );
+    .filter((departure) => departure.departureTime);
 
 const persistState = () => {
     const settings = getSettingsState();
@@ -595,6 +614,7 @@ const syncFlapTimingControls = () => {
 
     flapTimingDurationInput.min = String(FLAP_TIMING_DURATION_MIN);
     flapTimingDurationInput.max = String(FLAP_TIMING_DURATION_MAX);
+    flapTimingDurationInput.step = '10';
     flapTimingVariationInput.min = String(FLAP_TIMING_VARIATION_MIN);
     flapTimingVariationInput.max = String(FLAP_TIMING_VARIATION_MAX);
     flapTimingDurationInput.value = String(flapTiming.duration);
@@ -945,7 +965,7 @@ const renderDeparturesTable = () => {
     departuresEmptyState.hidden = rows.length > 0;
     departuresTable.hidden = rows.length === 0;
     if (clearAllDeparturesButton) {
-        const disabled = boardActionInProgress || rows.length === 0;
+        const disabled = rows.length === 0;
         clearAllDeparturesButton.disabled = disabled;
         clearAllDeparturesButton.setAttribute('aria-disabled', String(disabled));
     }
@@ -965,7 +985,7 @@ const renderDeparturesTable = () => {
 };
 
 const toggleBoardIdentification = (boardPresence) => {
-    if (!boardPresence || boardPresence.identificationPending) {
+    if (!boardPresence) {
         return;
     }
 
@@ -1064,16 +1084,23 @@ const renderActiveBoards = () => {
             ? 'Není nakonfigurovaná'
             : 'Online';
         const audioStatus = documentRef.createElement('span');
+        const audioMuted = boardPresence.audioState?.muted === true;
         const audioUnlocked = boardPresence.audioState?.unlocked === true;
         audioStatus.className = 'active-board-audio';
-        audioStatus.textContent = audioUnlocked ? '🔊' : '🔈';
-        audioStatus.title = audioUnlocked
-            ? 'Přehrávání zvuku je povolené'
-            : 'Přehrávání zvuku čeká na kliknutí do tabule';
+        audioStatus.textContent = audioMuted ? '🔇' : audioUnlocked ? '🔊' : '🔈';
+        audioStatus.title = audioMuted
+            ? 'Zvuk flapů je ztlumený'
+            : audioUnlocked
+                ? 'Přehrávání zvuku je povolené'
+                : 'Přehrávání zvuku čeká na kliknutí do tabule';
         audioStatus.setAttribute('role', 'img');
         audioStatus.setAttribute(
             'aria-label',
-            audioUnlocked ? 'Zvuk povolen' : 'Zvuk nepovolen'
+            audioMuted
+                ? 'Zvuk ztlumen'
+                : audioUnlocked
+                    ? 'Zvuk povolen'
+                    : 'Zvuk nepovolen'
         );
         const actions = documentRef.createElement('div');
         actions.className = 'active-board-actions';
@@ -1084,8 +1111,7 @@ const renderActiveBoards = () => {
         identifyButton.replaceChildren(
             createEyeIcon(boardPresence.identificationActive === true)
         );
-        identifyButton.disabled = boardPresence.identificationPending
-            || boardPresence.configured === false;
+        identifyButton.disabled = boardPresence.configured === false;
         identifyButton.setAttribute(
             'aria-pressed',
             String(boardPresence.identificationActive === true)
@@ -1096,13 +1122,75 @@ const renderActiveBoards = () => {
                 ? 'Vrátit čočky do původního stavu'
                 : 'Force rozsvítit čočky pro identifikaci tabule'
         );
-        actions.appendChild(identifyButton);
+        const muteButton = documentRef.createElement('button');
+        muteButton.type = 'button';
+        muteButton.className = 'mute-board-button';
+        muteButton.dataset.boardInstanceId = boardPresence.instanceId;
+        muteButton.replaceChildren(createSpeakerIcon(audioMuted));
+        muteButton.setAttribute('aria-pressed', String(audioMuted));
+        muteButton.setAttribute(
+            'aria-label',
+            audioMuted
+                ? 'Zapnout zvuk flapů na této tabuli'
+                : 'Ztlumit zvuk flapů na této tabuli'
+        );
+        actions.append(identifyButton, muteButton);
         item.append(identity, details, status, audioStatus, actions);
         activeBoardsList.appendChild(item);
     });
 };
 
+const createSpeakerIcon = (muted) => {
+    const icon = documentRef.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'svg'
+    );
+    icon.classList.add('board-audio-icon');
+    icon.classList.toggle('is-muted', muted);
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = muted
+        ? '<path d="M4 10h3l4-4v12l-4-4H4z"></path><path d="M16 10l4 4"></path><path d="M20 10l-4 4"></path>'
+        : '<path d="M4 10h3l4-4v12l-4-4H4z"></path><path d="M16 9.5a4 4 0 0 1 0 5"></path><path d="M18.2 7a7 7 0 0 1 0 10"></path>';
+    return icon;
+};
+
+const toggleBoardMute = (boardPresence) => {
+    if (!boardPresence) {
+        return;
+    }
+
+    const muted = boardPresence.audioState?.muted !== true;
+    boardPresence.audioState = {
+        ...(boardPresence.audioState || {}),
+        muted
+    };
+    renderActiveBoards();
+    transport.publish('board:command', {
+        action: 'set-audio-muted',
+        muted
+    }, {
+        target: {
+            source: boardPresence.instanceId
+        }
+    });
+    setBoardFormStatus(
+        muted
+            ? 'Zvuk flapů na tabuli je ztlumený.'
+            : 'Zvuk flapů na tabuli je zapnutý.'
+    );
+};
+
 activeBoardsList?.addEventListener('click', (event) => {
+    const muteButton = event.target.closest('.mute-board-button');
+    if (muteButton) {
+        const boardPresence = [...activeBoards.values()].find(
+            (presence) => presence.instanceId === muteButton.dataset.boardInstanceId
+        );
+        toggleBoardMute(boardPresence);
+        return;
+    }
+
     const button = event.target.closest('.identify-board-button');
     if (!button) {
         return;
@@ -1121,6 +1209,8 @@ const loadDepartureIntoForm = (departure) => {
     if (!departure) {
         return;
     }
+    formDepartureId = departure.id;
+    formDepartureLocked = true;
     setFormValues(departure);
     lensDisplay.set(departure.lenses);
     syncLensControls();
@@ -1667,17 +1757,20 @@ const boardActionButtons = [
 
 const setBoardActionBusy = (isBusy) => {
     boardActionInProgress = isBusy;
-    boardForm.classList.toggle('is-updating', isBusy);
-    boardForm.setAttribute('aria-busy', String(isBusy));
+    boardForm.classList.remove('is-updating');
+    boardForm.setAttribute('aria-busy', 'false');
     boardActionButtons.forEach((button) => {
-        const emptyClear = button === clearAllDeparturesButton
+        if (!button) {
+            return;
+        }
+        const disabled = button === clearAllDeparturesButton
             && departures.length === 0;
-        button.disabled = isBusy || emptyClear;
-        button.setAttribute('aria-disabled', String(button.disabled));
+        button.disabled = disabled;
+        button.setAttribute('aria-disabled', String(disabled));
     });
     documentRef.querySelectorAll('[data-departure-action]').forEach((button) => {
-        button.disabled = isBusy;
-        button.setAttribute('aria-disabled', String(isBusy));
+        button.disabled = false;
+        button.setAttribute('aria-disabled', 'false');
     });
 };
 
@@ -1856,8 +1949,6 @@ const finishBoardAction = (requestId, message) => {
     window.clearTimeout(pending.timeout);
     pendingActions.delete(requestId);
     setBoardActionBusy(false);
-
-    setBoardFormStatus(pending.completedMessage);
     pending.onComplete?.();
     renderActiveBoards();
     renderDeparturesTable();
@@ -1984,6 +2075,9 @@ transport.subscribe((message) => {
                 boardPresence.identificationActive =
                     message.payload.identificationActive;
             }
+            if (message.payload?.audio) {
+                boardPresence.audioState = message.payload.audio;
+            }
             boardPresence.lastSeen = Date.now();
             const desired = getDesiredStateForBoard(boardPresence.identity);
             if (desired
@@ -2010,13 +2104,11 @@ const sendBoardAction = (
         onTimeout
     } = {}
 ) => {
-    if (boardActionInProgress) {
-        return null;
-    }
-
-    setBoardActionBusy(true);
     if (persist) {
         persistState();
+    }
+    if (completedMessage) {
+        setBoardFormStatus(completedMessage);
     }
 
     const expectedInstances = new Set(
@@ -2048,10 +2140,6 @@ const sendBoardAction = (
 
         pendingActions.delete(requestId);
         setBoardActionBusy(false);
-        setBoardFormStatus(
-            'Tabule není připojena nebo nepotvrdila dokončení akce.',
-            true
-        );
         pending.onTimeout?.();
     }, 10000);
 
@@ -2063,7 +2151,6 @@ const sendBoardAction = (
         onTimeout,
         timeout
     });
-    setBoardFormStatus('Tabule se přenastavuje…');
     return requestId;
 };
 
@@ -2125,10 +2212,12 @@ const sendBackgroundBoardAction = (
 const getFormState = () => {
     const [hours, minutes] = departureTimeInput.value.split(':').map(Number);
     const parsedDelay = parseDelayMinutes(delayValueInput.value);
+    const operator = normalizeOperator(operatorInput.value);
     return {
         stations: stationInputs.map((input) => input.value),
-        train: trainTypeInput.value,
+        train: resolveTrainTypeValue(trainTypeInput.value, operator),
         trainNumber: trainNumberInput.value.trim(),
+        operator,
         delay: parsedDelay === '' ? '' : parsedDelay,
         departureTime: { hours, minutes },
         lenses: getManagedLensState()
@@ -2147,6 +2236,7 @@ const getBoardStateFromDeparture = (departure) => ({
     ],
     train: departure.train,
     trainNumber: departure.trainNumber,
+    operator: departure.operator || '',
     delay: departure.delay,
     departureTime: departure.departureTime
         ? { ...departure.departureTime }
@@ -2563,11 +2653,77 @@ Object.values(desiredStates).forEach((desired) => {
     }
 });
 
-const upsertDeparture = (state, target) => {
+const isSameManualTrain = (departure, state) => {
+    const leftNumber = normalizeTrainNumber(departure?.trainNumber);
+    const rightNumber = normalizeTrainNumber(state?.trainNumber);
+    if (leftNumber || rightNumber) {
+        return leftNumber === rightNumber;
+    }
+
+    return formatDepartureTime(departure?.departureTime)
+        === formatDepartureTime(state?.departureTime)
+        && (departure?.stations?.[0] || '') === (state?.stations?.[0] || '');
+};
+
+const resolveFormDeparture = (state, target) => {
+    const bound = formDepartureId ? getDepartureById(formDepartureId) : null;
+    if (bound && (formDepartureLocked || isSameManualTrain(bound, state))) {
+        return bound;
+    }
+    if (bound) {
+        return null;
+    }
+    if (!isConfiguredTarget(target)) {
+        return null;
+    }
+
+    return departures.find((item) =>
+        item.source !== 'live'
+        && isConfiguredTarget(item.target)
+        && sameTarget(item.target, target)
+    ) || null;
+};
+
+const upsertDeparture = (state, target, existing = null) => {
+    const previous = existing?.id ? getDepartureById(existing.id) : null;
+    if (
+        previous
+        && isConfiguredTarget(previous.target)
+        && !sameTarget(previous.target, target)
+    ) {
+        const stillUsed = departures.some((item) =>
+            item.id !== previous.id
+            && isConfiguredTarget(item.target)
+            && sameTarget(item.target, previous.target)
+        );
+        if (!stillUsed) {
+            const resetRevision = nextStateRevision();
+            setDesiredState(
+                previous.target,
+                'reset-board',
+                getEmptyState(),
+                resetRevision
+            );
+            void sendBackgroundBoardAction(
+                'reset-board',
+                getEmptyState(),
+                previous.target,
+                resetRevision
+            );
+        }
+    }
+
     const revision = nextStateRevision();
     const departure = normalizeDeparture({
-        target,
+        ...(previous || {}),
         ...state,
+        id: previous?.id,
+        source: previous?.source === 'live' ? 'live' : 'manual',
+        liveKey: previous?.liveKey || '',
+        liveStationKey: previous?.liveStationKey || '',
+        dateKey: previous?.dateKey || '',
+        sourceTrainNumber: previous?.sourceTrainNumber || '',
+        target,
         revision,
         updatedAt: Date.now()
     });
@@ -2575,12 +2731,14 @@ const upsertDeparture = (state, target) => {
         ...departures.filter((item) => item.id !== departure.id),
         departure
     ];
-    setDesiredState(
-        target,
-        'apply-board',
-        getBoardStateFromDeparture(departure),
-        revision
-    );
+    if (isConfiguredTarget(target)) {
+        setDesiredState(
+            target,
+            'apply-board',
+            getBoardStateFromDeparture(departure),
+            revision
+        );
+    }
     persistState();
     renderDeparturesTable();
     publishDepartureSnapshot();
@@ -2588,7 +2746,7 @@ const upsertDeparture = (state, target) => {
 };
 
 const resetDeparture = (departure) => {
-    if (!departure || boardActionInProgress) {
+    if (!departure) {
         return;
     }
 
@@ -2603,19 +2761,19 @@ const resetDeparture = (departure) => {
     persistState();
     renderDeparturesTable();
     publishDepartureSnapshot();
-    sendBoardAction(
+    void sendBackgroundBoardAction(
         'reset-board',
         getEmptyState(),
-        `Tabule pro ${formatBoardIdentity(departure.target)} byla resetována.`,
-        {
-            target: departure.target,
-            revision
-        }
+        departure.target,
+        revision
+    );
+    setBoardFormStatus(
+        `Odjezd pro ${formatBoardIdentity(departure.target)} byl smazán.`
     );
 };
 
 const clearAllDepartures = () => {
-    if (boardActionInProgress || departures.length === 0) {
+    if (departures.length === 0) {
         return;
     }
 
@@ -2755,6 +2913,8 @@ startButton.addEventListener('click', () => {
     const showExample = !exampleActive;
 
     exampleActive = showExample;
+    formDepartureId = '';
+    formDepartureLocked = false;
     if (showExample) {
         setFormValues(exampleState);
         const target = getFormTarget();
@@ -2800,10 +2960,6 @@ startButton.addEventListener('click', () => {
 });
 
 resetAllSettingsButton.addEventListener('click', () => {
-    if (boardActionInProgress) {
-        return;
-    }
-
     storage.clear();
     legacyStorage.clear();
     stopLivePolling();
@@ -2813,6 +2969,8 @@ resetAllSettingsButton.addEventListener('click', () => {
     liveStationName = LIVE_STATION_DEFAULTS.name;
     departures = [];
     desiredStates = {};
+    formDepartureId = '';
+    formDepartureLocked = false;
     lighting.reset();
     lensDisplay.setImmediate(createDefaultLensState());
     nightMode = false;
@@ -2864,10 +3022,6 @@ resetAllSettingsButton.addEventListener('click', () => {
 boardForm.addEventListener('submit', (event) => {
     event.preventDefault();
 
-    if (boardActionInProgress) {
-        return;
-    }
-
     if (!DEPARTURE_TIME_PATTERN.test(departureTimeInput.value)) {
         setBoardFormStatus(
             'Zadejte čas odjezdu ve formátu HH:MM (00:00–23:59).',
@@ -2895,20 +3049,29 @@ boardForm.addEventListener('submit', (event) => {
         return;
     }
 
-    const target = getFormTarget();
-    if (!target.platform || !target.track) {
-        setBoardFormStatus(
-            'Vyplňte nástupiště a kolej, pro které se odjezd odesílá.',
-            true
-        );
-        (!target.platform ? platformInput : trackInput).focus();
-        return;
+    const state = getFormState();
+    if (state.train) {
+        trainTypeInput.value = state.train;
     }
-
-    const departure = upsertDeparture(getFormState(), target);
+    operatorInput.value = state.operator;
+    const target = getFormTarget();
+    const departure = upsertDeparture(
+        state,
+        target,
+        resolveFormDeparture(state, target)
+    );
+    formDepartureId = departure.id;
+    formDepartureLocked = false;
     exampleActive = true;
     startButton.textContent = 'Resetovat tabuli';
     startButton.setAttribute('aria-pressed', 'true');
+    if (!isConfiguredTarget(target)) {
+        setBoardFormStatus(
+            'Odjezd byl uložen. Nástupiště a kolej lze doplnit později.'
+        );
+        return;
+    }
+
     sendBoardAction(
         'apply-board',
         getBoardStateFromDeparture(departure),
@@ -2921,7 +3084,8 @@ boardForm.addEventListener('submit', (event) => {
 });
 
 [...stationInputs, platformInput, trackInput, sectorInput,
-    trainTypeInput, trainNumberInput, departureTimeInput, delayValueInput]
+    trainTypeInput, trainNumberInput, operatorInput, departureTimeInput,
+    delayValueInput]
     .forEach((input) => {
         input.addEventListener('input', persistState);
         input.addEventListener('change', persistState);
