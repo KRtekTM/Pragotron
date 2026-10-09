@@ -594,8 +594,31 @@
 
 .active-board-actions {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 0.35rem;
+}
+
+.board-volume {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.75rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.board-volume input[type="range"] {
+    width: 6.5rem;
+    margin: 0;
+    accent-color: var(--control-focus);
+    cursor: pointer;
+}
+
+.board-volume output {
+    min-width: 2.7rem;
+    font-variant-numeric: tabular-nums;
 }
 
 .active-board-actions button {

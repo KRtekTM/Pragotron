@@ -10,6 +10,16 @@ const FLAP_SOUND_DURATION_MS = 170;
 const FLAP_SOUND_POOL_SIZE = 48;
 
 const AUDIO_MUTE_STORAGE_KEY = 'pragotron.board.audioMuted.v1';
+const AUDIO_VOLUME_STORAGE_KEY = 'pragotron.board.audioVolume.v1';
+
+const normalizeVolume = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+        return 100;
+    }
+
+    return Math.min(100, Math.max(0, Math.round(numeric)));
+};
 
 const readStoredMute = () => {
     try {
@@ -30,6 +40,30 @@ const writeStoredMute = (muted) => {
     }
 };
 
+const readStoredVolume = () => {
+    try {
+        const stored = globalThis.sessionStorage?.getItem(AUDIO_VOLUME_STORAGE_KEY);
+        if (stored === null || stored === '') {
+            return 100;
+        }
+
+        return normalizeVolume(stored);
+    } catch {
+        return 100;
+    }
+};
+
+const writeStoredVolume = (volume) => {
+    try {
+        globalThis.sessionStorage?.setItem(
+            AUDIO_VOLUME_STORAGE_KEY,
+            String(volume)
+        );
+    } catch {
+        // The board can still keep the volume for this page view.
+    }
+};
+
 export class SplitFlapAudio {
     constructor(source = DEFAULT_SOUND_URL) {
         this.template = typeof Audio === 'function' ? new Audio(source) : null;
@@ -38,6 +72,7 @@ export class SplitFlapAudio {
             : null;
         this.unlocked = false;
         this.muted = readStoredMute();
+        this.volume = readStoredVolume();
         this.activationTarget = null;
         this.activationHandler = null;
         this.listeners = new Set();
@@ -53,6 +88,20 @@ export class SplitFlapAudio {
         });
         this.fillPool(this.voices, this.template);
         this.fillPool(this.pitchedVoices, this.pitchedTemplate);
+        this.applyVolume();
+    }
+
+    applyVolume() {
+        const level = this.volume / 100;
+        const apply = (sound) => {
+            if (sound) {
+                sound.volume = level;
+            }
+        };
+        apply(this.template);
+        apply(this.pitchedTemplate);
+        this.voices.forEach((voice) => apply(voice.sound));
+        this.pitchedVoices.forEach((voice) => apply(voice.sound));
     }
 
     fillPool(pool, template) {
@@ -88,7 +137,8 @@ export class SplitFlapAudio {
         return {
             available: Boolean(this.template),
             unlocked: this.unlocked,
-            muted: this.muted
+            muted: this.muted,
+            volume: this.volume
         };
     }
 
@@ -102,6 +152,19 @@ export class SplitFlapAudio {
         writeStoredMute(nextValue);
         this.listeners.forEach((listener) => listener(this.getState()));
         return this.muted;
+    }
+
+    setVolume(value) {
+        const nextValue = normalizeVolume(value);
+        if (nextValue === this.volume) {
+            return this.volume;
+        }
+
+        this.volume = nextValue;
+        writeStoredVolume(nextValue);
+        this.applyVolume();
+        this.listeners.forEach((listener) => listener(this.getState()));
+        return this.volume;
     }
 
     setUnlocked(value) {
@@ -237,6 +300,7 @@ export class SplitFlapAudio {
 
         const sound = voice.sound;
         voice.busy = true;
+        sound.volume = this.volume / 100;
         const duration = Number(durationMs);
         if (Number.isFinite(duration) && duration > 0) {
             sound.playbackRate = Math.min(

@@ -642,6 +642,14 @@
   var FLAP_SOUND_DURATION_MS = 170;
   var FLAP_SOUND_POOL_SIZE = 48;
   var AUDIO_MUTE_STORAGE_KEY = "pragotron.board.audioMuted.v1";
+  var AUDIO_VOLUME_STORAGE_KEY = "pragotron.board.audioVolume.v1";
+  var normalizeVolume = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return 100;
+    }
+    return Math.min(100, Math.max(0, Math.round(numeric)));
+  };
   var readStoredMute = () => {
     try {
       return globalThis.sessionStorage?.getItem(AUDIO_MUTE_STORAGE_KEY) === "1";
@@ -658,12 +666,33 @@
     } catch {
     }
   };
+  var readStoredVolume = () => {
+    try {
+      const stored = globalThis.sessionStorage?.getItem(AUDIO_VOLUME_STORAGE_KEY);
+      if (stored === null || stored === "") {
+        return 100;
+      }
+      return normalizeVolume(stored);
+    } catch {
+      return 100;
+    }
+  };
+  var writeStoredVolume = (volume) => {
+    try {
+      globalThis.sessionStorage?.setItem(
+        AUDIO_VOLUME_STORAGE_KEY,
+        String(volume)
+      );
+    } catch {
+    }
+  };
   var SplitFlapAudio = class {
     constructor(source = DEFAULT_SOUND_URL) {
       this.template = typeof Audio === "function" ? new Audio(source) : null;
       this.pitchedTemplate = typeof Audio === "function" ? new Audio(PITCHED_SOUND_URL) : null;
       this.unlocked = false;
       this.muted = readStoredMute();
+      this.volume = readStoredVolume();
       this.activationTarget = null;
       this.activationHandler = null;
       this.listeners = /* @__PURE__ */ new Set();
@@ -678,6 +707,19 @@
       });
       this.fillPool(this.voices, this.template);
       this.fillPool(this.pitchedVoices, this.pitchedTemplate);
+      this.applyVolume();
+    }
+    applyVolume() {
+      const level = this.volume / 100;
+      const apply = (sound) => {
+        if (sound) {
+          sound.volume = level;
+        }
+      };
+      apply(this.template);
+      apply(this.pitchedTemplate);
+      this.voices.forEach((voice) => apply(voice.sound));
+      this.pitchedVoices.forEach((voice) => apply(voice.sound));
     }
     fillPool(pool, template) {
       if (!template) {
@@ -708,7 +750,8 @@
       return {
         available: Boolean(this.template),
         unlocked: this.unlocked,
-        muted: this.muted
+        muted: this.muted,
+        volume: this.volume
       };
     }
     setMuted(value) {
@@ -720,6 +763,17 @@
       writeStoredMute(nextValue);
       this.listeners.forEach((listener) => listener(this.getState()));
       return this.muted;
+    }
+    setVolume(value) {
+      const nextValue = normalizeVolume(value);
+      if (nextValue === this.volume) {
+        return this.volume;
+      }
+      this.volume = nextValue;
+      writeStoredVolume(nextValue);
+      this.applyVolume();
+      this.listeners.forEach((listener) => listener(this.getState()));
+      return this.volume;
     }
     setUnlocked(value) {
       const nextValue = Boolean(value);
@@ -835,6 +889,7 @@
       }
       const sound = voice.sound;
       voice.busy = true;
+      sound.volume = this.volume / 100;
       const duration = Number(durationMs);
       if (Number.isFinite(duration) && duration > 0) {
         sound.playbackRate = Math.min(
@@ -1639,11 +1694,13 @@
   var SequentialNumericFlap = class {
     constructor(element, minimum, maximum, {
       audio: audio2 = new SplitFlapAudio(),
-      timing = FLAP_TIMING_DEFAULTS
+      timing = FLAP_TIMING_DEFAULTS,
+      includeBlank = true
     } = {}) {
       this.element = element;
       this.minimum = minimum;
       this.maximum = maximum;
+      this.includeBlank = includeBlank !== false;
       this.audio = audio2;
       this.ownsAudio = audio2 instanceof SplitFlapAudio;
       this.timing = normalizeFlapTiming(timing);
@@ -1741,8 +1798,10 @@
       let next;
       if (this.currentValue === "") {
         next = this.minimum;
+      } else if (this.currentValue === this.maximum) {
+        next = this.includeBlank ? "" : this.minimum;
       } else {
-        next = this.currentValue === this.maximum ? "" : this.currentValue + 1;
+        next = this.currentValue + 1;
       }
       const current = this.currentValue;
       clearFlapAnimation(this.element);
@@ -1795,33 +1854,35 @@
     constructor(element, {
       audio: audio2 = new SplitFlapAudio(),
       timing = FLAP_TIMING_DEFAULTS,
-      label = "Odjezd"
+      label = "Odjezd",
+      includeBlank = true
     } = {}) {
       this.element = element;
       this.label = label || "Odjezd";
       this.defaultHours = Number(element.dataset.hours);
       this.defaultMinutes = Number(element.dataset.minutes);
+      const flapOptions = { audio: audio2, timing, includeBlank };
       this.hour = new SequentialNumericFlap(
         element.querySelector(".time-hour-flap"),
         0,
         23,
-        { audio: audio2, timing }
+        flapOptions
       );
       this.minuteTens = new SequentialNumericFlap(
         element.querySelectorAll(".time-minute-flap")[0],
         0,
         5,
-        { audio: audio2, timing }
+        flapOptions
       );
       this.minuteOnes = new SequentialNumericFlap(
         element.querySelectorAll(".time-minute-flap")[1],
         0,
         9,
-        { audio: audio2, timing }
+        flapOptions
       );
       const secondFlaps = element.querySelectorAll(".time-second-flap");
-      this.secondTens = secondFlaps.length >= 2 ? new SequentialNumericFlap(secondFlaps[0], 0, 5, { audio: audio2, timing }) : null;
-      this.secondOnes = secondFlaps.length >= 2 ? new SequentialNumericFlap(secondFlaps[1], 0, 9, { audio: audio2, timing }) : null;
+      this.secondTens = secondFlaps.length >= 2 ? new SequentialNumericFlap(secondFlaps[0], 0, 5, flapOptions) : null;
+      this.secondOnes = secondFlaps.length >= 2 ? new SequentialNumericFlap(secondFlaps[1], 0, 9, flapOptions) : null;
       this.element.setAttribute("aria-label", this.label);
     }
     setTiming(timing) {
@@ -6096,18 +6157,20 @@
       revision,
       forceOn,
       muted,
+      volume,
       immediate = false
     } = message.payload || {};
     try {
       const isTargetedAction = action === "apply-board" || action === "reset-board";
       const isIdentificationAction = action === "identify-lenses";
       const isAudioMuteAction = action === "set-audio-muted";
+      const isAudioVolumeAction = action === "set-audio-volume";
       if (isTargetedAction) {
         if (!message.payload?.target || !identitiesMatch(boardIdentity, message.payload.target)) {
           return;
         }
       }
-      if ((isIdentificationAction || isAudioMuteAction) && message.target?.source !== transport.id) {
+      if ((isIdentificationAction || isAudioMuteAction || isAudioVolumeAction) && message.target?.source !== transport.id) {
         return;
       }
       if (![
@@ -6115,12 +6178,22 @@
         "reset-board",
         "reset-all",
         "identify-lenses",
-        "set-audio-muted"
+        "set-audio-muted",
+        "set-audio-volume"
       ].includes(action)) {
         throw new Error("Nezn\xE1m\xE1 akce tabule.");
       }
       if (isAudioMuteAction) {
         audio.setMuted(muted === true);
+        acknowledge(message, {
+          ok: true,
+          audio: audio.getState()
+        });
+        publishHeartbeat();
+        return;
+      }
+      if (isAudioVolumeAction) {
+        audio.setVolume(volume);
         acknowledge(message, {
           ok: true,
           audio: audio.getState()
@@ -6175,7 +6248,7 @@
       return;
     }
     if (message.type === "board:command") {
-      if (message.payload?.action === "identify-lenses" || message.payload?.action === "set-audio-muted") {
+      if (message.payload?.action === "identify-lenses" || message.payload?.action === "set-audio-muted" || message.payload?.action === "set-audio-volume") {
         void handleCommand(message);
       } else {
         commandQueue = commandQueue.then(() => handleCommand(message));

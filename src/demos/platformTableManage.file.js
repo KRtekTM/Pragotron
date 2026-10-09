@@ -4887,10 +4887,23 @@
     icon.innerHTML = isOpen ? '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="2.5"></circle>' : '<path d="M3 3l18 18"></path><path d="M5.3 7.1C3.2 8.5 2 10.4 2 12c0 0 3.6 6 10 6 1.8 0 3.4-.4 4.8-1"></path><path d="M18.7 16.9C20.8 15.5 22 13.6 22 12c0 0-3.6-6-10-6-1.8 0-3.4.4-4.8 1"></path>';
     return icon;
   };
+  var activeBoardRenderDeferred = false;
+  var normalizeBoardVolume = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return 100;
+    }
+    return Math.min(100, Math.max(0, Math.round(numeric)));
+  };
   var renderActiveBoards = () => {
     if (!activeBoardsList) {
       return;
     }
+    if (document.activeElement?.classList?.contains("board-volume-range")) {
+      activeBoardRenderDeferred = true;
+      return;
+    }
+    activeBoardRenderDeferred = false;
     activeBoardsList.replaceChildren();
     const values = [...activeBoards.values()].sort((first, second) => formatBoardIdentity(first.identity).localeCompare(
       formatBoardIdentity(second.identity),
@@ -4958,7 +4971,41 @@
         "aria-label",
         audioMuted ? "Zapnout zvuk flap\u016F na t\xE9to tabuli" : "Ztlumit zvuk flap\u016F na t\xE9to tabuli"
       );
-      actions.append(identifyButton, muteButton);
+      const audioVolume = normalizeBoardVolume(boardPresence.audioState?.volume);
+      const volumeControl = documentRef.createElement("label");
+      volumeControl.className = "board-volume";
+      const volumeText = documentRef.createElement("span");
+      volumeText.textContent = "Hlasitost";
+      const volumeRange = documentRef.createElement("input");
+      volumeRange.type = "range";
+      volumeRange.className = "board-volume-range";
+      volumeRange.min = "0";
+      volumeRange.max = "100";
+      volumeRange.step = "1";
+      volumeRange.value = String(audioVolume);
+      volumeRange.dataset.boardInstanceId = boardPresence.instanceId;
+      volumeRange.setAttribute(
+        "aria-label",
+        "Hlasitost zvuku flap\u016F na t\xE9to tabuli"
+      );
+      const volumeOutput = documentRef.createElement("output");
+      volumeOutput.textContent = `${audioVolume} %`;
+      volumeRange.addEventListener("input", () => {
+        volumeOutput.textContent = `${volumeRange.value} %`;
+        setBoardVolume(boardPresence, volumeRange.value);
+      });
+      volumeRange.addEventListener("change", () => {
+        setBoardFormStatus(
+          `Hlasitost tabule nastavena na ${volumeRange.value} %.`
+        );
+      });
+      volumeRange.addEventListener("blur", () => {
+        if (activeBoardRenderDeferred) {
+          renderActiveBoards();
+        }
+      });
+      volumeControl.append(volumeText, volumeRange, volumeOutput);
+      actions.append(identifyButton, volumeControl, muteButton);
       item.append(identity, details, status, audioStatus, actions);
       activeBoardsList.appendChild(item);
     });
@@ -4974,6 +5021,24 @@
     icon.setAttribute("aria-hidden", "true");
     icon.innerHTML = muted ? '<path d="M4 10h3l4-4v12l-4-4H4z"></path><path d="M16 10l4 4"></path><path d="M20 10l-4 4"></path>' : '<path d="M4 10h3l4-4v12l-4-4H4z"></path><path d="M16 9.5a4 4 0 0 1 0 5"></path><path d="M18.2 7a7 7 0 0 1 0 10"></path>';
     return icon;
+  };
+  var setBoardVolume = (boardPresence, volume) => {
+    if (!boardPresence) {
+      return;
+    }
+    const nextVolume = normalizeBoardVolume(volume);
+    boardPresence.audioState = {
+      ...boardPresence.audioState || {},
+      volume: nextVolume
+    };
+    transport.publish("board:command", {
+      action: "set-audio-volume",
+      volume: nextVolume
+    }, {
+      target: {
+        source: boardPresence.instanceId
+      }
+    });
   };
   var toggleBoardMute = (boardPresence) => {
     if (!boardPresence) {

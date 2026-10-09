@@ -453,6 +453,7 @@ const handleCommand = async (message) => {
         revision,
         forceOn,
         muted,
+        volume,
         immediate = false
     } = message.payload || {};
 
@@ -461,13 +462,14 @@ const handleCommand = async (message) => {
             || action === 'reset-board';
         const isIdentificationAction = action === 'identify-lenses';
         const isAudioMuteAction = action === 'set-audio-muted';
+        const isAudioVolumeAction = action === 'set-audio-volume';
         if (isTargetedAction) {
             if (!message.payload?.target
                 || !identitiesMatch(boardIdentity, message.payload.target)) {
                 return;
             }
         }
-        if ((isIdentificationAction || isAudioMuteAction)
+        if ((isIdentificationAction || isAudioMuteAction || isAudioVolumeAction)
             && message.target?.source !== transport.id) {
             return;
         }
@@ -477,13 +479,24 @@ const handleCommand = async (message) => {
             'reset-board',
             'reset-all',
             'identify-lenses',
-            'set-audio-muted'
+            'set-audio-muted',
+            'set-audio-volume'
         ].includes(action)) {
             throw new Error('Neznámá akce tabule.');
         }
 
         if (isAudioMuteAction) {
             audio.setMuted(muted === true);
+            acknowledge(message, {
+                ok: true,
+                audio: audio.getState()
+            });
+            publishHeartbeat();
+            return;
+        }
+
+        if (isAudioVolumeAction) {
+            audio.setVolume(volume);
             acknowledge(message, {
                 ok: true,
                 audio: audio.getState()
@@ -550,7 +563,8 @@ transport.subscribe((message) => {
 
     if (message.type === 'board:command') {
         if (message.payload?.action === 'identify-lenses'
-            || message.payload?.action === 'set-audio-muted') {
+            || message.payload?.action === 'set-audio-muted'
+            || message.payload?.action === 'set-audio-volume') {
             // Instance actions must stay responsive during a long flap animation.
             void handleCommand(message);
         } else {

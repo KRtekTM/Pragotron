@@ -475,13 +475,23 @@ const setIdentificationActive = (forceOn) => {
 };
 
 const handleCommand = (message) => {
-    const { action, forceOn, muted } = message.payload || {};
+    const { action, forceOn, muted, volume } = message.payload || {};
     if (message.target?.source !== transport.id) {
         return;
     }
 
     if (action === 'set-audio-muted') {
         audio.setMuted(muted === true);
+        acknowledge(message, {
+            ok: true,
+            audio: audio.getState()
+        });
+        publishHeartbeat();
+        return;
+    }
+
+    if (action === 'set-audio-volume') {
+        audio.setVolume(volume);
         acknowledge(message, {
             ok: true,
             audio: audio.getState()

@@ -711,6 +711,14 @@
   var FLAP_SOUND_DURATION_MS = 170;
   var FLAP_SOUND_POOL_SIZE = 48;
   var AUDIO_MUTE_STORAGE_KEY = "pragotron.board.audioMuted.v1";
+  var AUDIO_VOLUME_STORAGE_KEY = "pragotron.board.audioVolume.v1";
+  var normalizeVolume = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return 100;
+    }
+    return Math.min(100, Math.max(0, Math.round(numeric)));
+  };
   var readStoredMute = () => {
     try {
       return globalThis.sessionStorage?.getItem(AUDIO_MUTE_STORAGE_KEY) === "1";
@@ -727,12 +735,33 @@
     } catch {
     }
   };
+  var readStoredVolume = () => {
+    try {
+      const stored = globalThis.sessionStorage?.getItem(AUDIO_VOLUME_STORAGE_KEY);
+      if (stored === null || stored === "") {
+        return 100;
+      }
+      return normalizeVolume(stored);
+    } catch {
+      return 100;
+    }
+  };
+  var writeStoredVolume = (volume) => {
+    try {
+      globalThis.sessionStorage?.setItem(
+        AUDIO_VOLUME_STORAGE_KEY,
+        String(volume)
+      );
+    } catch {
+    }
+  };
   var SplitFlapAudio = class {
     constructor(source = DEFAULT_SOUND_URL) {
       this.template = typeof Audio === "function" ? new Audio(source) : null;
       this.pitchedTemplate = typeof Audio === "function" ? new Audio(PITCHED_SOUND_URL) : null;
       this.unlocked = false;
       this.muted = readStoredMute();
+      this.volume = readStoredVolume();
       this.activationTarget = null;
       this.activationHandler = null;
       this.listeners = /* @__PURE__ */ new Set();
@@ -747,6 +776,19 @@
       });
       this.fillPool(this.voices, this.template);
       this.fillPool(this.pitchedVoices, this.pitchedTemplate);
+      this.applyVolume();
+    }
+    applyVolume() {
+      const level = this.volume / 100;
+      const apply = (sound) => {
+        if (sound) {
+          sound.volume = level;
+        }
+      };
+      apply(this.template);
+      apply(this.pitchedTemplate);
+      this.voices.forEach((voice) => apply(voice.sound));
+      this.pitchedVoices.forEach((voice) => apply(voice.sound));
     }
     fillPool(pool, template) {
       if (!template) {
@@ -777,7 +819,8 @@
       return {
         available: Boolean(this.template),
         unlocked: this.unlocked,
-        muted: this.muted
+        muted: this.muted,
+        volume: this.volume
       };
     }
     setMuted(value) {
@@ -789,6 +832,17 @@
       writeStoredMute(nextValue);
       this.listeners.forEach((listener) => listener(this.getState()));
       return this.muted;
+    }
+    setVolume(value) {
+      const nextValue = normalizeVolume(value);
+      if (nextValue === this.volume) {
+        return this.volume;
+      }
+      this.volume = nextValue;
+      writeStoredVolume(nextValue);
+      this.applyVolume();
+      this.listeners.forEach((listener) => listener(this.getState()));
+      return this.volume;
     }
     setUnlocked(value) {
       const nextValue = Boolean(value);
@@ -904,6 +958,7 @@
       }
       const sound = voice.sound;
       voice.busy = true;
+      sound.volume = this.volume / 100;
       const duration = Number(durationMs);
       if (Number.isFinite(duration) && duration > 0) {
         sound.playbackRate = Math.min(
@@ -3897,12 +3952,21 @@
     return identificationActive;
   };
   var handleCommand = (message) => {
-    const { action, forceOn, muted } = message.payload || {};
+    const { action, forceOn, muted, volume } = message.payload || {};
     if (message.target?.source !== transport.id) {
       return;
     }
     if (action === "set-audio-muted") {
       audio.setMuted(muted === true);
+      acknowledge(message, {
+        ok: true,
+        audio: audio.getState()
+      });
+      publishHeartbeat();
+      return;
+    }
+    if (action === "set-audio-volume") {
+      audio.setVolume(volume);
       acknowledge(message, {
         ok: true,
         audio: audio.getState()

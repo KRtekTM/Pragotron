@@ -703,12 +703,13 @@ navázat na kořen tabule a stav zobrazit ve vzdáleném manage:
 ```js
 audio.bindUserActivation(boardRoot);
 audio.subscribe((state) => console.log(state.unlocked));
-audio.getState(); // { available, unlocked, muted }
+audio.getState(); // { available, unlocked, muted, volume }
 ```
 
 `setMuted(true)` zvuk flapů na dané tabuli úplně vypne: `play()` se nespustí.
-Stav se pamatuje v `sessionStorage` daného okna. V manage seznamu připojených
-tabulí je u každé instance tlačítko pro ztlumení a opětovné zapnutí.
+`setVolume(0–100)` nastaví hlasitost přehrávaných flapů, výchozí je `100`.
+Obojí se pamatuje v `sessionStorage` daného okna. V manage seznamu připojených
+tabulí je u každé instance tlačítko pro ztlumení a posuvník hlasitosti.
 
 Pro vypnutí zvuku v testu lze předat vlastní audio objekt s prázdnou metodou:
 
