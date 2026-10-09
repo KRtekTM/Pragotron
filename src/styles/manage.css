@@ -158,6 +158,26 @@
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+.live-poll-interval {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.live-poll-interval input[type="range"] {
+    flex: 1 1 auto;
+    min-width: 8rem;
+    margin: 0;
+    accent-color: var(--control-focus);
+    cursor: pointer;
+}
+
+.live-poll-interval output {
+    min-width: 4.2rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+}
+
 #liveDeparturesPanel input {
     width: 100%;
     min-height: 2.4rem;
@@ -576,6 +596,35 @@
 .active-board-item > span {
     color: rgba(255, 255, 255, 0.7);
     font-size: 0.82rem;
+}
+
+.active-board-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+.active-board-connection {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    min-width: 0;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.78rem;
+}
+
+.active-board-connection.is-network .active-board-connection-text {
+    color: #9fd4ff;
+}
+
+.active-board-user-agent {
+    margin-left: auto;
+    text-align: right;
+    color: rgba(255, 255, 255, 0.62);
+    overflow-wrap: anywhere;
 }
 
 .active-board-status {

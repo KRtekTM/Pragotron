@@ -1,5 +1,6 @@
 import dns from 'node:dns';
 import { lookup } from 'node:dns/promises';
+import { networkInterfaces } from 'node:os';
 import http, { createServer } from 'node:http';
 import https from 'node:https';
 import { readFile } from 'node:fs/promises';
@@ -9,12 +10,14 @@ import {
     LIVE_POLL_INTERVAL_MS,
     LIVE_SERVER_DEFAULT_PORT,
     LIVE_SERVER_FALLBACK_PORTS,
-    LIVE_SERVER_HOST,
     LIVE_STATION_DEFAULTS,
     fetchStationTable,
     isAllowedLiveSourceUrl,
+    liveCacheTtlMs,
+    normalizeLivePollIntervalMs,
     parseLiveSourceUrl
 } from '../src/platform/live-departures.js';
+import { attachBoardChannel } from './board-channel-server.mjs';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -60,9 +63,6 @@ const fetchIpv4 = async (url, options = {}) => {
 };
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-// Cache musí vypršet dřív, než manage pošle další minutový požadavek.
-// Jinak ho server odbaví z cache a zdroj se stáhne až za dvě minuty.
-const LIVE_CACHE_TTL_MS = Math.max(15_000, LIVE_POLL_INTERVAL_MS - 10_000);
 const requestedPort = Number(process.env.PORT);
 const liveCache = new Map();
 let listeningPort = Number.isInteger(requestedPort) && requestedPort > 0
@@ -77,6 +77,12 @@ const MIME_TYPES = Object.freeze({
     '.json': 'application/json; charset=utf-8',
     '.mjs': 'text/javascript; charset=utf-8',
     '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.wav': 'audio/wav',
     '.woff': 'font/woff',
     '.woff2': 'font/woff2'
 });
@@ -92,10 +98,13 @@ const writeJson = (response, status, value) => {
 
 const isAllowedSource = (sourceUrl) => isAllowedLiveSourceUrl(sourceUrl);
 
-const getCachedLiveDepartures = async (sourceUrl) => {
+const getCachedLiveDepartures = async (sourceUrl, intervalMs) => {
+    const ttl = liveCacheTtlMs(intervalMs);
     const cached = liveCache.get(sourceUrl);
     const now = Date.now();
-    if (cached?.payload && cached.expiresAt > now) {
+    // Cache musí vypršet dřív než další požadavek manage, jinak by se
+    // zdrojová tabule stáhla až ob jeden interval.
+    if (cached?.payload && now - (cached.fetchedAt || 0) < ttl) {
         return cached.payload;
     }
     if (cached?.inflight) {
@@ -110,7 +119,7 @@ const getCachedLiveDepartures = async (sourceUrl) => {
         .then((payload) => {
             liveCache.set(sourceUrl, {
                 payload,
-                expiresAt: startedAt + LIVE_CACHE_TTL_MS,
+                fetchedAt: startedAt,
                 inflight: null
             });
             return payload;
@@ -119,7 +128,7 @@ const getCachedLiveDepartures = async (sourceUrl) => {
             const stale = liveCache.get(sourceUrl);
             liveCache.set(sourceUrl, {
                 payload: stale?.payload || null,
-                expiresAt: stale?.expiresAt || 0,
+                fetchedAt: stale?.fetchedAt || 0,
                 inflight: null
             });
             if (stale?.payload) {
@@ -130,7 +139,7 @@ const getCachedLiveDepartures = async (sourceUrl) => {
 
     liveCache.set(sourceUrl, {
         payload: cached?.payload || null,
-        expiresAt: cached?.expiresAt || 0,
+        fetchedAt: cached?.fetchedAt || 0,
         inflight
     });
     return inflight;
@@ -163,10 +172,38 @@ const serveStaticFile = async (requestPath, response) => {
     }
 };
 
+const LISTEN_HOST = process.env.HOST || '0.0.0.0';
+
+const VIRTUAL_INTERFACE = /vEthernet|WSL|Hyper-V|Docker|VirtualBox|VMware|Loopback|Teredo|Bluetooth|Virtual/i;
+
+const lanAddresses = () => {
+    const addresses = [];
+    Object.entries(networkInterfaces()).forEach(([name, entries]) => {
+        if (VIRTUAL_INTERFACE.test(name)) {
+            return;
+        }
+        (entries || []).forEach((entry) => {
+            const family = entry.family;
+            const isIpv4 = family === 'IPv4' || family === 4;
+            if (isIpv4 && !entry.internal && entry.address
+                && !entry.address.startsWith('169.254.')) {
+                addresses.push(entry.address);
+            }
+        });
+    });
+    return [...new Set(addresses)];
+};
+
+const listensOnNetwork = LISTEN_HOST === '0.0.0.0'
+    || LISTEN_HOST === '::'
+    || (LISTEN_HOST !== '127.0.0.1'
+        && LISTEN_HOST !== 'localhost'
+        && LISTEN_HOST !== '::1');
+
 const server = createServer(async (request, response) => {
     const requestUrl = new URL(
         request.url || '/',
-        `http://${request.headers.host || `localhost:${listeningPort}`}`
+        `http://${request.headers.host || `127.0.0.1:${listeningPort}`}`
     );
 
     if (request.method === 'OPTIONS') {
@@ -198,7 +235,11 @@ const server = createServer(async (request, response) => {
 
         try {
             const payload = await getCachedLiveDepartures(
-                parseLiveSourceUrl(requestedSource).sourceUrl
+                parseLiveSourceUrl(requestedSource).sourceUrl,
+                normalizeLivePollIntervalMs(
+                    requestUrl.searchParams.get('interval')
+                        || LIVE_POLL_INTERVAL_MS
+                )
             );
             writeJson(response, 200, payload);
         } catch (error) {
@@ -213,6 +254,8 @@ const server = createServer(async (request, response) => {
 
     await serveStaticFile(requestUrl.pathname, response);
 });
+
+attachBoardChannel(server);
 
 const portsToTry = Number.isInteger(requestedPort) && requestedPort > 0
     ? [requestedPort]
@@ -229,7 +272,7 @@ const listenOnPort = (port) => new Promise((resolve, reject) => {
     };
     server.once('error', onError);
     server.once('listening', onListening);
-    server.listen(port, LIVE_SERVER_HOST);
+    server.listen(port, LISTEN_HOST);
 });
 
 const startServer = async () => {
@@ -238,20 +281,44 @@ const startServer = async () => {
     for (const port of portsToTry) {
         try {
             listeningPort = await listenOnPort(port);
+            const localBase = listensOnNetwork
+                && LISTEN_HOST !== '0.0.0.0'
+                && LISTEN_HOST !== '::'
+                ? `http://${LISTEN_HOST}:${listeningPort}`
+                : `http://127.0.0.1:${listeningPort}`;
+            console.log(`Pragotron server běží na ${localBase}/`);
             console.log(
-                `Pragotron server běží na http://127.0.0.1:${listeningPort}/`
+                `Manage stránka: ${localBase}/platformTableManage.html`
             );
             console.log(
-                'Manage stránka: ' +
-                `http://127.0.0.1:${listeningPort}/platformTableManage.html`
+                `Odjezdová tabule: ${localBase}/departureBoard.html`
             );
             console.log(
-                'Odjezdová tabule: ' +
-                `http://127.0.0.1:${listeningPort}/departureBoard.html`
+                'Nástupištní tabule: '
+                + `${localBase}/platformTable.html?platform=1&track=6a`
             );
-            console.log(
-                'Otevírejte 127.0.0.1, ne localhost — na Windows to jinak končí ERR_NO_BUFFER_SPACE.'
-            );
+            if (localBase.startsWith('http://127.0.0.1:')) {
+                console.log(
+                    'Otevírejte 127.0.0.1, ne localhost — na Windows to jinak končí ERR_NO_BUFFER_SPACE.'
+                );
+            }
+            if (listensOnNetwork) {
+                const addresses = LISTEN_HOST === '0.0.0.0' || LISTEN_HOST === '::'
+                    ? lanAddresses()
+                    : [LISTEN_HOST];
+                addresses.forEach((address) => {
+                    console.log(
+                        `Síť: http://${address}:${listeningPort}/platformTableManage.html`
+                    );
+                });
+                console.log(
+                    'Tabule z jiného počítače otevřete na stejné adrese serveru. '
+                    + 'Identita nástupiště, koleje a sektoru se zadává stejně jako lokálně.'
+                );
+                console.log(
+                    'Jen pro tento počítač spusťte server s HOST=127.0.0.1.'
+                );
+            }
             return;
         } catch (error) {
             lastError = error;
@@ -259,7 +326,7 @@ const startServer = async () => {
                 throw error;
             }
             console.warn(
-                `Port ${port} na ${LIVE_SERVER_HOST} nelze použít (${error.code}).`
+                `Port ${port} na ${LISTEN_HOST} nelze použít (${error.code}).`
             );
         }
     }

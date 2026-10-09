@@ -1196,6 +1196,70 @@
   // src/platform/board-transport.js
   var BOARD_TRANSPORT_CHANNEL = "pragotron.platformTable.channel.v2";
   var BOARD_TRANSPORT_STORAGE_KEY = "pragotron.platformTable.transport.v2";
+  var BOARD_HUB_STORAGE_KEY = "pragotron.boardHub.v1";
+  var normalizeRelayAddress = (value) => {
+    const text = String(value || "").trim();
+    const mapped = text.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i);
+    const address = mapped ? mapped[1] : text;
+    if (!address || address.length > 64) {
+      return "";
+    }
+    if (!/^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:]+)$/i.test(address)) {
+      return "";
+    }
+    return address;
+  };
+  var hubToChannelUrl = (hub, base) => {
+    const url = new URL(hub, base);
+    if (url.protocol === "https:" || url.protocol === "wss:") {
+      url.protocol = "wss:";
+    } else if (url.protocol === "http:" || url.protocol === "ws:") {
+      url.protocol = "ws:";
+    } else {
+      return "";
+    }
+    url.username = "";
+    url.password = "";
+    url.pathname = "/api/board-channel";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  };
+  var resolveBoardChannelUrl = (location = globalThis.location) => {
+    if (!location || typeof location.protocol !== "string") {
+      return "";
+    }
+    const hubQuery = new URLSearchParams(location.search || "").get("hub")?.trim() || "";
+    if (hubQuery) {
+      try {
+        globalThis.sessionStorage?.setItem(BOARD_HUB_STORAGE_KEY, hubQuery);
+      } catch {
+      }
+      try {
+        return hubToChannelUrl(hubQuery, location.href || "http://127.0.0.1");
+      } catch {
+        return "";
+      }
+    }
+    if (location.protocol === "http:" || location.protocol === "https:") {
+      const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+      return `${wsProtocol}//${location.host}/api/board-channel`;
+    }
+    let storedHub = "";
+    try {
+      storedHub = globalThis.sessionStorage?.getItem(BOARD_HUB_STORAGE_KEY) || "";
+    } catch {
+      storedHub = "";
+    }
+    if (!storedHub) {
+      return "";
+    }
+    try {
+      return hubToChannelUrl(storedHub, "http://127.0.0.1");
+    } catch {
+      return "";
+    }
+  };
   var createId = (prefix) => {
     const random = globalThis.crypto?.randomUUID?.();
     return `${prefix}-${random || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
@@ -1226,6 +1290,14 @@
       this.listeners = /* @__PURE__ */ new Set();
       this.seenMessages = /* @__PURE__ */ new Set();
       this.channel = null;
+      this.socket = null;
+      this.socketUrl = "";
+      this.socketRetryMs = 1e3;
+      this.socketTimer = null;
+      this.pendingSocketMessages = [];
+      this.localPeers = /* @__PURE__ */ new Map();
+      this.deliveryListeners = /* @__PURE__ */ new Set();
+      this.closed = false;
       const BroadcastChannelConstructor = this.window?.BroadcastChannel || globalThis.BroadcastChannel;
       if (typeof BroadcastChannelConstructor === "function") {
         try {
@@ -1248,6 +1320,81 @@
         }
       };
       this.window?.addEventListener("storage", this.storageHandler);
+      this.connectSocket();
+    }
+    connectSocket() {
+      this.socketUrl = resolveBoardChannelUrl();
+      if (!this.socketUrl || typeof WebSocket !== "function" || this.closed) {
+        return;
+      }
+      const socket = new WebSocket(this.socketUrl);
+      this.socket = socket;
+      socket.addEventListener("open", () => {
+        if (this.socket !== socket) {
+          return;
+        }
+        this.socketRetryMs = 1e3;
+        const queued = this.pendingSocketMessages.splice(0);
+        queued.forEach((text) => {
+          try {
+            socket.send(text);
+          } catch {
+            this.pendingSocketMessages.push(text);
+          }
+        });
+      });
+      socket.addEventListener("message", (event) => {
+        if (this.socket !== socket || typeof event.data !== "string") {
+          return;
+        }
+        try {
+          const parsed = JSON.parse(event.data);
+          const relay = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed.relay : null;
+          if (parsed && typeof parsed === "object") {
+            delete parsed.relay;
+          }
+          this.receive(parsed, {
+            channel: "network",
+            network: normalizeRelayAddress(relay?.localAddress),
+            client: normalizeRelayAddress(relay?.remoteAddress)
+          });
+        } catch {
+        }
+      });
+      const scheduleReconnect = () => {
+        if (this.closed || this.socket !== socket) {
+          return;
+        }
+        this.socket = null;
+        const delay = this.socketRetryMs;
+        this.socketRetryMs = Math.min(delay * 2, 15e3);
+        this.socketTimer = this.window?.setTimeout?.(() => {
+          this.socketTimer = null;
+          this.connectSocket();
+        }, delay) ?? null;
+      };
+      socket.addEventListener("close", scheduleReconnect);
+      socket.addEventListener("error", () => {
+        socket.close();
+      });
+    }
+    sendToSocket(message) {
+      if (!this.socketUrl) {
+        return;
+      }
+      const text = JSON.stringify(message);
+      const socketOpen = typeof WebSocket === "function" ? WebSocket.OPEN : 1;
+      if (this.socket?.readyState === socketOpen) {
+        try {
+          this.socket.send(text);
+          return;
+        } catch {
+        }
+      }
+      this.pendingSocketMessages.push(text);
+      if (this.pendingSocketMessages.length > 50) {
+        this.pendingSocketMessages.shift();
+      }
     }
     remember(messageId) {
       this.seenMessages.add(messageId);
@@ -1256,8 +1403,43 @@
         this.seenMessages.delete(oldest);
       }
     }
-    receive(message) {
-      if (!message || message.version !== 2 || typeof message.messageId !== "string" || message.source === this.id || this.seenMessages.has(message.messageId)) {
+    noteLocalPeer(source) {
+      const now = Date.now();
+      this.localPeers.set(source, now);
+      this.localPeers.forEach((seenAt, peer) => {
+        if (now - seenAt > 12e3) {
+          this.localPeers.delete(peer);
+        }
+      });
+    }
+    isLocalPeer(source) {
+      const seenAt = this.localPeers.get(source);
+      return typeof seenAt === "number" && Date.now() - seenAt <= 12e3;
+    }
+    deliveryFor(source, route) {
+      if (route?.channel !== "network" || this.isLocalPeer(source)) {
+        return { channel: "local" };
+      }
+      return {
+        channel: "network",
+        network: route.network || "",
+        client: route.client || ""
+      };
+    }
+    receive(message, route = { channel: "local" }) {
+      if (!message || message.version !== 2 || typeof message.messageId !== "string" || message.source === this.id) {
+        return;
+      }
+      if (route.channel !== "network") {
+        this.noteLocalPeer(message.source);
+      }
+      const delivery = this.deliveryFor(message.source, route);
+      if (this.seenMessages.has(message.messageId)) {
+        if (route.channel !== "network") {
+          this.deliveryListeners.forEach((listener) => {
+            listener(message.source, delivery);
+          });
+        }
         return;
       }
       if (message.target?.source && message.target.source !== this.id) {
@@ -1267,7 +1449,12 @@
         return;
       }
       this.remember(message.messageId);
-      this.listeners.forEach((listener) => listener(message));
+      const delivered = {
+        ...message,
+        delivery
+      };
+      delete delivered.relay;
+      this.listeners.forEach((listener) => listener(delivered));
     }
     publish(type, payload = {}, requestIdOrOptions) {
       const options = requestIdOrOptions && typeof requestIdOrOptions === "object" ? requestIdOrOptions : { requestId: requestIdOrOptions };
@@ -1291,6 +1478,7 @@
         this.channel?.postMessage(message);
       } catch {
       }
+      this.sendToSocket(message);
       try {
         this.storage?.setItem(this.storageKey, JSON.stringify(message));
       } catch {
@@ -1304,11 +1492,28 @@
       this.listeners.add(listener);
       return () => this.listeners.delete(listener);
     }
+    subscribeDelivery(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("Listener transportu mus\xED b\xFDt funkce.");
+      }
+      this.deliveryListeners.add(listener);
+      return () => this.deliveryListeners.delete(listener);
+    }
     close() {
+      this.closed = true;
       this.listeners.clear();
+      this.deliveryListeners.clear();
+      this.localPeers.clear();
+      this.pendingSocketMessages = [];
+      if (this.socketTimer !== null) {
+        this.window?.clearTimeout?.(this.socketTimer);
+        this.socketTimer = null;
+      }
       this.window?.removeEventListener("storage", this.storageHandler);
       this.channel?.close();
       this.channel = null;
+      this.socket?.close();
+      this.socket = null;
     }
   };
 
@@ -3928,7 +4133,24 @@
     key: "455",
     sourceUrl: `${LIVE_SOURCE_ORIGIN}${LIVE_SOURCE_PATH}?Key=455`
   });
+  var LIVE_POLL_INTERVAL_MIN_MS = 3e4;
+  var LIVE_POLL_INTERVAL_MAX_MS = 3e5;
+  var LIVE_POLL_INTERVAL_STEP_MS = 3e4;
   var LIVE_POLL_INTERVAL_MS = 6e4;
+  var normalizeLivePollIntervalMs = (value) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return LIVE_POLL_INTERVAL_MS;
+    }
+    const clamped = Math.min(
+      LIVE_POLL_INTERVAL_MAX_MS,
+      Math.max(LIVE_POLL_INTERVAL_MIN_MS, number)
+    );
+    const steps = Math.round(
+      (clamped - LIVE_POLL_INTERVAL_MIN_MS) / LIVE_POLL_INTERVAL_STEP_MS
+    );
+    return LIVE_POLL_INTERVAL_MIN_MS + steps * LIVE_POLL_INTERVAL_STEP_MS;
+  };
   var LIVE_SERVER_DEFAULT_PORT = 4787;
   var LIVE_SERVER_FALLBACK_PORTS = Object.freeze([
     LIVE_SERVER_DEFAULT_PORT,
@@ -4060,18 +4282,24 @@
     if (!location || location.protocol === "file:") {
       return fallback;
     }
-    const hostname = location.hostname;
-    const isLocal = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
-    const port = Number(location.port) || (location.protocol === "https:" ? 443 : 80);
-    const scraperPorts = new Set(LIVE_SERVER_FALLBACK_PORTS);
-    if (isLocal && scraperPorts.has(port)) {
-      return `http://127.0.0.1:${port}/api/live-departures`;
+    if (location.protocol === "http:" || location.protocol === "https:") {
+      const hostname = location.hostname;
+      const isLoopback = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]" || hostname === "::1";
+      const port = Number(location.port) || (location.protocol === "https:" ? 443 : 80);
+      if (isLoopback) {
+        if (!new Set(LIVE_SERVER_FALLBACK_PORTS).has(port)) {
+          return fallback;
+        }
+        return `http://127.0.0.1:${port}/api/live-departures`;
+      }
+      return `${location.origin}/api/live-departures`;
     }
     return fallback;
   };
   var fetchLiveDepartures = async ({
     apiUrl = getDefaultLiveApiUrl(),
     sourceUrl = normalizeLiveSourceUrl(LIVE_STATION_DEFAULTS.sourceUrl),
+    pollIntervalMs = LIVE_POLL_INTERVAL_MS,
     fetchImpl = globalThis.fetch,
     attempts = 3
   } = {}) => {
@@ -4085,6 +4313,10 @@
     endpoint.searchParams.set(
       "source",
       normalizeLiveSourceUrl(sourceUrl)
+    );
+    endpoint.searchParams.set(
+      "interval",
+      String(normalizeLivePollIntervalMs(pollIntervalMs))
     );
     let lastError = null;
     for (let attempt = 1; attempt <= Math.max(1, attempts); attempt += 1) {
@@ -4216,7 +4448,13 @@
   var liveToggleButton = documentRef.querySelector("#liveToggleButton");
   var liveDeparturesState = documentRef.querySelector("#liveDeparturesState");
   var liveDeparturesStatus = documentRef.querySelector("#liveDeparturesStatus");
+  var liveDeparturesDescription = documentRef.querySelector(
+    "#liveDeparturesDescription"
+  );
+  var livePollIntervalInput = documentRef.querySelector("#livePollInterval");
+  var livePollIntervalValue = documentRef.querySelector("#livePollIntervalValue");
   var submitButton = boardForm.querySelector('button[type="submit"]');
+  var MANAGE_DOCUMENT_TITLE = documentRef.title || "PRAGOTRON \u2013 manage";
   var lighting = new LightingSettings({
     initialLamps: savedSettings?.lamps || {},
     initialClock: savedSettings?.clockLight || NIGHT_CLOCK_DEFAULTS
@@ -4249,6 +4487,9 @@
   var savedLiveStationName = typeof savedLiveSettings.station === "string" ? savedLiveSettings.station.trim() : "";
   var savedLiveStationKey = String(savedLiveSettings.stationKey || "");
   var liveStationName = savedLiveStationName && savedLiveStationKey === parseLiveSourceUrl(liveSourceUrl).key ? savedLiveStationName : parseLiveSourceUrl(liveSourceUrl).key === LIVE_STATION_DEFAULTS.key ? LIVE_STATION_DEFAULTS.name : "";
+  var livePollIntervalMs = normalizeLivePollIntervalMs(
+    savedLiveSettings.pollIntervalMs
+  );
   var livePollTimer = null;
   var livePollInProgress = false;
   var liveRunToken = 0;
@@ -4499,7 +4740,8 @@
         apiUrl: liveApiUrl,
         station: liveStationName,
         stationKey: parseLiveSourceUrl(liveSourceUrl).key,
-        sourceUrl: liveSourceUrl
+        sourceUrl: liveSourceUrl,
+        pollIntervalMs: livePollIntervalMs
       },
       revision: nextRevision,
       globalResetRevision,
@@ -4895,6 +5137,20 @@
     }
     return Math.min(100, Math.max(0, Math.round(numeric)));
   };
+  var formatBoardConnection = (connection) => {
+    if (connection?.channel !== "network") {
+      return "lok\xE1ln\u011B, tab prohl\xED\u017Ee\u010De";
+    }
+    const network = connection.network || "";
+    const client = connection.client || "";
+    if (network && client && network !== client) {
+      return `p\u0159es s\xED\u0165 ${network}, po\u010D\xEDta\u010D ${client}`;
+    }
+    if (network || client) {
+      return `p\u0159es s\xED\u0165 ${network || client}`;
+    }
+    return "p\u0159es s\xED\u0165";
+  };
   var renderActiveBoards = () => {
     if (!activeBoardsList) {
       return;
@@ -4928,7 +5184,27 @@
       const identity = documentRef.createElement("strong");
       identity.textContent = isDepartureBoard ? "Odjezdov\xE1 tabule" : boardPresence.configured === false ? "Tabule bez identity" : formatBoardIdentity(boardPresence.identity);
       const details = documentRef.createElement("span");
-      details.textContent = `${isDepartureBoard ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} \u0159\xE1dk\u016F` : "n\xE1stupi\u0161tn\xED tabule"} \xB7 instance ${boardPresence.instanceId || "\u2014"}`;
+      details.className = "active-board-details";
+      const instanceLine = documentRef.createElement("span");
+      instanceLine.textContent = `${isDepartureBoard ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} \u0159\xE1dk\u016F` : "n\xE1stupi\u0161tn\xED tabule"} \xB7 instance ${boardPresence.instanceId || "\u2014"}`;
+      const connectionLine = documentRef.createElement("span");
+      connectionLine.className = "active-board-connection";
+      connectionLine.classList.toggle(
+        "is-network",
+        boardPresence.connection?.channel === "network"
+      );
+      const connectionText = documentRef.createElement("span");
+      connectionText.className = "active-board-connection-text";
+      connectionText.textContent = formatBoardConnection(
+        boardPresence.connection
+      );
+      const userAgent = documentRef.createElement("span");
+      userAgent.className = "active-board-user-agent";
+      userAgent.textContent = boardPresence.userAgent || "";
+      userAgent.title = boardPresence.userAgent || "";
+      userAgent.hidden = !boardPresence.userAgent;
+      connectionLine.append(connectionText, userAgent);
+      details.append(instanceLine);
       const status = documentRef.createElement("span");
       status.className = "active-board-status";
       status.textContent = !isDepartureBoard && boardPresence.configured === false ? "Nen\xED nakonfigurovan\xE1" : "Online";
@@ -5006,7 +5282,7 @@
       });
       volumeControl.append(volumeText, volumeRange, volumeOutput);
       actions.append(identifyButton, volumeControl, muteButton);
-      item.append(identity, details, status, audioStatus, actions);
+      item.append(identity, details, status, audioStatus, actions, connectionLine);
       activeBoardsList.appendChild(item);
     });
   };
@@ -5644,7 +5920,9 @@
       lastSeen: Date.now(),
       lastSyncedRevision: sameBoardIdentity ? previous?.lastSyncedRevision : null,
       syncPendingRevision: sameBoardIdentity ? previous?.syncPendingRevision : null,
-      syncPendingAt: sameBoardIdentity ? previous?.syncPendingAt || 0 : 0
+      syncPendingAt: sameBoardIdentity ? previous?.syncPendingAt || 0 : 0,
+      connection: message.delivery || previous?.connection || { channel: "local" },
+      userAgent: typeof payload.userAgent === "string" && payload.userAgent.trim() ? payload.userAgent.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400) : previous?.userAgent || ""
     };
     activeBoards.set(key, boardPresence);
     renderActiveBoards();
@@ -5745,6 +6023,19 @@
     }
     return true;
   };
+  transport.subscribeDelivery((source, delivery) => {
+    let changed = false;
+    activeBoards.forEach((boardPresence) => {
+      if (boardPresence.instanceId !== source) {
+        return;
+      }
+      boardPresence.connection = delivery;
+      changed = true;
+    });
+    if (changed) {
+      renderActiveBoards();
+    }
+  });
   transport.subscribe((message) => {
     if (message.type === "departure-board:hello") {
       publishDepartureSnapshot();
@@ -6116,6 +6407,7 @@
     const visible = liveDeparturesEnabled && Boolean(name);
     manageHeaderStation.hidden = !visible;
     manageHeaderStation.textContent = visible ? `stanice: ${name}` : "";
+    documentRef.title = visible ? `${name} \u2013 ${MANAGE_DOCUMENT_TITLE}` : MANAGE_DOCUMENT_TITLE;
   };
   var renderLiveSourceStation = () => {
     const name = String(liveStationName || "").trim();
@@ -6133,12 +6425,28 @@
     liveSourceStationLink.textContent = name;
     liveSourceStationLink.href = liveSourceUrl;
   };
+  var formatLivePollInterval = (intervalMs) => `${Math.round(normalizeLivePollIntervalMs(intervalMs) / 1e3)} s`;
+  var renderLivePollInterval = () => {
+    const seconds = Math.round(livePollIntervalMs / 1e3);
+    if (livePollIntervalInput && documentRef.activeElement !== livePollIntervalInput) {
+      livePollIntervalInput.value = String(seconds);
+    }
+    if (livePollIntervalValue) {
+      livePollIntervalValue.textContent = formatLivePollInterval(
+        livePollIntervalMs
+      );
+    }
+    if (liveDeparturesDescription) {
+      liveDeparturesDescription.textContent = `\u017Div\xE9 odjezdy ze stanice Spr\xE1vy \u017Eeleznic \xB7 aktualizace ka\u017Ed\xFDch ${seconds} sekund. Pro na\u010D\xEDt\xE1n\xED je pot\u0159eba spustit scraper server.`;
+    }
+  };
   var renderLiveControls = () => {
     if (liveSourceUrlInput) {
       liveSourceUrlInput.value = liveSourceUrl;
       liveSourceUrlInput.disabled = liveDeparturesEnabled;
     }
     renderLiveSourceStation();
+    renderLivePollInterval();
     if (liveApiUrlInput) {
       liveApiUrlInput.value = liveApiUrl;
       liveApiUrlInput.disabled = liveDeparturesEnabled;
@@ -6162,6 +6470,19 @@
       livePollTimer = null;
     }
   };
+  var restartLiveTimer = () => {
+    if (livePollTimer !== null) {
+      window.clearInterval(livePollTimer);
+      livePollTimer = null;
+    }
+    if (!liveDeparturesEnabled) {
+      return;
+    }
+    livePollTimer = window.setInterval(
+      pollLiveDepartures,
+      livePollIntervalMs
+    );
+  };
   var pollLiveDepartures = async () => {
     if (!liveDeparturesEnabled || livePollInProgress) {
       return;
@@ -6172,7 +6493,8 @@
     try {
       const payload = await fetchLiveDepartures({
         apiUrl: liveApiUrl,
-        sourceUrl: liveSourceUrl
+        sourceUrl: liveSourceUrl,
+        pollIntervalMs: livePollIntervalMs
       });
       if (!liveDeparturesEnabled || runToken !== liveRunToken) {
         return;
@@ -6207,10 +6529,7 @@
     persistState();
     setLiveStatus("Na\u010D\xEDt\xE1m aktu\xE1ln\xED odjezdy\u2026");
     void pollLiveDepartures();
-    livePollTimer = window.setInterval(
-      pollLiveDepartures,
-      LIVE_POLL_INTERVAL_MS
-    );
+    restartLiveTimer();
   };
   var stopLiveDepartures = () => {
     stopLivePolling();
@@ -6534,6 +6853,7 @@
     liveApiUrl = getDefaultLiveApiUrl();
     liveSourceUrl = LIVE_STATION_DEFAULTS.sourceUrl;
     liveStationName = LIVE_STATION_DEFAULTS.name;
+    livePollIntervalMs = LIVE_POLL_INTERVAL_MS;
     departures = [];
     desiredStates = {};
     formDepartureId = "";
@@ -6682,6 +7002,18 @@
     renderLiveControls();
     persistState();
   });
+  var applyLivePollInterval = (seconds) => {
+    livePollIntervalMs = normalizeLivePollIntervalMs(Number(seconds) * 1e3);
+    renderLivePollInterval();
+  };
+  livePollIntervalInput?.addEventListener("input", () => {
+    applyLivePollInterval(livePollIntervalInput.value);
+  });
+  livePollIntervalInput?.addEventListener("change", () => {
+    applyLivePollInterval(livePollIntervalInput.value);
+    persistState();
+    restartLiveTimer();
+  });
   liveToggleButton?.addEventListener("click", () => {
     if (liveDeparturesEnabled) {
       stopLiveDepartures();
@@ -6707,7 +7039,8 @@
         apiUrl: liveApiUrl,
         station: liveStationName,
         stationKey: parseLiveSourceUrl(liveSourceUrl).key,
-        sourceUrl: liveSourceUrl
+        sourceUrl: liveSourceUrl,
+        pollIntervalMs: livePollIntervalMs
       }
     }),
     getActiveBoards: () => [...activeBoards.values()].map((boardPresence) => ({

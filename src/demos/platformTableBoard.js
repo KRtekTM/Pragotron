@@ -423,7 +423,11 @@ const publishReady = () => {
         appliedRevision,
         lensState: getLensPresenceState(),
         audio: audio.getState(),
-        identificationActive
+        identificationActive,
+        userAgent: String(globalThis.navigator?.userAgent || '')
+            .replace(/[\u0000-\u001f\u007f]/g, '')
+            .trim()
+            .slice(0, 400)
     });
 };
 
@@ -437,7 +441,11 @@ const publishHeartbeat = () => {
         appliedRevision,
         lensState: getLensPresenceState(),
         audio: audio.getState(),
-        identificationActive
+        identificationActive,
+        userAgent: String(globalThis.navigator?.userAgent || '')
+            .replace(/[\u0000-\u001f\u007f]/g, '')
+            .trim()
+            .slice(0, 400)
     });
 };
 

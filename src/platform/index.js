@@ -93,7 +93,8 @@ export { LocalStorageAdapter } from './storage.js';
 export {
     BOARD_TRANSPORT_CHANNEL,
     BOARD_TRANSPORT_STORAGE_KEY,
-    BoardTransport
+    BoardTransport,
+    resolveBoardChannelUrl
 } from './board-transport.js';
 export {
     BOARD_IDENTITY_STORAGE_KEY,
@@ -111,7 +112,10 @@ export {
     calculateSunSchedule
 } from './sun-schedule.js';
 export {
+    LIVE_POLL_INTERVAL_MAX_MS,
+    LIVE_POLL_INTERVAL_MIN_MS,
     LIVE_POLL_INTERVAL_MS,
+    LIVE_POLL_INTERVAL_STEP_MS,
     LIVE_SERVER_DEFAULT_PORT,
     LIVE_SERVER_FALLBACK_PORTS,
     LIVE_SERVER_HOST,
@@ -124,7 +128,9 @@ export {
     fetchStationTable,
     getDefaultLiveApiUrl,
     isAllowedLiveSourceUrl,
+    liveCacheTtlMs,
     normalizeLiveApiUrl,
+    normalizeLivePollIntervalMs,
     normalizeLiveSourceUrl,
     parseLiveSourceUrl,
     parseStationTable

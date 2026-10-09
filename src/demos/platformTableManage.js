@@ -55,6 +55,7 @@ import {
     LIVE_POLL_INTERVAL_MS,
     LIVE_STATION_DEFAULTS,
     normalizeLiveApiUrl,
+    normalizeLivePollIntervalMs,
     normalizeLiveSourceUrl,
     parseLiveSourceUrl
 } from '../platform/index.js';
@@ -154,7 +155,13 @@ const liveSourceStationLink = documentRef.querySelector('#liveSourceStationLink'
 const liveToggleButton = documentRef.querySelector('#liveToggleButton');
 const liveDeparturesState = documentRef.querySelector('#liveDeparturesState');
 const liveDeparturesStatus = documentRef.querySelector('#liveDeparturesStatus');
+const liveDeparturesDescription = documentRef.querySelector(
+    '#liveDeparturesDescription'
+);
+const livePollIntervalInput = documentRef.querySelector('#livePollInterval');
+const livePollIntervalValue = documentRef.querySelector('#livePollIntervalValue');
 const submitButton = boardForm.querySelector('button[type="submit"]');
+const MANAGE_DOCUMENT_TITLE = documentRef.title || 'PRAGOTRON – manage';
 
 const lighting = new LightingSettings({
     initialLamps: savedSettings?.lamps || {},
@@ -207,6 +214,9 @@ let liveStationName = savedLiveStationName
     : parseLiveSourceUrl(liveSourceUrl).key === LIVE_STATION_DEFAULTS.key
         ? LIVE_STATION_DEFAULTS.name
         : '';
+let livePollIntervalMs = normalizeLivePollIntervalMs(
+    savedLiveSettings.pollIntervalMs
+);
 let livePollTimer = null;
 let livePollInProgress = false;
 let liveRunToken = 0;
@@ -571,7 +581,8 @@ const persistState = () => {
             apiUrl: liveApiUrl,
             station: liveStationName,
             stationKey: parseLiveSourceUrl(liveSourceUrl).key,
-            sourceUrl: liveSourceUrl
+            sourceUrl: liveSourceUrl,
+            pollIntervalMs: livePollIntervalMs
         },
         revision: nextRevision,
         globalResetRevision,
@@ -1046,6 +1057,22 @@ const normalizeBoardVolume = (value) => {
     return Math.min(100, Math.max(0, Math.round(numeric)));
 };
 
+const formatBoardConnection = (connection) => {
+    if (connection?.channel !== 'network') {
+        return 'lokálně, tab prohlížeče';
+    }
+
+    const network = connection.network || '';
+    const client = connection.client || '';
+    if (network && client && network !== client) {
+        return `přes síť ${network}, počítač ${client}`;
+    }
+    if (network || client) {
+        return `přes síť ${network || client}`;
+    }
+    return 'přes síť';
+};
+
 const renderActiveBoards = () => {
     if (!activeBoardsList) {
         return;
@@ -1090,11 +1117,31 @@ const renderActiveBoards = () => {
             ? 'Tabule bez identity'
             : formatBoardIdentity(boardPresence.identity);
         const details = documentRef.createElement('span');
-        details.textContent = `${isDepartureBoard
+        details.className = 'active-board-details';
+        const instanceLine = documentRef.createElement('span');
+        instanceLine.textContent = `${isDepartureBoard
             ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} řádků`
             : 'nástupištní tabule'} · instance ${
             boardPresence.instanceId || '—'
         }`;
+        const connectionLine = documentRef.createElement('span');
+        connectionLine.className = 'active-board-connection';
+        connectionLine.classList.toggle(
+            'is-network',
+            boardPresence.connection?.channel === 'network'
+        );
+        const connectionText = documentRef.createElement('span');
+        connectionText.className = 'active-board-connection-text';
+        connectionText.textContent = formatBoardConnection(
+            boardPresence.connection
+        );
+        const userAgent = documentRef.createElement('span');
+        userAgent.className = 'active-board-user-agent';
+        userAgent.textContent = boardPresence.userAgent || '';
+        userAgent.title = boardPresence.userAgent || '';
+        userAgent.hidden = !boardPresence.userAgent;
+        connectionLine.append(connectionText, userAgent);
+        details.append(instanceLine);
         const status = documentRef.createElement('span');
         status.className = 'active-board-status';
         status.textContent = !isDepartureBoard
@@ -1187,7 +1234,7 @@ const renderActiveBoards = () => {
         });
         volumeControl.append(volumeText, volumeRange, volumeOutput);
         actions.append(identifyButton, volumeControl, muteButton);
-        item.append(identity, details, status, audioStatus, actions);
+        item.append(identity, details, status, audioStatus, actions, connectionLine);
         activeBoardsList.appendChild(item);
     });
 };
@@ -1942,7 +1989,14 @@ const updateBoardPresence = (message) => {
         syncPendingRevision: sameBoardIdentity
             ? previous?.syncPendingRevision
             : null,
-        syncPendingAt: sameBoardIdentity ? previous?.syncPendingAt || 0 : 0
+        syncPendingAt: sameBoardIdentity ? previous?.syncPendingAt || 0 : 0,
+        connection: message.delivery
+            || previous?.connection
+            || { channel: 'local' },
+        userAgent: typeof payload.userAgent === 'string'
+            && payload.userAgent.trim()
+            ? payload.userAgent.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 400)
+            : previous?.userAgent || ''
     };
     activeBoards.set(key, boardPresence);
     renderActiveBoards();
@@ -2063,6 +2117,20 @@ const finishBackgroundBoardAction = (requestId, message) => {
 
     return true;
 };
+
+transport.subscribeDelivery((source, delivery) => {
+    let changed = false;
+    activeBoards.forEach((boardPresence) => {
+        if (boardPresence.instanceId !== source) {
+            return;
+        }
+        boardPresence.connection = delivery;
+        changed = true;
+    });
+    if (changed) {
+        renderActiveBoards();
+    }
+});
 
 transport.subscribe((message) => {
     if (message.type === 'departure-board:hello') {
@@ -2532,6 +2600,9 @@ const renderManageHeaderStation = () => {
     const visible = liveDeparturesEnabled && Boolean(name);
     manageHeaderStation.hidden = !visible;
     manageHeaderStation.textContent = visible ? `stanice: ${name}` : '';
+    documentRef.title = visible
+        ? `${name} – ${MANAGE_DOCUMENT_TITLE}`
+        : MANAGE_DOCUMENT_TITLE;
 };
 
 const renderLiveSourceStation = () => {
@@ -2553,12 +2624,36 @@ const renderLiveSourceStation = () => {
     liveSourceStationLink.href = liveSourceUrl;
 };
 
+const formatLivePollInterval = (intervalMs) => (
+    `${Math.round(normalizeLivePollIntervalMs(intervalMs) / 1000)} s`
+);
+
+const renderLivePollInterval = () => {
+    const seconds = Math.round(livePollIntervalMs / 1000);
+    if (livePollIntervalInput
+        && documentRef.activeElement !== livePollIntervalInput) {
+        livePollIntervalInput.value = String(seconds);
+    }
+    if (livePollIntervalValue) {
+        livePollIntervalValue.textContent = formatLivePollInterval(
+            livePollIntervalMs
+        );
+    }
+    if (liveDeparturesDescription) {
+        liveDeparturesDescription.textContent =
+            'Živé odjezdy ze stanice Správy železnic · aktualizace '
+            + `každých ${seconds} sekund. Pro načítání je potřeba spustit `
+            + 'scraper server.';
+    }
+};
+
 const renderLiveControls = () => {
     if (liveSourceUrlInput) {
         liveSourceUrlInput.value = liveSourceUrl;
         liveSourceUrlInput.disabled = liveDeparturesEnabled;
     }
     renderLiveSourceStation();
+    renderLivePollInterval();
     if (liveApiUrlInput) {
         liveApiUrlInput.value = liveApiUrl;
         liveApiUrlInput.disabled = liveDeparturesEnabled;
@@ -2588,6 +2683,21 @@ const stopLivePolling = () => {
     }
 };
 
+const restartLiveTimer = () => {
+    if (livePollTimer !== null) {
+        window.clearInterval(livePollTimer);
+        livePollTimer = null;
+    }
+    if (!liveDeparturesEnabled) {
+        return;
+    }
+
+    livePollTimer = window.setInterval(
+        pollLiveDepartures,
+        livePollIntervalMs
+    );
+};
+
 const pollLiveDepartures = async () => {
     if (!liveDeparturesEnabled || livePollInProgress) {
         return;
@@ -2599,7 +2709,8 @@ const pollLiveDepartures = async () => {
     try {
         const payload = await fetchLiveDepartures({
             apiUrl: liveApiUrl,
-            sourceUrl: liveSourceUrl
+            sourceUrl: liveSourceUrl,
+            pollIntervalMs: livePollIntervalMs
         });
         if (!liveDeparturesEnabled || runToken !== liveRunToken) {
             return;
@@ -2644,10 +2755,7 @@ const startLivePolling = () => {
     persistState();
     setLiveStatus('Načítám aktuální odjezdy…');
     void pollLiveDepartures();
-    livePollTimer = window.setInterval(
-        pollLiveDepartures,
-        LIVE_POLL_INTERVAL_MS
-    );
+    restartLiveTimer();
 };
 
 const stopLiveDepartures = () => {
@@ -3039,6 +3147,7 @@ resetAllSettingsButton.addEventListener('click', () => {
     liveApiUrl = getDefaultLiveApiUrl();
     liveSourceUrl = LIVE_STATION_DEFAULTS.sourceUrl;
     liveStationName = LIVE_STATION_DEFAULTS.name;
+    livePollIntervalMs = LIVE_POLL_INTERVAL_MS;
     departures = [];
     desiredStates = {};
     formDepartureId = '';
@@ -3195,6 +3304,21 @@ liveApiUrlInput?.addEventListener('change', () => {
     persistState();
 });
 
+const applyLivePollInterval = (seconds) => {
+    livePollIntervalMs = normalizeLivePollIntervalMs(Number(seconds) * 1000);
+    renderLivePollInterval();
+};
+
+livePollIntervalInput?.addEventListener('input', () => {
+    applyLivePollInterval(livePollIntervalInput.value);
+});
+
+livePollIntervalInput?.addEventListener('change', () => {
+    applyLivePollInterval(livePollIntervalInput.value);
+    persistState();
+    restartLiveTimer();
+});
+
 liveToggleButton?.addEventListener('click', () => {
     if (liveDeparturesEnabled) {
         stopLiveDepartures();
@@ -3222,7 +3346,8 @@ window.pragotron = {
             apiUrl: liveApiUrl,
             station: liveStationName,
             stationKey: parseLiveSourceUrl(liveSourceUrl).key,
-            sourceUrl: liveSourceUrl
+            sourceUrl: liveSourceUrl,
+            pollIntervalMs: livePollIntervalMs
         }
     }),
     getActiveBoards: () => [...activeBoards.values()].map((boardPresence) => ({

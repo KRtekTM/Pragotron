@@ -15,7 +15,30 @@ export const LIVE_STATION_DEFAULTS = Object.freeze({
         `${LIVE_SOURCE_ORIGIN}${LIVE_SOURCE_PATH}?Key=455`
 });
 
+export const LIVE_POLL_INTERVAL_MIN_MS = 30_000;
+export const LIVE_POLL_INTERVAL_MAX_MS = 300_000;
+export const LIVE_POLL_INTERVAL_STEP_MS = 30_000;
 export const LIVE_POLL_INTERVAL_MS = 60_000;
+
+export const normalizeLivePollIntervalMs = (value) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+        return LIVE_POLL_INTERVAL_MS;
+    }
+
+    const clamped = Math.min(
+        LIVE_POLL_INTERVAL_MAX_MS,
+        Math.max(LIVE_POLL_INTERVAL_MIN_MS, number)
+    );
+    const steps = Math.round(
+        (clamped - LIVE_POLL_INTERVAL_MIN_MS) / LIVE_POLL_INTERVAL_STEP_MS
+    );
+    return LIVE_POLL_INTERVAL_MIN_MS + (steps * LIVE_POLL_INTERVAL_STEP_MS);
+};
+
+export const liveCacheTtlMs = (intervalMs = LIVE_POLL_INTERVAL_MS) => (
+    Math.max(5_000, normalizeLivePollIntervalMs(intervalMs) - 10_000)
+);
 export const LIVE_SERVER_HOST = '127.0.0.1';
 export const LIVE_SERVER_DEFAULT_PORT = 4787;
 export const LIVE_SERVER_FALLBACK_PORTS = Object.freeze([
@@ -534,15 +557,22 @@ export const getDefaultLiveApiUrl = (
         return fallback;
     }
 
-    const hostname = location.hostname;
-    const isLocal = hostname === '127.0.0.1'
-        || hostname === 'localhost'
-        || hostname === '[::1]';
-    const port = Number(location.port)
-        || (location.protocol === 'https:' ? 443 : 80);
-    const scraperPorts = new Set(LIVE_SERVER_FALLBACK_PORTS);
-    if (isLocal && scraperPorts.has(port)) {
-        return `http://127.0.0.1:${port}/api/live-departures`;
+    if (location.protocol === 'http:' || location.protocol === 'https:') {
+        const hostname = location.hostname;
+        const isLoopback = hostname === '127.0.0.1'
+            || hostname === 'localhost'
+            || hostname === '[::1]'
+            || hostname === '::1';
+        const port = Number(location.port)
+            || (location.protocol === 'https:' ? 443 : 80);
+        if (isLoopback) {
+            if (!new Set(LIVE_SERVER_FALLBACK_PORTS).has(port)) {
+                return fallback;
+            }
+            return `http://127.0.0.1:${port}/api/live-departures`;
+        }
+
+        return `${location.origin}/api/live-departures`;
     }
 
     return fallback;
@@ -551,6 +581,7 @@ export const getDefaultLiveApiUrl = (
 export const fetchLiveDepartures = async ({
     apiUrl = getDefaultLiveApiUrl(),
     sourceUrl = normalizeLiveSourceUrl(LIVE_STATION_DEFAULTS.sourceUrl),
+    pollIntervalMs = LIVE_POLL_INTERVAL_MS,
     fetchImpl = globalThis.fetch,
     attempts = 3
 } = {}) => {
@@ -565,6 +596,10 @@ export const fetchLiveDepartures = async ({
     endpoint.searchParams.set(
         'source',
         normalizeLiveSourceUrl(sourceUrl)
+    );
+    endpoint.searchParams.set(
+        'interval',
+        String(normalizeLivePollIntervalMs(pollIntervalMs))
     );
 
     let lastError = null;

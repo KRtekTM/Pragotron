@@ -24,32 +24,41 @@ npm install
 python -m http.server 8000
 ```
 
-Pokud chcete používat živé odjezdy z tabule Správy železnic, spusťte místo
-jednoduchého statického serveru vestavěný server:
+Pokud chcete používat živé odjezdy z tabule Správy železnic, nebo připojit
+tabule z jiného počítače, spusťte vestavěný server:
 
 ```text
 npm run serve
 ```
 
 Ten kromě statických souborů poskytuje endpoint
-`/api/live-departures`, který jednou za minutu serverově načte zdrojovou
-ASP.NET tabuli a předá manage stránce zparsované odjezdy. Zdrojová stránka
-nemá CORS hlavičku, proto ji nelze načítat přímo z prohlížeče. Výchozí
-adresa scraperu je `http://127.0.0.1:4787/api/live-departures`. Manage
-stránka pak použije:
+`/api/live-departures`. Ve výchozím nastavení manage stahuje tabuli
+jednou za minutu; interval 30–300 sekund se nastavuje posuvníkem v bloku
+Živé odjezdy. Zdrojová stránka
+nemá CORS hlavičku, proto ji nelze načítat přímo z prohlížeče. Server
+poslouchá na všech síťových rozhraních. Na stejném počítači otevřete
+`http://127.0.0.1:4787/platformTableManage.html` (ne `localhost`).
+Z jiného počítače v síti použijte adresu, kterou server vypíše jako `Síť:`.
+Jen místní režim bez sítě je `HOST=127.0.0.1 npm run serve`.
 
-```text
-http://127.0.0.1:4787/platformTableManage.html
-```
-
-Odjezdovou tabuli otevřete ve stejném originu:
+Manage stránka na této adrese pak použije stejný origin pro
+`/api/live-departures`. Odjezdová tabule:
 
 ```text
 http://127.0.0.1:4787/departureBoard.html
 ```
 
-`localhost` a `127.0.0.1` jsou pro prohlížeč různé originy, tabule se
-proto v manage neobjeví. Obě stránky musí běžet na `127.0.0.1`.
+Nástupištní tabule se k manage připojí sama a identitu dostane v adrese:
+
+```text
+http://127.0.0.1:4787/platformTable.html?platform=1&track=6a&sector=Jih
+```
+
+`localhost` a `127.0.0.1` jsou pro prohlížeč různé originy. Na `npm run serve`
+to nevadí, protože tabule a manage se propojí přes server. Na Windows
+stejně otevírejte `127.0.0.1`, ne `localhost`, jinak může stránka skončit
+chybou `ERR_NO_BUFFER_SPACE`. Prostý statický server bez tohoto kanálu
+propojí jen taby stejného originu ve stejném prohlížeči.
 
 Potom otevřete:
 
@@ -1031,9 +1040,15 @@ PoC používá dvě stránky stejného originu:
 - `platformTable.html` pouze vykresluje tabuli a přijímá příkazy,
 - `platformTableManage.html` obsahuje formulář a nastavení.
 
-Propojení zajišťuje `BoardTransport`. Primárně používá `BroadcastChannel`,
-při jeho nedostupnosti použije `storage` event přes vlastní namespaced klíč.
-Obě stránky proto musí být otevřené ve stejném prohlížeči a na stejném originu.
+Propojení v jednom prohlížeči zajišťuje `BoardTransport` přes
+`BroadcastChannel`, při jeho nedostupnosti přes `storage` event. Taby na
+stejném originu tedy fungují i bez serveru, včetně otevření přes `file://`.
+Stránky otevřené z `npm run serve` se navíc připojí na
+`/api/board-channel`. Server zprávy přepošle ostatním připojeným tabulím
+a manage, takže stejná registrace identity funguje i z jiného počítače.
+Stránka otevřená přes `file://` se k síti nepřipojí, dokud v adrese není
+`?hub=http://adresa-serveru:4787`. Port serveru je otevřený přenos bez
+přihlášení: na internetu ho zpřístupněte jen tam, kde tomu odpovídá síť.
 Příkazy s animovanou změnou dostávají potvrzení až po `board.isSettled()`.
 
 Každá nástupištní tabule má stabilní identitu složenou z nástupiště, koleje
@@ -1055,7 +1070,11 @@ window.pragotron.configureIdentity({
 
 Identita se ukládá do `sessionStorage`. Manage stránka tabule objevuje pomocí
 discovery zpráv a heartbeatů; v seznamu proto může být současně více tabulí
-stejné identity. Příkaz s prázdným sektorem se doručí všem sektorům dané
+stejné identity. U instance je vidět, jestli zpráva přišla z tabu stejného
+prohlížeče (`lokálně, tab prohlížeče`), nebo přes server. Síťové připojení
+ukáže adresu, na které server spojení přijal, a adresu počítače tabule.
+Vpravo na stejném řádku je user agent daného klienta.
+Příkaz s prázdným sektorem se doručí všem sektorům dané
 koleje, zatímco vyplněný sektor se doručí pouze přesné shodě.
 
 U každé aktivní tabule je v manage stránce také administrátorské tlačítko
@@ -1072,8 +1091,11 @@ zaškrtnutá; blikání čoček je součástí jejich komponentového chování.
 ## Živé odjezdy ze stanice
 
 Manage stránka obsahuje tlačítko `Spustit live odjezdy`. Po jeho aktivaci
-každou minutu načte zvolenou tabuli Správy železnic přes
-`/api/live-departures`. Výchozí zdroj je Brno hlavní nádraží
+stahuje zvolenou tabuli Správy železnic přes `/api/live-departures`.
+Interval je 30–300 sekund po 30 sekundách, výchozí je 60 sekund a ukládá se
+s ostatním nastavením manage. Dokud jsou live odjezdy zapnuté a je známý
+název stanice, title stránky je `Název stanice – PRAGOTRON – manage`.
+Výchozí zdroj je Brno hlavní nádraží
 (`StationTable.aspx?Key=455`), v manage jde URL změnit na jinou stanici
 se stejným formátem. Vedle popisku `Adresa tabule SŽ` parser doplní název
 stanice z `LStationName` jako odkaz na právě použitou URL. Nový snapshot:

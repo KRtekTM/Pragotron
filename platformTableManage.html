@@ -381,9 +381,9 @@
 
             <fieldset id="liveDeparturesPanel" class="manage-panel live-departures-panel">
                 <div><legend>Živé odjezdy</legend></div>
-                <p class="live-departures-description">
+                <p id="liveDeparturesDescription" class="live-departures-description">
                     Živé odjezdy ze stanice Správy železnic · aktualizace
-                    každou minutu. Pro načítání je potřeba spustit lokální
+                    každých 60 sekund. Pro načítání je potřeba spustit
                     scraper server.
                 </p>
                 <div class="board-form-field">
@@ -423,6 +423,25 @@
                     <small id="liveApiHelp">
                         Ve výchozím nastavení se používá
                         <code>http://127.0.0.1:4787/api/live-departures</code>.
+                    </small>
+                </label>
+                <label class="board-form-field" for="livePollInterval">
+                    Interval aktualizace
+                    <span class="live-poll-interval">
+                        <input
+                            id="livePollInterval"
+                            type="range"
+                            min="30"
+                            max="300"
+                            step="30"
+                            value="60"
+                            aria-describedby="livePollIntervalHelp"
+                        >
+                        <output id="livePollIntervalValue" for="livePollInterval">60 s</output>
+                    </span>
+                    <small id="livePollIntervalHelp">
+                        Jak často se stáhne tabule SŽ. 30–300 sekund,
+                        výchozí je 60 sekund.
                     </small>
                 </label>
                 <div class="live-departures-actions">
