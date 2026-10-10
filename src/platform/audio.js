@@ -210,6 +210,31 @@ const readStoredVolume = () => {
     }
 };
 
+// `?volume=0`–`100` on a board page forces the level for that load.
+// Anything else keeps the stored value. An empty query is not zero.
+const readVolumeOverride = () => {
+    try {
+        const params = new URLSearchParams(globalThis.location?.search || '');
+        if (!params.has('volume')) {
+            return null;
+        }
+
+        const raw = String(params.get('volume') ?? '').trim();
+        if (!/^\d{1,3}$/.test(raw)) {
+            return null;
+        }
+
+        const numeric = Number(raw);
+        if (!Number.isInteger(numeric) || numeric > 100) {
+            return null;
+        }
+
+        return numeric;
+    } catch {
+        return null;
+    }
+};
+
 const writeStoredVolume = (volume) => {
     try {
         globalThis.sessionStorage?.setItem(
@@ -229,7 +254,13 @@ export class SplitFlapAudio {
             : null;
         this.unlocked = false;
         this.muted = readStoredMute();
-        this.volume = readStoredVolume();
+        const volumeOverride = readVolumeOverride();
+        this.volume = volumeOverride === null
+            ? readStoredVolume()
+            : volumeOverride;
+        if (volumeOverride !== null) {
+            writeStoredVolume(volumeOverride);
+        }
         this.activationTarget = null;
         this.activationHandler = null;
         this.listeners = new Set();

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { stretchPreservePitch } from '../src/platform/audio.js';
+import { SplitFlapAudio, stretchPreservePitch } from '../src/platform/audio.js';
 
 const readWav = (fileName) => {
     const bytes = readFileSync(fileName);
@@ -111,6 +111,38 @@ assert(
     stretchPreservePitch(file.channels, file.sampleRate, 1)[0].length === file.frames,
     'unity rate'
 );
+
+const memoryStorage = () => {
+    const store = new Map();
+    return {
+        getItem: (key) => (store.has(key) ? store.get(key) : null),
+        setItem: (key, value) => {
+            store.set(key, String(value));
+        }
+    };
+};
+
+const assertVolume = (label, search, stored, expected) => {
+    globalThis.sessionStorage = memoryStorage();
+    if (stored != null) {
+        globalThis.sessionStorage.setItem('pragotron.board.audioVolume.v1', stored);
+    }
+    globalThis.location = { search };
+    const audio = new SplitFlapAudio();
+    const actual = audio.getState().volume;
+    audio.destroy();
+    if (actual !== expected) {
+        throw new Error(`${label}: expected ${expected}, got ${actual}`);
+    }
+};
+
+assertVolume('url forces volume', '?volume=40', '80', 40);
+assertVolume('url zero is silence', '?volume=0', '80', 0);
+assertVolume('url hundred', '?platform=1&volume=100', '15', 100);
+assertVolume('out of range keeps stored', '?volume=150', '80', 80);
+assertVolume('blank keeps stored', '?volume=', '80', 80);
+assertVolume('missing keeps stored', '?rows=12', '25', 25);
+assertVolume('missing defaults to 100', '', null, 100);
 
 console.log(JSON.stringify({
     outputMs: (stretched[0].length / file.sampleRate) * 1000,

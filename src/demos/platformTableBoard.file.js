@@ -191,6 +191,14 @@
     duration: STATION_FLIP_DURATION,
     variation: FLAP_TIMING_VARIATION_MS
   });
+  var DEPARTURE_FLAP_TIMING_DEFAULTS = Object.freeze({
+    duration: 100,
+    variation: FLAP_TIMING_VARIATION_MS
+  });
+  var PLATFORM_FLAP_TIMING_DEFAULTS = Object.freeze({
+    duration: 130,
+    variation: FLAP_TIMING_VARIATION_MS
+  });
   var DEPARTURE_BOARD_LOGO_PRESETS = Object.freeze([
     {
       id: "cd",
@@ -233,6 +241,20 @@
         FLAP_TIMING_DEFAULTS.variation
       )
     };
+  };
+  var isLegacySharedFlapTiming = (value) => {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    return Number(value.duration) === STATION_FLIP_DURATION && Number(value.variation ?? FLAP_TIMING_VARIATION_MS) === FLAP_TIMING_VARIATION_MS;
+  };
+  var resolveBoardFlapTiming = (value, boardDefault = FLAP_TIMING_DEFAULTS) => {
+    const source = value && typeof value === "object" ? value : null;
+    const hasDuration = Number.isFinite(Number(source?.duration));
+    if (!source || !hasDuration || isLegacySharedFlapTiming(source)) {
+      return normalizeFlapTiming(boardDefault);
+    }
+    return normalizeFlapTiming(source);
   };
   var getFlapDuration = (timing = FLAP_TIMING_DEFAULTS) => {
     const normalized = normalizeFlapTiming(timing);
@@ -597,10 +619,10 @@
   ]);
   var NIGHT_LIGHT_BASE_DEFAULTS = Object.freeze({
     enabled: true,
-    variation: true,
-    intensity: 100,
-    speed: 45,
-    fade: "soft"
+    variation: false,
+    intensity: 40,
+    speed: 120,
+    fade: "none"
   });
   var NIGHT_LIGHT_DEFAULTS = Object.freeze([
     { id: "top-left", label: "Horn\xED lev\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS },
@@ -612,7 +634,7 @@
   ]);
   var NIGHT_CLOCK_DEFAULTS = Object.freeze({
     enabled: true,
-    intensity: 50
+    intensity: 60
   });
   var createEmptyBoardState = () => ({
     stations: ["", ""],
@@ -809,6 +831,25 @@
       return 100;
     }
   };
+  var readVolumeOverride = () => {
+    try {
+      const params = new URLSearchParams(globalThis.location?.search || "");
+      if (!params.has("volume")) {
+        return null;
+      }
+      const raw = String(params.get("volume") ?? "").trim();
+      if (!/^\d{1,3}$/.test(raw)) {
+        return null;
+      }
+      const numeric = Number(raw);
+      if (!Number.isInteger(numeric) || numeric > 100) {
+        return null;
+      }
+      return numeric;
+    } catch {
+      return null;
+    }
+  };
   var writeStoredVolume = (volume) => {
     try {
       globalThis.sessionStorage?.setItem(
@@ -824,7 +865,11 @@
       this.pitchedTemplate = typeof Audio === "function" ? new Audio(PITCHED_SOUND_URL) : null;
       this.unlocked = false;
       this.muted = readStoredMute();
-      this.volume = readStoredVolume();
+      const volumeOverride = readVolumeOverride();
+      this.volume = volumeOverride === null ? readStoredVolume() : volumeOverride;
+      if (volumeOverride !== null) {
+        writeStoredVolume(volumeOverride);
+      }
       this.activationTarget = null;
       this.activationHandler = null;
       this.listeners = /* @__PURE__ */ new Set();
@@ -2427,6 +2472,62 @@
       Math.max(LENS_BLINK_INTERVAL_MIN, value)
     ) : fallback;
   };
+  var parseLensColors = (value) => {
+    const tokens = Array.isArray(value) ? value : String(value ?? "").split(/[,;/|]/);
+    const colors = [];
+    tokens.forEach((token) => {
+      const name = String(token ?? "").trim();
+      if (LENS_COLORS[name] && colors.length < 2) {
+        colors.push(name);
+      }
+    });
+    if (colors.length === 0) {
+      return null;
+    }
+    return [colors[0], colors[1] || colors[0]];
+  };
+  var LENS_COLOR_STORAGE_KEY = "pragotron.board.lensColors.v1";
+  var readStoredLensColors = (storage2 = globalThis.sessionStorage) => {
+    try {
+      const raw = storage2?.getItem(LENS_COLOR_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      return parseLensColors(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  };
+  var writeStoredLensColors = (colors, storage2 = globalThis.sessionStorage) => {
+    const parsed = parseLensColors(colors);
+    if (!parsed) {
+      return null;
+    }
+    try {
+      storage2?.setItem(LENS_COLOR_STORAGE_KEY, JSON.stringify(parsed));
+    } catch {
+    }
+    return parsed;
+  };
+  var readLensColorOverride = (location = globalThis.location) => {
+    try {
+      const params = new URLSearchParams(location?.search || "");
+      if (!params.has("lenses")) {
+        return null;
+      }
+      return parseLensColors(params.get("lenses"));
+    } catch {
+      return null;
+    }
+  };
+  var readInitialLensColors = (location = globalThis.location, storage2 = globalThis.sessionStorage) => {
+    const override = readLensColorOverride(location);
+    if (override) {
+      writeStoredLensColors(override, storage2);
+      return override;
+    }
+    return readStoredLensColors(storage2);
+  };
   var resolveColor = (setting, fallback) => {
     const candidates = [
       setting?.color,
@@ -2971,12 +3072,29 @@
     "bottom-left": { enabled: false, variation: false, intensity: 0, speed: 60, fade: "soft" },
     "bottom-right": { enabled: true, variation: true, intensity: 75, speed: 55, fade: "slow" }
   });
+  var PREVIOUS_UNIFORM_DEFAULT = Object.freeze({
+    enabled: true,
+    variation: true,
+    intensity: 100,
+    speed: 45,
+    fade: "soft"
+  });
+  var matchesLampSetting = (setting, legacy) => [
+    "enabled",
+    "variation",
+    "intensity",
+    "speed",
+    "fade"
+  ].every((key) => String(setting?.[key]) === String(legacy[key]));
   var isLegacyDefault = (id, setting) => {
-    const legacy = LEGACY_LIGHT_DEFAULTS[id];
-    if (!legacy) {
+    if (!setting || typeof setting !== "object") {
       return false;
     }
-    return ["enabled", "variation", "intensity", "speed", "fade"].every((key) => String(setting?.[key]) === String(legacy[key]));
+    if (matchesLampSetting(setting, PREVIOUS_UNIFORM_DEFAULT)) {
+      return true;
+    }
+    const legacy = LEGACY_LIGHT_DEFAULTS[id];
+    return Boolean(legacy) && matchesLampSetting(setting, legacy);
   };
   var cloneLampSetting = (setting) => ({
     id: setting.id,
@@ -3008,11 +3126,12 @@
         })
       );
       const clock = initialClock || {};
+      const clockSource = clock.enabled === true && Number(clock.intensity) === 50 ? {} : clock;
       this.clockSettings = {
-        enabled: typeof clock.enabled === "boolean" ? clock.enabled : NIGHT_CLOCK_DEFAULTS.enabled,
+        enabled: typeof clockSource.enabled === "boolean" ? clockSource.enabled : NIGHT_CLOCK_DEFAULTS.enabled,
         intensity: Math.round(
           clamp2(
-            clock.intensity,
+            clockSource.intensity,
             0,
             100,
             NIGHT_CLOCK_DEFAULTS.intensity
@@ -3375,10 +3494,12 @@
       storageKey = BOARD_TRANSPORT_STORAGE_KEY,
       storage: storage2,
       windowRef = globalThis.window,
-      boardId = ""
+      boardId = "",
+      onLog = null
     } = {}) {
       this.id = createId("client");
       this.boardId = typeof boardId === "string" ? boardId : "";
+      this.onLog = typeof onLog === "function" ? onLog : null;
       this.storageKey = storageKey;
       this.storage = getStorage(storage2);
       this.window = windowRef;
@@ -3429,6 +3550,9 @@
           return;
         }
         this.socketRetryMs = 1e3;
+        this.logExchange("spojen\xED nav\xE1z\xE1no", {
+          url: this.socketUrl
+        });
         const queued = this.pendingSocketMessages.splice(0);
         queued.forEach((text) => {
           try {
@@ -3463,6 +3587,10 @@
         this.socket = null;
         const delay = this.socketRetryMs;
         this.socketRetryMs = Math.min(delay * 2, 15e3);
+        this.logExchange("spojen\xED uzav\u0159eno", {
+          url: this.socketUrl,
+          dal\u0161\u00EDPokusZaMs: delay
+        });
         this.socketTimer = this.window?.setTimeout?.(() => {
           this.socketTimer = null;
           this.connectSocket();
@@ -3549,7 +3677,27 @@
         delivery
       };
       delete delivered.relay;
+      this.logExchange("p\u0159ijato", {
+        typ: delivered.type,
+        od: delivered.source,
+        komu: delivered.target?.source || delivered.target?.boardId || "tato tabule",
+        kan\u00E1l: delivery.channel === "network" ? `s\xED\u0165 ${delivery.network || "\u2014"}${delivery.client ? `, po\u010D\xEDta\u010D ${delivery.client}` : ""}` : "lok\xE1ln\u011B",
+        requestId: delivered.requestId,
+        data: delivered.payload
+      });
       this.listeners.forEach((listener) => listener(delivered));
+    }
+    logExchange(direction, details) {
+      const now = /* @__PURE__ */ new Date();
+      const stamp = `${now.toLocaleTimeString("cs-CZ", { hour12: false })}.${String(now.getMilliseconds()).padStart(3, "0")}`;
+      const line = `[pragotron] ${stamp} ${direction}`;
+      console.info(line, details);
+      if (this.onLog) {
+        try {
+          this.onLog(line, details);
+        } catch {
+        }
+      }
     }
     publish(type, payload = {}, requestIdOrOptions) {
       const options = requestIdOrOptions && typeof requestIdOrOptions === "object" ? requestIdOrOptions : { requestId: requestIdOrOptions };
@@ -3569,6 +3717,13 @@
         };
       }
       this.remember(message.messageId);
+      this.logExchange("odesl\xE1no", {
+        typ: type,
+        od: this.id,
+        komu: message.target?.source || message.target?.boardId || "v\u0161ichni",
+        requestId,
+        data: payload
+      });
       try {
         this.channel?.postMessage(message);
       } catch {
@@ -6397,6 +6552,66 @@
   );
   var heartbeatTimer = null;
   var commandQueue = Promise.resolve();
+  var boardLensColors = readInitialLensColors();
+  var BOARD_LIGHTING_STORAGE_KEY = "pragotron.board.lighting.v1";
+  var readStoredLighting = () => {
+    try {
+      const raw = window.sessionStorage.getItem(BOARD_LIGHTING_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return null;
+      }
+      return {
+        lamps: parsed.lamps && typeof parsed.lamps === "object" ? parsed.lamps : null,
+        clockLight: parsed.clockLight && typeof parsed.clockLight === "object" ? parsed.clockLight : null
+      };
+    } catch {
+      return null;
+    }
+  };
+  var writeStoredLighting = (lightingState) => {
+    try {
+      window.sessionStorage.setItem(
+        BOARD_LIGHTING_STORAGE_KEY,
+        JSON.stringify(lightingState)
+      );
+    } catch {
+    }
+  };
+  var storedLighting = readStoredLighting();
+  var boardLightingCustom = Boolean(storedLighting);
+  var withBoardLensColors = (state) => {
+    if (!boardLensColors || !state?.lenses?.lenses) {
+      return state;
+    }
+    return {
+      ...state,
+      lenses: {
+        ...state.lenses,
+        lenses: state.lenses.lenses.map((lens, index) => ({
+          ...lens,
+          color: boardLensColors[index] || boardLensColors[0]
+        }))
+      }
+    };
+  };
+  var paintBoardLensColors = () => {
+    if (!boardLensColors) {
+      return;
+    }
+    currentDisplayState = withBoardLensColors(
+      currentDisplayState || createEmptyDisplayState()
+    );
+    if (identificationActive) {
+      normalLensState = cloneLensState(currentDisplayState.lenses);
+      applyIdentificationLensState();
+      return;
+    }
+    lensDisplay.set(currentDisplayState.lenses || createEmptyLensState());
+  };
   var createEmptyDisplayState = () => ({
     ...createEmptyBoardState(),
     lenses: createEmptyLensState()
@@ -6418,12 +6633,42 @@
     return validStations && TRAIN_TYPES.some((type) => type.name === state.train) && parseDelayMinutes(state.delay) !== null && validTime;
   };
   var audio = new SplitFlapAudio();
+  var BOARD_FLAP_TIMING_STORAGE_KEY = "pragotron.board.flapTiming.v1";
+  var readStoredFlapTiming = () => {
+    try {
+      const raw = window.sessionStorage.getItem(BOARD_FLAP_TIMING_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return null;
+      }
+      return normalizeFlapTiming(parsed);
+    } catch {
+      return null;
+    }
+  };
+  var writeStoredFlapTiming = (timing) => {
+    try {
+      window.sessionStorage.setItem(
+        BOARD_FLAP_TIMING_STORAGE_KEY,
+        JSON.stringify(normalizeFlapTiming(timing))
+      );
+    } catch {
+    }
+  };
+  var storedFlapTiming = readStoredFlapTiming();
+  var boardFlapTimingCustom = storedFlapTiming !== null;
   var board = createBoard({
     root: documentRef.querySelector(PLATFORM_TABLE_TEMPLATE.rootSelector),
     slots: PLATFORM_TABLE_TEMPLATE.slots,
     registry: createDefaultRegistry({ audio }),
     initialState: createEmptyDisplayState(),
-    flapTiming: normalizeFlapTiming(savedSettings?.flapTiming)
+    flapTiming: storedFlapTiming || resolveBoardFlapTiming(
+      savedSettings?.flapTiming,
+      PLATFORM_FLAP_TIMING_DEFAULTS
+    )
   });
   var lensDisplay = board.getComponent("lenses");
   var lensActivationTimer = null;
@@ -6432,6 +6677,7 @@
   var currentDisplayState = createEmptyDisplayState();
   var identificationActive = false;
   var normalLensState = null;
+  paintBoardLensColors();
   var operationalPreDepartureActive = true;
   var cancelLensActivation = () => {
     lensActivationToken += 1;
@@ -6544,7 +6790,7 @@
   };
   var setBoardState = (state, options = {}) => {
     cancelLensActivation();
-    const nextState = state || createEmptyDisplayState();
+    const nextState = withBoardLensColors(state || createEmptyDisplayState());
     currentDisplayState = nextState;
     if (identificationActive) {
       normalLensState = nextState.lenses || createEmptyLensState();
@@ -6561,8 +6807,8 @@
   var nightLighting = new NightLighting({
     root: screenElement,
     clockBlock: documentRef.querySelector("#clockBlock"),
-    initialLamps: savedSettings?.lamps || {},
-    initialClock: savedSettings?.clockLight || NIGHT_CLOCK_DEFAULTS
+    initialLamps: storedLighting?.lamps || savedSettings?.lamps || {},
+    initialClock: storedLighting?.clockLight || savedSettings?.clockLight || NIGHT_CLOCK_DEFAULTS
   }).mount();
   var analogClock = new AnalogClock(
     documentRef.querySelector("#pragotronAnalogClock")
@@ -6632,18 +6878,21 @@
     flapTiming,
     delayOffset: nextDelayOffset
   } = {}) => {
-    if (flapTiming) {
-      board.setFlapTiming(flapTiming);
+    if (flapTiming && !boardFlapTimingCustom) {
+      board.setFlapTiming(resolveBoardFlapTiming(
+        flapTiming,
+        PLATFORM_FLAP_TIMING_DEFAULTS
+      ));
     }
     if (typeof nextDelayOffset === "boolean") {
       delayOffset = normalizeDelayOffset(nextDelayOffset);
       board.setDelayOffset(delayOffset);
       scheduleLensActivation(currentDisplayState);
     }
-    if (lamps) {
+    if (lamps && !boardLightingCustom) {
       nightLighting.setLampSettings(lamps);
     }
-    if (clockLight) {
+    if (clockLight && !boardLightingCustom) {
       nightLighting.setClockLight(clockLight);
     }
     if (typeof autoNightMode === "boolean") {
@@ -6664,6 +6913,13 @@
     };
     check();
   });
+  var getBoardLensColors = () => {
+    const lenses = (normalLensState || lensDisplay.getValue())?.lenses || [];
+    return [
+      boardLensColors?.[0] || lenses[0]?.color || "green",
+      boardLensColors?.[1] || lenses[1]?.color || lenses[0]?.color || "green"
+    ];
+  };
   var getLensPresenceState = () => ({
     ...normalLensState || lensDisplay.getValue(),
     preDepartureActive: normalLensState ? operationalPreDepartureActive : lensDisplay.preDepartureActive,
@@ -6676,6 +6932,7 @@
       instanceId: transport.id,
       revision: appliedRevision,
       lensState: getLensPresenceState(),
+      lensColors: getBoardLensColors(),
       identificationActive,
       ...payload
     }, {
@@ -6702,6 +6959,10 @@
       autoNightMode: automaticNightMode,
       appliedRevision,
       lensState: getLensPresenceState(),
+      lensColors: getBoardLensColors(),
+      lamps: nightLighting.getLampSettings(),
+      clockLight: nightLighting.getClockSettings(),
+      flapTiming: board.getFlapTiming(),
       audio: audio.getState(),
       identificationActive,
       userAgent: String(globalThis.navigator?.userAgent || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400)
@@ -6716,6 +6977,10 @@
       configured: Boolean(boardIdentity.platform && boardIdentity.track),
       appliedRevision,
       lensState: getLensPresenceState(),
+      lensColors: getBoardLensColors(),
+      lamps: nightLighting.getLampSettings(),
+      clockLight: nightLighting.getClockSettings(),
+      flapTiming: board.getFlapTiming(),
       audio: audio.getState(),
       identificationActive,
       userAgent: String(globalThis.navigator?.userAgent || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400)
@@ -6733,6 +6998,10 @@
       forceOn,
       muted,
       volume,
+      colors,
+      lamps,
+      clockLight,
+      flapTiming,
       immediate = false
     } = message.payload || {};
     try {
@@ -6740,12 +7009,15 @@
       const isIdentificationAction = action === "identify-lenses";
       const isAudioMuteAction = action === "set-audio-muted";
       const isAudioVolumeAction = action === "set-audio-volume";
+      const isLensColorAction = action === "set-lens-colors";
+      const isLightingAction = action === "set-lighting";
+      const isFlapTimingAction = action === "set-flap-timing";
       if (isTargetedAction) {
         if (!message.payload?.target || !identitiesMatch(boardIdentity, message.payload.target)) {
           return;
         }
       }
-      if ((isIdentificationAction || isAudioMuteAction || isAudioVolumeAction) && message.target?.source !== transport.id) {
+      if ((isIdentificationAction || isAudioMuteAction || isAudioVolumeAction || isLensColorAction || isLightingAction || isFlapTimingAction) && message.target?.source !== transport.id) {
         return;
       }
       if (![
@@ -6754,7 +7026,10 @@
         "reset-all",
         "identify-lenses",
         "set-audio-muted",
-        "set-audio-volume"
+        "set-audio-volume",
+        "set-lens-colors",
+        "set-lighting",
+        "set-flap-timing"
       ].includes(action)) {
         throw new Error("Nezn\xE1m\xE1 akce tabule.");
       }
@@ -6772,6 +7047,51 @@
         acknowledge(message, {
           ok: true,
           audio: audio.getState()
+        });
+        publishHeartbeat();
+        return;
+      }
+      if (isFlapTimingAction) {
+        const nextTiming = board.setFlapTiming(flapTiming);
+        boardFlapTimingCustom = true;
+        writeStoredFlapTiming(nextTiming);
+        acknowledge(message, {
+          ok: true,
+          flapTiming: nextTiming
+        });
+        publishHeartbeat();
+        return;
+      }
+      if (isLightingAction) {
+        if (lamps && typeof lamps === "object") {
+          nightLighting.setLampSettings(lamps);
+        }
+        if (clockLight && typeof clockLight === "object") {
+          nightLighting.setClockLight(clockLight);
+        }
+        boardLightingCustom = true;
+        writeStoredLighting({
+          lamps: nightLighting.getLampSettings(),
+          clockLight: nightLighting.getClockSettings()
+        });
+        acknowledge(message, {
+          ok: true,
+          lamps: nightLighting.getLampSettings(),
+          clockLight: nightLighting.getClockSettings()
+        });
+        publishHeartbeat();
+        return;
+      }
+      if (isLensColorAction) {
+        const parsed = writeStoredLensColors(colors) || parseLensColors(colors);
+        if (!parsed) {
+          throw new Error("Neplatn\xE1 barva \u010Do\u010Dek.");
+        }
+        boardLensColors = parsed;
+        paintBoardLensColors();
+        acknowledge(message, {
+          ok: true,
+          lensColors: parsed
         });
         publishHeartbeat();
         return;
@@ -6823,7 +7143,7 @@
       return;
     }
     if (message.type === "board:command") {
-      if (message.payload?.action === "identify-lenses" || message.payload?.action === "set-audio-muted" || message.payload?.action === "set-audio-volume") {
+      if (message.payload?.action === "identify-lenses" || message.payload?.action === "set-audio-muted" || message.payload?.action === "set-audio-volume" || message.payload?.action === "set-lens-colors" || message.payload?.action === "set-lighting" || message.payload?.action === "set-flap-timing") {
         void handleCommand(message);
       } else {
         commandQueue = commandQueue.then(() => handleCommand(message));
@@ -6837,7 +7157,10 @@
   applySettings({
     nightMode: savedSettings?.nightMode === true,
     autoNightMode: automaticNightMode,
-    flapTiming: savedSettings?.flapTiming,
+    flapTiming: resolveBoardFlapTiming(
+      savedSettings?.flapTiming,
+      PLATFORM_FLAP_TIMING_DEFAULTS
+    ),
     delayOffset
   });
   publishReady();

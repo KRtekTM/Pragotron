@@ -191,6 +191,14 @@
     duration: STATION_FLIP_DURATION,
     variation: FLAP_TIMING_VARIATION_MS
   });
+  var DEPARTURE_FLAP_TIMING_DEFAULTS = Object.freeze({
+    duration: 100,
+    variation: FLAP_TIMING_VARIATION_MS
+  });
+  var PLATFORM_FLAP_TIMING_DEFAULTS = Object.freeze({
+    duration: 130,
+    variation: FLAP_TIMING_VARIATION_MS
+  });
   var DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 12;
   var DEPARTURE_BOARD_ROW_COUNT_MIN = 1;
   var DEPARTURE_BOARD_ROW_COUNT_MAX = 24;
@@ -273,6 +281,20 @@
         FLAP_TIMING_DEFAULTS.variation
       )
     };
+  };
+  var isLegacySharedFlapTiming = (value) => {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    return Number(value.duration) === STATION_FLIP_DURATION && Number(value.variation ?? FLAP_TIMING_VARIATION_MS) === FLAP_TIMING_VARIATION_MS;
+  };
+  var resolveBoardFlapTiming = (value, boardDefault = FLAP_TIMING_DEFAULTS) => {
+    const source = value && typeof value === "object" ? value : null;
+    const hasDuration = Number.isFinite(Number(source?.duration));
+    if (!source || !hasDuration || isLegacySharedFlapTiming(source)) {
+      return normalizeFlapTiming(boardDefault);
+    }
+    return normalizeFlapTiming(source);
   };
   var getFlapDuration = (timing = FLAP_TIMING_DEFAULTS) => {
     const normalized = normalizeFlapTiming(timing);
@@ -379,8 +401,12 @@
     date.setSeconds(0, 0);
     date.setHours(hours, minutes, 0, 0);
     const actualDelay = parseDelayMinutes(delay);
-    const hasDelay = Number.isFinite(actualDelay) && actualDelay > 0;
-    if (!hasDelay && minutesSinceClock(date, reference) > RECENT_DEPARTURE_GRACE_MS) {
+    const delayMinutes = Number.isFinite(actualDelay) ? actualDelay : 0;
+    const effective = new Date(date.getTime());
+    if (delayMinutes > 0) {
+      effective.setMinutes(effective.getMinutes() + delayMinutes);
+    }
+    if (minutesSinceClock(effective, reference) > RECENT_DEPARTURE_GRACE_MS) {
       date.setDate(date.getDate() + 1);
     }
     return date.getTime();
@@ -686,10 +712,10 @@
   ]);
   var NIGHT_LIGHT_BASE_DEFAULTS = Object.freeze({
     enabled: true,
-    variation: true,
-    intensity: 100,
-    speed: 45,
-    fade: "soft"
+    variation: false,
+    intensity: 40,
+    speed: 120,
+    fade: "none"
   });
   var NIGHT_LIGHT_DEFAULTS = Object.freeze([
     { id: "top-left", label: "Horn\xED lev\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS },
@@ -701,7 +727,7 @@
   ]);
   var NIGHT_CLOCK_DEFAULTS = Object.freeze({
     enabled: true,
-    intensity: 50
+    intensity: 60
   });
 
   // src/platform/audio.js
@@ -878,6 +904,25 @@
       return 100;
     }
   };
+  var readVolumeOverride = () => {
+    try {
+      const params = new URLSearchParams(globalThis.location?.search || "");
+      if (!params.has("volume")) {
+        return null;
+      }
+      const raw = String(params.get("volume") ?? "").trim();
+      if (!/^\d{1,3}$/.test(raw)) {
+        return null;
+      }
+      const numeric = Number(raw);
+      if (!Number.isInteger(numeric) || numeric > 100) {
+        return null;
+      }
+      return numeric;
+    } catch {
+      return null;
+    }
+  };
   var writeStoredVolume = (volume) => {
     try {
       globalThis.sessionStorage?.setItem(
@@ -893,7 +938,11 @@
       this.pitchedTemplate = typeof Audio === "function" ? new Audio(PITCHED_SOUND_URL) : null;
       this.unlocked = false;
       this.muted = readStoredMute();
-      this.volume = readStoredVolume();
+      const volumeOverride = readVolumeOverride();
+      this.volume = volumeOverride === null ? readStoredVolume() : volumeOverride;
+      if (volumeOverride !== null) {
+        writeStoredVolume(volumeOverride);
+      }
       this.activationTarget = null;
       this.activationHandler = null;
       this.listeners = /* @__PURE__ */ new Set();
@@ -2496,6 +2545,62 @@
       Math.max(LENS_BLINK_INTERVAL_MIN, value)
     ) : fallback;
   };
+  var parseLensColors = (value) => {
+    const tokens = Array.isArray(value) ? value : String(value ?? "").split(/[,;/|]/);
+    const colors = [];
+    tokens.forEach((token) => {
+      const name = String(token ?? "").trim();
+      if (LENS_COLORS[name] && colors.length < 2) {
+        colors.push(name);
+      }
+    });
+    if (colors.length === 0) {
+      return null;
+    }
+    return [colors[0], colors[1] || colors[0]];
+  };
+  var LENS_COLOR_STORAGE_KEY = "pragotron.board.lensColors.v1";
+  var readStoredLensColors = (storage2 = globalThis.sessionStorage) => {
+    try {
+      const raw = storage2?.getItem(LENS_COLOR_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      return parseLensColors(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  };
+  var writeStoredLensColors = (colors, storage2 = globalThis.sessionStorage) => {
+    const parsed = parseLensColors(colors);
+    if (!parsed) {
+      return null;
+    }
+    try {
+      storage2?.setItem(LENS_COLOR_STORAGE_KEY, JSON.stringify(parsed));
+    } catch {
+    }
+    return parsed;
+  };
+  var readLensColorOverride = (location = globalThis.location) => {
+    try {
+      const params = new URLSearchParams(location?.search || "");
+      if (!params.has("lenses")) {
+        return null;
+      }
+      return parseLensColors(params.get("lenses"));
+    } catch {
+      return null;
+    }
+  };
+  var readInitialLensColors = (location = globalThis.location, storage2 = globalThis.sessionStorage) => {
+    const override = readLensColorOverride(location);
+    if (override) {
+      writeStoredLensColors(override, storage2);
+      return override;
+    }
+    return readStoredLensColors(storage2);
+  };
   var resolveColor = (setting, fallback) => {
     const candidates = [
       setting?.color,
@@ -3227,12 +3332,14 @@
       timing = FLAP_TIMING_DEFAULTS,
       rowIndex = 0,
       applyDelayOffset = DELAY_OFFSET_DEFAULT,
-      lensColorTemplate = null
+      lensColorTemplate = null,
+      synchronizeRows = true
     } = {}) {
       this.element = element;
       this.timing = normalizeFlapTiming(timing);
       this.rowIndex = Math.max(0, Math.floor(Number(rowIndex) || 0));
       this.lensColorTemplate = lensColorTemplate;
+      this.synchronizeRows = synchronizeRows !== false;
       this.stationOne = new SplitFlapDisplay(
         element.querySelector('[data-departure-slot="stationOne"]'),
         { audio: audio2, maxLength: 14, timing: this.timing }
@@ -3316,10 +3423,29 @@
     setLensColorTemplate(template) {
       this.lensColorTemplate = template?.lenses ? template : null;
       const current = this.lenses.getValue();
-      this.lenses.set(withManagedLensColors(current, this.lensColorTemplate));
+      this.lenses.set(this.withBoardLensOptions(
+        withManagedLensColors(current, this.lensColorTemplate)
+      ));
+    }
+    setSynchronizeRows(enabled) {
+      this.synchronizeRows = enabled !== false;
+      const current = this.lenses.getValue();
+      this.lenses.set(this.withBoardLensOptions(current));
+      return this.synchronizeRows;
+    }
+    withBoardLensOptions(state) {
+      if (!state) {
+        return state;
+      }
+      return {
+        ...state,
+        synchronizeRows: this.synchronizeRows !== false
+      };
     }
     paintLenses(state, { preDepartureActive = true } = {}) {
-      this.lenses.set(withManagedLensColors(state, this.lensColorTemplate));
+      this.lenses.set(this.withBoardLensOptions(
+        withManagedLensColors(state, this.lensColorTemplate)
+      ));
       this.lenses.setPreDepartureActive(preDepartureActive);
     }
     applyIdentificationLenses() {
@@ -3422,7 +3548,8 @@
       rowSelector = "[data-departure-row]",
       rowCount = DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
       applyDelayOffset = DELAY_OFFSET_DEFAULT,
-      lensSettings = null
+      lensSettings = null,
+      synchronizeRows = true
     } = {}) {
       if (!root2) {
         throw new TypeError("DepartureBoardDisplay vy\u017Eaduje root element.");
@@ -3432,6 +3559,7 @@
       this.timing = normalizeFlapTiming(timing);
       this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
       this.lensSettings = lensSettings?.lenses ? lensSettings : null;
+      this.synchronizeRows = synchronizeRows !== false;
       this.rowSelector = rowSelector;
       this.rows = [...root2.querySelectorAll(rowSelector)].map(
         (element, index) => new DepartureBoardRow(element, {
@@ -3439,7 +3567,8 @@
           timing: this.timing,
           rowIndex: index,
           applyDelayOffset: this.applyDelayOffset,
-          lensColorTemplate: this.lensSettings
+          lensColorTemplate: this.lensSettings,
+          synchronizeRows: this.synchronizeRows
         })
       );
       this.displayedRows = Array.from(
@@ -3474,6 +3603,14 @@
         this.applyIdentificationLenses();
       }
       return this.lensSettings;
+    }
+    setSynchronizeRows(enabled) {
+      this.synchronizeRows = enabled !== false;
+      this.rows.forEach((row) => row.setSynchronizeRows(this.synchronizeRows));
+      if (this.identificationActive) {
+        this.applyIdentificationLenses();
+      }
+      return this.synchronizeRows;
     }
     getRowContainer() {
       return this.root.tBodies?.[0] || this.root.querySelector("tbody") || this.root;
@@ -3512,7 +3649,8 @@
           timing: this.timing,
           rowIndex: index,
           applyDelayOffset: this.applyDelayOffset,
-          lensColorTemplate: this.lensSettings
+          lensColorTemplate: this.lensSettings,
+          synchronizeRows: this.synchronizeRows
         }));
         this.displayedRows.push(null);
         this.targetRows.push(null);
@@ -3722,6 +3860,13 @@
     "bottom-left": { enabled: false, variation: false, intensity: 0, speed: 60, fade: "soft" },
     "bottom-right": { enabled: true, variation: true, intensity: 75, speed: 55, fade: "slow" }
   });
+  var PREVIOUS_UNIFORM_DEFAULT = Object.freeze({
+    enabled: true,
+    variation: true,
+    intensity: 100,
+    speed: 45,
+    fade: "soft"
+  });
 
   // src/platform/storage.js
   var LocalStorageAdapter = class {
@@ -3855,10 +4000,12 @@
       storageKey = BOARD_TRANSPORT_STORAGE_KEY,
       storage: storage2,
       windowRef = globalThis.window,
-      boardId = ""
+      boardId = "",
+      onLog = null
     } = {}) {
       this.id = createId("client");
       this.boardId = typeof boardId === "string" ? boardId : "";
+      this.onLog = typeof onLog === "function" ? onLog : null;
       this.storageKey = storageKey;
       this.storage = getStorage(storage2);
       this.window = windowRef;
@@ -3909,6 +4056,9 @@
           return;
         }
         this.socketRetryMs = 1e3;
+        this.logExchange("spojen\xED nav\xE1z\xE1no", {
+          url: this.socketUrl
+        });
         const queued = this.pendingSocketMessages.splice(0);
         queued.forEach((text) => {
           try {
@@ -3943,6 +4093,10 @@
         this.socket = null;
         const delay = this.socketRetryMs;
         this.socketRetryMs = Math.min(delay * 2, 15e3);
+        this.logExchange("spojen\xED uzav\u0159eno", {
+          url: this.socketUrl,
+          dal\u0161\u00EDPokusZaMs: delay
+        });
         this.socketTimer = this.window?.setTimeout?.(() => {
           this.socketTimer = null;
           this.connectSocket();
@@ -4029,7 +4183,27 @@
         delivery
       };
       delete delivered.relay;
+      this.logExchange("p\u0159ijato", {
+        typ: delivered.type,
+        od: delivered.source,
+        komu: delivered.target?.source || delivered.target?.boardId || "tato tabule",
+        kan\u00E1l: delivery.channel === "network" ? `s\xED\u0165 ${delivery.network || "\u2014"}${delivery.client ? `, po\u010D\xEDta\u010D ${delivery.client}` : ""}` : "lok\xE1ln\u011B",
+        requestId: delivered.requestId,
+        data: delivered.payload
+      });
       this.listeners.forEach((listener) => listener(delivered));
+    }
+    logExchange(direction, details) {
+      const now = /* @__PURE__ */ new Date();
+      const stamp = `${now.toLocaleTimeString("cs-CZ", { hour12: false })}.${String(now.getMilliseconds()).padStart(3, "0")}`;
+      const line = `[pragotron] ${stamp} ${direction}`;
+      console.info(line, details);
+      if (this.onLog) {
+        try {
+          this.onLog(line, details);
+        } catch {
+        }
+      }
     }
     publish(type, payload = {}, requestIdOrOptions) {
       const options = requestIdOrOptions && typeof requestIdOrOptions === "object" ? requestIdOrOptions : { requestId: requestIdOrOptions };
@@ -4049,6 +4223,13 @@
         };
       }
       this.remember(message.messageId);
+      this.logExchange("odesl\xE1no", {
+        typ: type,
+        od: this.id,
+        komu: message.target?.source || message.target?.boardId || "v\u0161ichni",
+        requestId,
+        data: payload
+      });
       try {
         this.channel?.postMessage(message);
       } catch {
@@ -4192,12 +4373,113 @@
   }
   var audio = new SplitFlapAudio();
   audio.bindUserActivation(screen || documentRef);
-  var initialTiming = normalizeFlapTiming(savedSettings.flapTiming);
-  var requestedRowCount = new URLSearchParams(window.location.search).get("rows");
-  var urlLocksRowCount = requestedRowCount != null && requestedRowCount !== "";
-  var initialRowCount = urlLocksRowCount ? normalizeDepartureBoardRowCount(requestedRowCount) : normalizeDepartureBoardRowCount(
+  var BOARD_FLAP_TIMING_STORAGE_KEY = "pragotron.board.flapTiming.v1";
+  var readStoredFlapTiming = () => {
+    try {
+      const raw = window.sessionStorage.getItem(BOARD_FLAP_TIMING_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return null;
+      }
+      return normalizeFlapTiming(parsed);
+    } catch {
+      return null;
+    }
+  };
+  var writeStoredFlapTiming = (timing) => {
+    try {
+      window.sessionStorage.setItem(
+        BOARD_FLAP_TIMING_STORAGE_KEY,
+        JSON.stringify(normalizeFlapTiming(timing))
+      );
+    } catch {
+    }
+  };
+  var storedFlapTiming = readStoredFlapTiming();
+  var boardFlapTimingCustom = storedFlapTiming !== null;
+  var initialTiming = storedFlapTiming || resolveBoardFlapTiming(
+    savedSettings.flapTiming,
+    DEPARTURE_FLAP_TIMING_DEFAULTS
+  );
+  var BOARD_ROW_COUNT_STORAGE_KEY = "pragotron.board.rowCount.v1";
+  var readRowCountParam = () => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (!params.has("rows")) {
+        return null;
+      }
+      const raw = String(params.get("rows") ?? "").trim();
+      if (!/^\d{1,2}$/.test(raw)) {
+        return null;
+      }
+      const numeric = Number(raw);
+      if (numeric < DEPARTURE_BOARD_ROW_COUNT_MIN || numeric > DEPARTURE_BOARD_ROW_COUNT_MAX) {
+        return null;
+      }
+      return numeric;
+    } catch {
+      return null;
+    }
+  };
+  var readStoredRowCount = () => {
+    try {
+      const stored = window.sessionStorage.getItem(BOARD_ROW_COUNT_STORAGE_KEY);
+      if (stored === null || stored === "") {
+        return null;
+      }
+      const numeric = Number(stored);
+      if (!Number.isInteger(numeric) || numeric < DEPARTURE_BOARD_ROW_COUNT_MIN || numeric > DEPARTURE_BOARD_ROW_COUNT_MAX) {
+        return null;
+      }
+      return numeric;
+    } catch {
+      return null;
+    }
+  };
+  var writeStoredRowCount = (value) => {
+    try {
+      window.sessionStorage.setItem(BOARD_ROW_COUNT_STORAGE_KEY, String(value));
+    } catch {
+    }
+  };
+  var urlRowCount = readRowCountParam();
+  var initialRowCount = urlRowCount ?? readStoredRowCount() ?? normalizeDepartureBoardRowCount(
     savedSettings.departureBoardRows ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT
   );
+  if (urlRowCount !== null) {
+    writeStoredRowCount(urlRowCount);
+  }
+  var lensTemplate = (colors) => ({
+    lenses: colors.map((color) => ({ color }))
+  });
+  var boardLensColors = readInitialLensColors();
+  var SYNCHRONIZE_ROWS_STORAGE_KEY = "pragotron.board.synchronizeRows.v1";
+  var readStoredSynchronizeRows = () => {
+    try {
+      const stored = window.sessionStorage.getItem(SYNCHRONIZE_ROWS_STORAGE_KEY);
+      if (stored === "0") {
+        return false;
+      }
+      if (stored === "1") {
+        return true;
+      }
+    } catch {
+    }
+    return true;
+  };
+  var writeStoredSynchronizeRows = (enabled) => {
+    try {
+      window.sessionStorage.setItem(
+        SYNCHRONIZE_ROWS_STORAGE_KEY,
+        enabled ? "1" : "0"
+      );
+    } catch {
+    }
+  };
+  var boardSynchronizeRows = readStoredSynchronizeRows();
   var delayOffset = normalizeDelayOffset(
     savedSettings.delayOffset ?? DELAY_OFFSET_DEFAULT
   );
@@ -4271,7 +4553,8 @@
     timing: initialTiming,
     rowCount: initialRowCount,
     applyDelayOffset: delayOffset,
-    lensSettings: savedSettings.lenses
+    lensSettings: boardLensColors ? lensTemplate(boardLensColors) : savedSettings.lenses,
+    synchronizeRows: boardSynchronizeRows
   });
   var transport = new BoardTransport();
   var recoverDepartures = (values, desiredStates = savedDesiredStates, { includeMissing = true } = {}) => {
@@ -4433,14 +4716,14 @@
   };
   var applyBoardSettings = (settings = {}) => {
     const source = settings && typeof settings === "object" ? settings : {};
-    if (source.flapTiming) {
-      boardTiming = normalizeFlapTiming(source.flapTiming);
+    if (source.flapTiming && !boardFlapTimingCustom) {
+      boardTiming = resolveBoardFlapTiming(
+        source.flapTiming,
+        DEPARTURE_FLAP_TIMING_DEFAULTS
+      );
       display.setTiming(boardTiming);
       boardClock?.setTiming(boardTiming);
       snapshotSignature = getSnapshotSignature(departures, boardTiming);
-    }
-    if (source.departureBoardRows != null && !urlLocksRowCount) {
-      applyRowCount(source.departureBoardRows);
     }
     if (typeof source.delayOffset === "boolean") {
       const nextOffset = normalizeDelayOffset(source.delayOffset);
@@ -4453,7 +4736,7 @@
     if (source.departureBoardLogo != null || source.departureBoardLogoSvg != null) {
       applyBoardLogo(source);
     }
-    if (source.lenses) {
+    if (source.lenses && !boardLensColors) {
       display.setLensSettings(source.lenses);
     }
   };
@@ -4463,16 +4746,17 @@
       return false;
     }
     const nextValues = Array.isArray(nextDepartures) ? nextDepartures : [];
-    const nextTiming = timing ? normalizeFlapTiming(timing) : boardTiming;
+    const nextTiming = timing && !boardFlapTimingCustom ? resolveBoardFlapTiming(timing, DEPARTURE_FLAP_TIMING_DEFAULTS) : boardTiming;
     const nextSignature = getSnapshotSignature(nextValues, nextTiming);
     if (numericRevision === revision && nextSignature === snapshotSignature) {
       return false;
     }
     departures = nextValues;
     revision = numericRevision;
-    if (timing) {
+    if (timing && !boardFlapTimingCustom) {
       boardTiming = nextTiming;
       display.setTiming(boardTiming);
+      boardClock?.setTiming(boardTiming);
     }
     snapshotSignature = nextSignature;
     updateDisplay({ immediate });
@@ -4503,6 +4787,9 @@
     ],
     appliedRevision: revision,
     rowCount: display.rows.length,
+    lensColors: boardLensColors || (display.lensSettings?.lenses || []).slice(0, 2).map((lens) => lens.color),
+    synchronizeRows: boardSynchronizeRows,
+    flapTiming: boardTiming,
     audio: audio.getState(),
     identificationActive,
     userAgent: String(globalThis.navigator?.userAgent || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 400)
@@ -4525,9 +4812,87 @@
     identificationActive = display.setIdentificationActive(forceOn);
     return identificationActive;
   };
+  var applyBoardLensColors = (colors) => {
+    const parsed = writeStoredLensColors(colors) || parseLensColors(colors);
+    if (!parsed) {
+      return null;
+    }
+    boardLensColors = parsed;
+    display.setLensSettings(lensTemplate(parsed));
+    return parsed;
+  };
   var handleCommand = (message) => {
-    const { action, forceOn, muted, volume } = message.payload || {};
+    const {
+      action,
+      forceOn,
+      muted,
+      volume,
+      rowCount,
+      colors,
+      synchronizeRows,
+      flapTiming
+    } = message.payload || {};
     if (message.target?.source !== transport.id) {
+      return;
+    }
+    if (action === "set-row-count") {
+      const numeric = Number(rowCount);
+      if (!Number.isInteger(numeric) || numeric < DEPARTURE_BOARD_ROW_COUNT_MIN || numeric > DEPARTURE_BOARD_ROW_COUNT_MAX) {
+        acknowledge(message, {
+          ok: false,
+          error: "Po\u010Det \u0159\xE1dk\u016F mus\xED b\xFDt cel\xE9 \u010D\xEDslo od 1 do 24."
+        });
+        return;
+      }
+      writeStoredRowCount(numeric);
+      applyRowCount(numeric);
+      acknowledge(message, {
+        ok: true,
+        rowCount: display.rows.length
+      });
+      publishHeartbeat();
+      return;
+    }
+    if (action === "set-flap-timing") {
+      const nextTiming = normalizeFlapTiming(flapTiming);
+      boardFlapTimingCustom = true;
+      writeStoredFlapTiming(nextTiming);
+      boardTiming = nextTiming;
+      display.setTiming(boardTiming);
+      boardClock?.setTiming(boardTiming);
+      snapshotSignature = getSnapshotSignature(departures, boardTiming);
+      acknowledge(message, {
+        ok: true,
+        flapTiming: nextTiming
+      });
+      publishHeartbeat();
+      return;
+    }
+    if (action === "set-synchronize-rows") {
+      boardSynchronizeRows = synchronizeRows !== false;
+      writeStoredSynchronizeRows(boardSynchronizeRows);
+      display.setSynchronizeRows(boardSynchronizeRows);
+      acknowledge(message, {
+        ok: true,
+        synchronizeRows: boardSynchronizeRows
+      });
+      publishHeartbeat();
+      return;
+    }
+    if (action === "set-lens-colors") {
+      const parsed = applyBoardLensColors(colors);
+      if (!parsed) {
+        acknowledge(message, {
+          ok: false,
+          error: "Neplatn\xE1 barva \u010Do\u010Dek."
+        });
+        return;
+      }
+      acknowledge(message, {
+        ok: true,
+        lensColors: parsed
+      });
+      publishHeartbeat();
       return;
     }
     if (action === "set-audio-muted") {

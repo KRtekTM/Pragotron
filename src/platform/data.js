@@ -142,6 +142,16 @@ export const FLAP_TIMING_DEFAULTS = Object.freeze({
     variation: FLAP_TIMING_VARIATION_MS
 });
 
+export const DEPARTURE_FLAP_TIMING_DEFAULTS = Object.freeze({
+    duration: 100,
+    variation: FLAP_TIMING_VARIATION_MS
+});
+
+export const PLATFORM_FLAP_TIMING_DEFAULTS = Object.freeze({
+    duration: 130,
+    variation: FLAP_TIMING_VARIATION_MS
+});
+
 export const DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 12;
 export const DEPARTURE_BOARD_ROW_COUNT_MIN = 1;
 export const DEPARTURE_BOARD_ROW_COUNT_MAX = 24;
@@ -256,6 +266,29 @@ export const normalizeFlapTiming = (value = {}) => {
             FLAP_TIMING_DEFAULTS.variation
         )
     };
+};
+
+export const isLegacySharedFlapTiming = (value) => {
+    if (!value || typeof value !== 'object') {
+        return false;
+    }
+
+    return Number(value.duration) === STATION_FLIP_DURATION
+        && Number(value.variation ?? FLAP_TIMING_VARIATION_MS)
+            === FLAP_TIMING_VARIATION_MS;
+};
+
+export const resolveBoardFlapTiming = (
+    value,
+    boardDefault = FLAP_TIMING_DEFAULTS
+) => {
+    const source = value && typeof value === 'object' ? value : null;
+    const hasDuration = Number.isFinite(Number(source?.duration));
+    if (!source || !hasDuration || isLegacySharedFlapTiming(source)) {
+        return normalizeFlapTiming(boardDefault);
+    }
+
+    return normalizeFlapTiming(source);
 };
 
 export const getFlapDuration = (timing = FLAP_TIMING_DEFAULTS) => {
@@ -422,13 +455,17 @@ export const getDepartureSortTimestamp = (
     date.setHours(hours, minutes, 0, 0);
 
     const actualDelay = parseDelayMinutes(delay);
-    const hasDelay = Number.isFinite(actualDelay) && actualDelay > 0;
+    const delayMinutes = Number.isFinite(actualDelay) ? actualDelay : 0;
+    const effective = new Date(date.getTime());
+    if (delayMinutes > 0) {
+        effective.setMinutes(effective.getMinutes() + delayMinutes);
+    }
 
-    // Undelayed clock times that already passed today are overnight
-    // services and sort after the rest of today's departures.
-    // Display offset must not hide a train that still has real delay.
-    // Keep an undelayed departure from the last 10 minutes on today.
-    if (!hasDelay && minutesSinceClock(date, reference) > RECENT_DEPARTURE_GRACE_MS) {
+    // A clock time already more than 10 minutes past is the next calendar
+    // day, so an overnight train sorts after this evening. Real delay keeps
+    // today's slot only while scheduled time plus that delay is still inside
+    // the same window. Display offset must not hide this delay.
+    if (minutesSinceClock(effective, reference) > RECENT_DEPARTURE_GRACE_MS) {
         date.setDate(date.getDate() + 1);
     }
 
@@ -789,10 +826,10 @@ export const NIGHT_FADE_MODES = Object.freeze([
 
 const NIGHT_LIGHT_BASE_DEFAULTS = Object.freeze({
     enabled: true,
-    variation: true,
-    intensity: 100,
-    speed: 45,
-    fade: 'soft'
+    variation: false,
+    intensity: 40,
+    speed: 120,
+    fade: 'none'
 });
 
 export const NIGHT_LIGHT_DEFAULTS = Object.freeze([
@@ -806,7 +843,7 @@ export const NIGHT_LIGHT_DEFAULTS = Object.freeze([
 
 export const NIGHT_CLOCK_DEFAULTS = Object.freeze({
     enabled: true,
-    intensity: 50
+    intensity: 60
 });
 
 export const createEmptyBoardState = () => ({

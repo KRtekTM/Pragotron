@@ -14,7 +14,14 @@ import {
     normalizeDelayOffset,
     normalizeDepartureBoardLogoId,
     normalizeDepartureBoardRowCount,
-    normalizeFlapTiming
+    normalizeFlapTiming,
+    DEPARTURE_FLAP_TIMING_DEFAULTS,
+    resolveBoardFlapTiming,
+    DEPARTURE_BOARD_ROW_COUNT_MAX,
+    DEPARTURE_BOARD_ROW_COUNT_MIN,
+    parseLensColors,
+    readInitialLensColors,
+    writeStoredLensColors
 } from '../platform/index.js';
 
 const STORAGE_KEY = 'pragotron.platformTable.state.v2';
@@ -35,14 +42,140 @@ if (!root) {
 
 const audio = new SplitFlapAudio();
 audio.bindUserActivation(screen || documentRef);
-const initialTiming = normalizeFlapTiming(savedSettings.flapTiming);
-const requestedRowCount = new URLSearchParams(window.location.search).get('rows');
-const urlLocksRowCount = requestedRowCount != null && requestedRowCount !== '';
-const initialRowCount = urlLocksRowCount
-    ? normalizeDepartureBoardRowCount(requestedRowCount)
-    : normalizeDepartureBoardRowCount(
+const BOARD_FLAP_TIMING_STORAGE_KEY = 'pragotron.board.flapTiming.v1';
+
+const readStoredFlapTiming = () => {
+    try {
+        const raw = window.sessionStorage.getItem(BOARD_FLAP_TIMING_STORAGE_KEY);
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        return normalizeFlapTiming(parsed);
+    } catch {
+        return null;
+    }
+};
+
+const writeStoredFlapTiming = (timing) => {
+    try {
+        window.sessionStorage.setItem(
+            BOARD_FLAP_TIMING_STORAGE_KEY,
+            JSON.stringify(normalizeFlapTiming(timing))
+        );
+    } catch {
+        // The board can still keep the timing for this page view.
+    }
+};
+
+const storedFlapTiming = readStoredFlapTiming();
+let boardFlapTimingCustom = storedFlapTiming !== null;
+const initialTiming = storedFlapTiming
+    || resolveBoardFlapTiming(
+        savedSettings.flapTiming,
+        DEPARTURE_FLAP_TIMING_DEFAULTS
+    );
+const BOARD_ROW_COUNT_STORAGE_KEY = 'pragotron.board.rowCount.v1';
+
+const readRowCountParam = () => {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (!params.has('rows')) {
+            return null;
+        }
+
+        const raw = String(params.get('rows') ?? '').trim();
+        if (!/^\d{1,2}$/.test(raw)) {
+            return null;
+        }
+
+        const numeric = Number(raw);
+        if (numeric < DEPARTURE_BOARD_ROW_COUNT_MIN
+            || numeric > DEPARTURE_BOARD_ROW_COUNT_MAX) {
+            return null;
+        }
+
+        return numeric;
+    } catch {
+        return null;
+    }
+};
+
+const readStoredRowCount = () => {
+    try {
+        const stored = window.sessionStorage.getItem(BOARD_ROW_COUNT_STORAGE_KEY);
+        if (stored === null || stored === '') {
+            return null;
+        }
+
+        const numeric = Number(stored);
+        if (!Number.isInteger(numeric)
+            || numeric < DEPARTURE_BOARD_ROW_COUNT_MIN
+            || numeric > DEPARTURE_BOARD_ROW_COUNT_MAX) {
+            return null;
+        }
+
+        return numeric;
+    } catch {
+        return null;
+    }
+};
+
+const writeStoredRowCount = (value) => {
+    try {
+        window.sessionStorage.setItem(BOARD_ROW_COUNT_STORAGE_KEY, String(value));
+    } catch {
+        // The board can still keep the row count for this page view.
+    }
+};
+
+const urlRowCount = readRowCountParam();
+const initialRowCount = urlRowCount
+    ?? readStoredRowCount()
+    ?? normalizeDepartureBoardRowCount(
         savedSettings.departureBoardRows ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT
     );
+if (urlRowCount !== null) {
+    writeStoredRowCount(urlRowCount);
+}
+
+const lensTemplate = (colors) => ({
+    lenses: colors.map((color) => ({ color }))
+});
+let boardLensColors = readInitialLensColors();
+const SYNCHRONIZE_ROWS_STORAGE_KEY = 'pragotron.board.synchronizeRows.v1';
+
+const readStoredSynchronizeRows = () => {
+    try {
+        const stored = window.sessionStorage.getItem(SYNCHRONIZE_ROWS_STORAGE_KEY);
+        if (stored === '0') {
+            return false;
+        }
+        if (stored === '1') {
+            return true;
+        }
+    } catch {
+        // Missing storage keeps the default, same side on every row.
+    }
+
+    return true;
+};
+
+const writeStoredSynchronizeRows = (enabled) => {
+    try {
+        window.sessionStorage.setItem(
+            SYNCHRONIZE_ROWS_STORAGE_KEY,
+            enabled ? '1' : '0'
+        );
+    } catch {
+        // The board can still keep the choice for this page view.
+    }
+};
+
+let boardSynchronizeRows = readStoredSynchronizeRows();
 let delayOffset = normalizeDelayOffset(
     savedSettings.delayOffset ?? DELAY_OFFSET_DEFAULT
 );
@@ -129,7 +262,10 @@ const display = new DepartureBoardDisplay(root, {
     timing: initialTiming,
     rowCount: initialRowCount,
     applyDelayOffset: delayOffset,
-    lensSettings: savedSettings.lenses
+    lensSettings: boardLensColors
+        ? lensTemplate(boardLensColors)
+        : savedSettings.lenses,
+    synchronizeRows: boardSynchronizeRows
 });
 const transport = new BoardTransport();
 
@@ -368,14 +504,14 @@ const applyRowCount = (value) => {
 
 const applyBoardSettings = (settings = {}) => {
     const source = settings && typeof settings === 'object' ? settings : {};
-    if (source.flapTiming) {
-        boardTiming = normalizeFlapTiming(source.flapTiming);
+    if (source.flapTiming && !boardFlapTimingCustom) {
+        boardTiming = resolveBoardFlapTiming(
+            source.flapTiming,
+            DEPARTURE_FLAP_TIMING_DEFAULTS
+        );
         display.setTiming(boardTiming);
         boardClock?.setTiming(boardTiming);
         snapshotSignature = getSnapshotSignature(departures, boardTiming);
-    }
-    if (source.departureBoardRows != null && !urlLocksRowCount) {
-        applyRowCount(source.departureBoardRows);
     }
     if (typeof source.delayOffset === 'boolean') {
         const nextOffset = normalizeDelayOffset(source.delayOffset);
@@ -389,7 +525,7 @@ const applyBoardSettings = (settings = {}) => {
         || source.departureBoardLogoSvg != null) {
         applyBoardLogo(source);
     }
-    if (source.lenses) {
+    if (source.lenses && !boardLensColors) {
         display.setLensSettings(source.lenses);
     }
 };
@@ -405,7 +541,9 @@ const applyDepartureSnapshot = (
     }
 
     const nextValues = Array.isArray(nextDepartures) ? nextDepartures : [];
-    const nextTiming = timing ? normalizeFlapTiming(timing) : boardTiming;
+    const nextTiming = timing && !boardFlapTimingCustom
+        ? resolveBoardFlapTiming(timing, DEPARTURE_FLAP_TIMING_DEFAULTS)
+        : boardTiming;
     const nextSignature = getSnapshotSignature(nextValues, nextTiming);
     if (numericRevision === revision
         && nextSignature === snapshotSignature) {
@@ -414,9 +552,10 @@ const applyDepartureSnapshot = (
 
     departures = nextValues;
     revision = numericRevision;
-    if (timing) {
+    if (timing && !boardFlapTimingCustom) {
         boardTiming = nextTiming;
         display.setTiming(boardTiming);
+        boardClock?.setTiming(boardTiming);
     }
     snapshotSignature = nextSignature;
     updateDisplay({ immediate });
@@ -450,6 +589,10 @@ const getPresencePayload = () => ({
     ],
     appliedRevision: revision,
     rowCount: display.rows.length,
+    lensColors: boardLensColors
+        || (display.lensSettings?.lenses || []).slice(0, 2).map((lens) => lens.color),
+    synchronizeRows: boardSynchronizeRows,
+    flapTiming: boardTiming,
     audio: audio.getState(),
     identificationActive,
     userAgent: String(globalThis.navigator?.userAgent || '')
@@ -478,9 +621,97 @@ const setIdentificationActive = (forceOn) => {
     return identificationActive;
 };
 
+const applyBoardLensColors = (colors) => {
+    const parsed = writeStoredLensColors(colors) || parseLensColors(colors);
+    if (!parsed) {
+        return null;
+    }
+
+    boardLensColors = parsed;
+    display.setLensSettings(lensTemplate(parsed));
+    return parsed;
+};
+
 const handleCommand = (message) => {
-    const { action, forceOn, muted, volume } = message.payload || {};
+    const {
+        action,
+        forceOn,
+        muted,
+        volume,
+        rowCount,
+        colors,
+        synchronizeRows,
+        flapTiming
+    } = message.payload || {};
     if (message.target?.source !== transport.id) {
+        return;
+    }
+
+    if (action === 'set-row-count') {
+        const numeric = Number(rowCount);
+        if (!Number.isInteger(numeric)
+            || numeric < DEPARTURE_BOARD_ROW_COUNT_MIN
+            || numeric > DEPARTURE_BOARD_ROW_COUNT_MAX) {
+            acknowledge(message, {
+                ok: false,
+                error: 'Počet řádků musí být celé číslo od 1 do 24.'
+            });
+            return;
+        }
+
+        writeStoredRowCount(numeric);
+        applyRowCount(numeric);
+        acknowledge(message, {
+            ok: true,
+            rowCount: display.rows.length
+        });
+        publishHeartbeat();
+        return;
+    }
+
+    if (action === 'set-flap-timing') {
+        const nextTiming = normalizeFlapTiming(flapTiming);
+        boardFlapTimingCustom = true;
+        writeStoredFlapTiming(nextTiming);
+        boardTiming = nextTiming;
+        display.setTiming(boardTiming);
+        boardClock?.setTiming(boardTiming);
+        snapshotSignature = getSnapshotSignature(departures, boardTiming);
+        acknowledge(message, {
+            ok: true,
+            flapTiming: nextTiming
+        });
+        publishHeartbeat();
+        return;
+    }
+
+    if (action === 'set-synchronize-rows') {
+        boardSynchronizeRows = synchronizeRows !== false;
+        writeStoredSynchronizeRows(boardSynchronizeRows);
+        display.setSynchronizeRows(boardSynchronizeRows);
+        acknowledge(message, {
+            ok: true,
+            synchronizeRows: boardSynchronizeRows
+        });
+        publishHeartbeat();
+        return;
+    }
+
+    if (action === 'set-lens-colors') {
+        const parsed = applyBoardLensColors(colors);
+        if (!parsed) {
+            acknowledge(message, {
+                ok: false,
+                error: 'Neplatná barva čoček.'
+            });
+            return;
+        }
+
+        acknowledge(message, {
+            ok: true,
+            lensColors: parsed
+        });
+        publishHeartbeat();
         return;
     }
 

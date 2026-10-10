@@ -80,8 +80,19 @@ http://localhost:8000/departureBoard.html
 
 Odjezdová tabule používá stejné `platformTableManage.html` a stejný
 `localStorage`/transport. Po odeslání odjezdu seřadí odjezdy podle času
-a začne je zobrazovat od horního řádku. Počet řádků se nastavuje v manage
-(výchozí 12) nebo parametrem `departureBoard.html?rows=16`.
+a začne je zobrazovat od horního řádku. Počet řádků je u každé odjezdové
+tabule zvlášť (výchozí 12, rozsah 1–24). Nastaví se v dialogu ozubeného
+kola u připojené tabule, nebo parametrem `departureBoard.html?rows=16`.
+Parametr `volume` (0–100) na odjezdové i nástupištní tabuli nastaví
+počáteční hlasitost flapů a přepíše hodnotu uloženou v okně, například
+`departureBoard.html?volume=40` nebo
+`platformTable.html?platform=1&track=6a&volume=40`. Chybějící nebo
+neplatná hodnota nechá uloženou hlasitost. `0` je ticho, ne ztlumení.
+Barvu obou čoček nastaví parametr `lenses` klíčem z katalogu
+(`green`, `yellow`, `red`, `blue`, `coolWhite`). Jedna barva platí pro
+obě čočky, dvě barvy oddělené čárkou nastaví první a druhou čočku:
+`departureBoard.html?lenses=red,yellow` nebo
+`platformTable.html?platform=1&track=6a&lenses=blue`.
 
 Při otevření přes `file://` použijí stránky vlastní loader a fallback bundle:
 
@@ -154,8 +165,9 @@ board.setFlapTiming({
 
 `duration` je délka jednoho flapu v milisekundách a podporovaný rozsah je
 `50–500` s krokem `10 ms`. `variation` určuje náhodnou odchylku na každém flapu v rozsahu
-`0–10 ms`. Výchozí hodnoty jsou `190` a `0`; hodnoty se zaokrouhlí a omezí
-na povolený rozsah.
+`0–10 ms`. Výchozí délka odjezdové tabule je `100 ms`, nástupištní `130 ms`,
+variace je `0`. Dřívější společná délka `190 ms` se bere jako nenastavená.
+Hodnoty se zaokrouhlí a omezí na povolený rozsah.
 
 ## Znaková sada split-flapu
 
@@ -643,11 +655,12 @@ board.update([
 ```
 
 Tabule vždy zobrazí nejvýše tolik platných odjezdů, kolik má řádků,
-a seřadí je podle času. Noční spoje po půlnoci, které už dnes nemají
-skutečné zpoždění, se řadí až za dnešní večerní odjezdy — stejně v
-manage tabulce (řazení podle času) i na odjezdové tabuli. Offset
-zpoždění mění jen zobrazenou hodnotu na flapu, ne to, zda odjezd
-vůbec zůstane v seznamu. Počet řádků
+a seřadí je podle pravidelného času. Noční spoje po půlnoci se řadí až
+za dnešní večerní odjezdy — stejně v manage tabulce (řazení podle času)
+i na odjezdové tabuli. Skutečné zpoždění nechává odjezd mezi dnešními,
+jen dokud pravidelný čas plus toto zpoždění není víc než 10 minut
+v minulosti. Offset zpoždění mění jen zobrazenou hodnotu na flapu, ne
+to, zda odjezd vůbec zůstane v seznamu. Počet řádků
 změní `board.setRowCount(12)` nebo nastavení v manage.
 Odjezdy se zpracovávají frontou po celých řádcích: současně se mění nejvýše
 jeden řádek a další začne až po jeho dokončení. Pokud se odjezd odstraní a
@@ -722,8 +735,11 @@ audio.getState(); // { available, unlocked, muted, volume }
 
 `setMuted(true)` zvuk flapů na dané tabuli úplně vypne: `play()` se nespustí.
 `setVolume(0–100)` nastaví hlasitost přehrávaných flapů, výchozí je `100`.
-Obojí se pamatuje v `sessionStorage` daného okna. V manage seznamu připojených
+Obojí se pamatuje v `sessionStorage` daného okna. Stejnou počáteční
+hlasitost lze vynutit parametrem `volume` v adrese odjezdové nebo
+nástupištní tabule. V manage seznamu připojených
 tabulí je u každé instance tlačítko pro ztlumení a posuvník hlasitosti.
+Stejné ovládání je i v dialogu nastavení tabule.
 
 Pro vypnutí zvuku v testu lze předat vlastní audio objekt s prázdnou metodou:
 
@@ -998,10 +1014,11 @@ Výchozí katalog je `NIGHT_LIGHT_DEFAULTS`. Jedna konfigurace světla má:
 Při skrytí stránky se efekty pozastaví a při `destroy()` se všechny timery
 uklidí.
 
-Výchozí parametry všech pěti žárovek jsou stejné jako u `Horní levá`
-(`enabled: true`, `variation: true`, `intensity: 100`, `speed: 45`,
-`fade: 'soft'`). Rozdíly v barvě, kuželu ani délce cyklu se proto nevytvářejí
-v CSS; pokud je potřeba rozdílné chování, nastavuje se výhradně v manage UI.
+Výchozí parametry všech žárovek jsou stejné: svítí, bez efektu, intenzita
+40 %, délka cyklu 120 s a efekt `none` (stálý svit). Hodiny ve výchozím
+stavu svítí na 60 %. Rozdíly v barvě, kuželu ani délce cyklu se proto
+nevytvářejí v CSS; pokud je potřeba rozdílné chování, nastavuje se
+výhradně v dialogu konkrétní nástupištní tabule.
 
 Po změně režimu je potřeba synchronizovat i adapter hodin:
 
@@ -1044,6 +1061,8 @@ PoC používá dvě stránky stejného originu:
 
 - `platformTable.html` pouze vykresluje tabuli a přijímá příkazy,
 - `platformTableManage.html` obsahuje formulář a nastavení.
+  Každý blok se sbalí a rozbalí kliknutím na jeho nadpis. Čtvereček
+  na začátku nadpisu ukazuje plus u sbaleného a minus u rozbaleného bloku.
 
 Propojení v jednom prohlížeči zajišťuje `BoardTransport` přes
 `BroadcastChannel`, při jeho nedostupnosti přes `storage` event. Taby na
@@ -1079,16 +1098,34 @@ stejné identity. U instance je vidět, jestli zpráva přišla z tabu stejného
 prohlížeče (`lokálně, tab prohlížeče`), nebo přes server. Síťové připojení
 ukáže adresu, na které server spojení přijal, a adresu počítače tabule.
 Vpravo na stejném řádku je user agent daného klienta.
+U každé připojené tabule je tlačítko s ozubeným kolem. Otevře dialog
+nastavení jen té instance: barva obou čoček, rychlost split-flapů,
+u odjezdové tabule také počet řádků a volbu „Stejná strana ve všech
+řádcích“, u nástupištní tabule osvětlení hodin a jednotlivých žárovek,
+a znovu hlasitost včetně ztlumení. Barva čoček, společný počet řádků,
+společné blikání řádků, společná rychlost flapů ani panel žárovek už
+nejsou v hlavním formuláři. Noční režim zůstává společný přepínač.
+Každá stránka s `BoardTransport` (manage, odjezdová i nástupištní
+tabule) zapisuje do konzole prohlížeče záznam komunikace. Řádek
+`[pragotron]` říká čas, jestli jde o odeslání nebo příjem, typ zprávy,
+odesílatele, příjemce a kanál. Objekt za ním je celé předané payload.
+Manage stránka stejný záznam vypisuje i do bloku Záznam komunikace.
+Drží posledních 250 zpráv a drží se u posledního řádku, dokud
+uživatel neposune výpis nahoru.
 Příkaz s prázdným sektorem se doručí všem sektorům dané
 koleje, zatímco vyplněný sektor se doručí pouze přesné shodě.
+Když na stejné nástupiště a kolej připadá víc odjezdů, nástupištní
+tabule ukazuje časově nejbližší. Jakmile ten odjezd skončí, přejde na
+další a prázdná zůstane až ve chvíli, kdy už žádný nezbývá.
 
 U každé aktivní tabule je v manage stránce také administrátorské tlačítko
 `Identifikovat čočky`. Cíleně rozsvítí všechny čočky dané instance bez
 blikání. Na odjezdové tabuli se rozsvítí všechny čočky na všech řádcích.
 Druhé stisknutí obnoví původní stav podle právě platných odjezdů;
-identifikace proto nemění uložené nastavení ani odjezd. Vedle něj je tlačítko
-pro ztlumení zvuku flapů jen u této instance. Ztlumená tabule zvuk vůbec
-nespouští.
+identifikace proto nemění uložené nastavení ani odjezd. Tlačítko je
+v seznamu hned před názvem tabule. Ztlumení zvuku flapů je samostatné
+tlačítko vpravo a platí jen pro tuto instanci; ozubené kolo s nastavením
+je až poslední. Ztlumená tabule zvuk vůbec nespouští.
 
 V manage editoru je volba `Bliká` záměrně pouze informativní a zůstává vždy
 zaškrtnutá; blikání čoček je součástí jejich komponentového chování.

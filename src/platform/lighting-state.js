@@ -23,14 +23,33 @@ const LEGACY_LIGHT_DEFAULTS = Object.freeze({
     'bottom-right': { enabled: true, variation: true, intensity: 75, speed: 55, fade: 'slow' }
 });
 
+const PREVIOUS_UNIFORM_DEFAULT = Object.freeze({
+    enabled: true,
+    variation: true,
+    intensity: 100,
+    speed: 45,
+    fade: 'soft'
+});
+
+const matchesLampSetting = (setting, legacy) => [
+    'enabled',
+    'variation',
+    'intensity',
+    'speed',
+    'fade'
+].every((key) => String(setting?.[key]) === String(legacy[key]));
+
 const isLegacyDefault = (id, setting) => {
-    const legacy = LEGACY_LIGHT_DEFAULTS[id];
-    if (!legacy) {
+    if (!setting || typeof setting !== 'object') {
         return false;
     }
 
-    return ['enabled', 'variation', 'intensity', 'speed', 'fade']
-        .every((key) => String(setting?.[key]) === String(legacy[key]));
+    if (matchesLampSetting(setting, PREVIOUS_UNIFORM_DEFAULT)) {
+        return true;
+    }
+
+    const legacy = LEGACY_LIGHT_DEFAULTS[id];
+    return Boolean(legacy) && matchesLampSetting(setting, legacy);
 };
 
 export const cloneLampSetting = (setting) => ({
@@ -67,13 +86,16 @@ export class LightingSettings {
         );
 
         const clock = initialClock || {};
+        const clockSource = clock.enabled === true && Number(clock.intensity) === 50
+            ? {}
+            : clock;
         this.clockSettings = {
-            enabled: typeof clock.enabled === 'boolean'
-                ? clock.enabled
+            enabled: typeof clockSource.enabled === 'boolean'
+                ? clockSource.enabled
                 : NIGHT_CLOCK_DEFAULTS.enabled,
             intensity: Math.round(
                 clamp(
-                    clock.intensity,
+                    clockSource.intensity,
                     0,
                     100,
                     NIGHT_CLOCK_DEFAULTS.intensity

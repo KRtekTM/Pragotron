@@ -62,6 +62,84 @@ const resolveBlinkInterval = (setting, fallback) => {
         : fallback;
 };
 
+export const parseLensColors = (value) => {
+    const tokens = Array.isArray(value)
+        ? value
+        : String(value ?? '').split(/[,;/|]/);
+    const colors = [];
+    tokens.forEach((token) => {
+        const name = String(token ?? '').trim();
+        if (LENS_COLORS[name] && colors.length < 2) {
+            colors.push(name);
+        }
+    });
+
+    if (colors.length === 0) {
+        return null;
+    }
+
+    return [colors[0], colors[1] || colors[0]];
+};
+
+const LENS_COLOR_STORAGE_KEY = 'pragotron.board.lensColors.v1';
+
+export const readStoredLensColors = (storage = globalThis.sessionStorage) => {
+    try {
+        const raw = storage?.getItem(LENS_COLOR_STORAGE_KEY);
+        if (!raw) {
+            return null;
+        }
+
+        return parseLensColors(JSON.parse(raw));
+    } catch {
+        return null;
+    }
+};
+
+export const writeStoredLensColors = (
+    colors,
+    storage = globalThis.sessionStorage
+) => {
+    const parsed = parseLensColors(colors);
+    if (!parsed) {
+        return null;
+    }
+
+    try {
+        storage?.setItem(LENS_COLOR_STORAGE_KEY, JSON.stringify(parsed));
+    } catch {
+        // The board can still keep the colors for this page view.
+    }
+
+    return parsed;
+};
+
+export const readLensColorOverride = (location = globalThis.location) => {
+    try {
+        const params = new URLSearchParams(location?.search || '');
+        if (!params.has('lenses')) {
+            return null;
+        }
+
+        return parseLensColors(params.get('lenses'));
+    } catch {
+        return null;
+    }
+};
+
+export const readInitialLensColors = (
+    location = globalThis.location,
+    storage = globalThis.sessionStorage
+) => {
+    const override = readLensColorOverride(location);
+    if (override) {
+        writeStoredLensColors(override, storage);
+        return override;
+    }
+
+    return readStoredLensColors(storage);
+};
+
 const resolveColor = (setting, fallback) => {
     const candidates = [
         setting?.color,

@@ -597,13 +597,15 @@ export class DepartureBoardRow {
             timing = FLAP_TIMING_DEFAULTS,
             rowIndex = 0,
             applyDelayOffset = DELAY_OFFSET_DEFAULT,
-            lensColorTemplate = null
+            lensColorTemplate = null,
+            synchronizeRows = true
         } = {}
     ) {
         this.element = element;
         this.timing = normalizeFlapTiming(timing);
         this.rowIndex = Math.max(0, Math.floor(Number(rowIndex) || 0));
         this.lensColorTemplate = lensColorTemplate;
+        this.synchronizeRows = synchronizeRows !== false;
         this.stationOne = new SplitFlapDisplay(
             element.querySelector('[data-departure-slot="stationOne"]'),
             { audio, maxLength: 14, timing: this.timing }
@@ -691,11 +693,33 @@ export class DepartureBoardRow {
     setLensColorTemplate(template) {
         this.lensColorTemplate = template?.lenses ? template : null;
         const current = this.lenses.getValue();
-        this.lenses.set(withManagedLensColors(current, this.lensColorTemplate));
+        this.lenses.set(this.withBoardLensOptions(
+            withManagedLensColors(current, this.lensColorTemplate)
+        ));
+    }
+
+    setSynchronizeRows(enabled) {
+        this.synchronizeRows = enabled !== false;
+        const current = this.lenses.getValue();
+        this.lenses.set(this.withBoardLensOptions(current));
+        return this.synchronizeRows;
+    }
+
+    withBoardLensOptions(state) {
+        if (!state) {
+            return state;
+        }
+
+        return {
+            ...state,
+            synchronizeRows: this.synchronizeRows !== false
+        };
     }
 
     paintLenses(state, { preDepartureActive = true } = {}) {
-        this.lenses.set(withManagedLensColors(state, this.lensColorTemplate));
+        this.lenses.set(this.withBoardLensOptions(
+            withManagedLensColors(state, this.lensColorTemplate)
+        ));
         this.lenses.setPreDepartureActive(preDepartureActive);
     }
 
@@ -811,7 +835,8 @@ export class DepartureBoardDisplay {
             rowSelector = '[data-departure-row]',
             rowCount = DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
             applyDelayOffset = DELAY_OFFSET_DEFAULT,
-            lensSettings = null
+            lensSettings = null,
+            synchronizeRows = true
         } = {}
     ) {
         if (!root) {
@@ -823,6 +848,7 @@ export class DepartureBoardDisplay {
         this.timing = normalizeFlapTiming(timing);
         this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
         this.lensSettings = lensSettings?.lenses ? lensSettings : null;
+        this.synchronizeRows = synchronizeRows !== false;
         this.rowSelector = rowSelector;
         this.rows = [...root.querySelectorAll(rowSelector)].map(
             (element, index) => new DepartureBoardRow(element, {
@@ -830,7 +856,8 @@ export class DepartureBoardDisplay {
                 timing: this.timing,
                 rowIndex: index,
                 applyDelayOffset: this.applyDelayOffset,
-                lensColorTemplate: this.lensSettings
+                lensColorTemplate: this.lensSettings,
+                synchronizeRows: this.synchronizeRows
             })
         );
         this.displayedRows = Array.from(
@@ -868,6 +895,15 @@ export class DepartureBoardDisplay {
             this.applyIdentificationLenses();
         }
         return this.lensSettings;
+    }
+
+    setSynchronizeRows(enabled) {
+        this.synchronizeRows = enabled !== false;
+        this.rows.forEach((row) => row.setSynchronizeRows(this.synchronizeRows));
+        if (this.identificationActive) {
+            this.applyIdentificationLenses();
+        }
+        return this.synchronizeRows;
     }
 
     getRowContainer() {
@@ -914,7 +950,8 @@ export class DepartureBoardDisplay {
                 timing: this.timing,
                 rowIndex: index,
                 applyDelayOffset: this.applyDelayOffset,
-                lensColorTemplate: this.lensSettings
+                lensColorTemplate: this.lensSettings,
+                synchronizeRows: this.synchronizeRows
             }));
             this.displayedRows.push(null);
             this.targetRows.push(null);

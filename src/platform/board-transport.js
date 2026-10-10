@@ -100,10 +100,12 @@ export class BoardTransport {
         storageKey = BOARD_TRANSPORT_STORAGE_KEY,
         storage,
         windowRef = globalThis.window,
-        boardId = ''
+        boardId = '',
+        onLog = null
     } = {}) {
         this.id = createId('client');
         this.boardId = typeof boardId === 'string' ? boardId : '';
+        this.onLog = typeof onLog === 'function' ? onLog : null;
         this.storageKey = storageKey;
         this.storage = getStorage(storage);
         this.window = windowRef;
@@ -163,6 +165,9 @@ export class BoardTransport {
             }
 
             this.socketRetryMs = 1000;
+            this.logExchange('spojení navázáno', {
+                url: this.socketUrl
+            });
             const queued = this.pendingSocketMessages.splice(0);
             queued.forEach((text) => {
                 try {
@@ -204,6 +209,10 @@ export class BoardTransport {
             this.socket = null;
             const delay = this.socketRetryMs;
             this.socketRetryMs = Math.min(delay * 2, 15000);
+            this.logExchange('spojení uzavřeno', {
+                url: this.socketUrl,
+                dalšíPokusZaMs: delay
+            });
             this.socketTimer = this.window?.setTimeout?.(() => {
                 this.socketTimer = null;
                 this.connectSocket();
@@ -308,7 +317,37 @@ export class BoardTransport {
             delivery
         };
         delete delivered.relay;
+        this.logExchange('přijato', {
+            typ: delivered.type,
+            od: delivered.source,
+            komu: delivered.target?.source
+                || delivered.target?.boardId
+                || 'tato tabule',
+            kanál: delivery.channel === 'network'
+                ? `síť ${delivery.network || '—'}${
+                    delivery.client ? `, počítač ${delivery.client}` : ''
+                }`
+                : 'lokálně',
+            requestId: delivered.requestId,
+            data: delivered.payload
+        });
         this.listeners.forEach((listener) => listener(delivered));
+    }
+
+    logExchange(direction, details) {
+        const now = new Date();
+        const stamp = `${now.toLocaleTimeString('cs-CZ', { hour12: false })}.${
+            String(now.getMilliseconds()).padStart(3, '0')
+        }`;
+        const line = `[pragotron] ${stamp} ${direction}`;
+        console.info(line, details);
+        if (this.onLog) {
+            try {
+                this.onLog(line, details);
+            } catch {
+                // The on-page log must not interrupt message delivery.
+            }
+        }
     }
 
     publish(type, payload = {}, requestIdOrOptions) {
@@ -332,6 +371,15 @@ export class BoardTransport {
             };
         }
         this.remember(message.messageId);
+        this.logExchange('odesláno', {
+            typ: type,
+            od: this.id,
+            komu: message.target?.source
+                || message.target?.boardId
+                || 'všichni',
+            requestId,
+            data: payload
+        });
 
         try {
             this.channel?.postMessage(message);

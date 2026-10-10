@@ -28,7 +28,7 @@
                     alt="Správa železnic"
                 >
             </span>
-            <img src="images/pragotronNapis.svg" alt="PRAGOTRON" class="manage-header-logo" id="pragotron-napis">
+            <img src="images/pragotronNapis2.svg" alt="PRAGOTRON" class="manage-header-logo" id="pragotron-napis">
         </div>
         <div class="manage-header-status">
             <span
@@ -163,217 +163,20 @@
                 </fieldset>
 
                 <div class="board-form-actions">
+                    <button id="startButton" style="height: 36px; margin: auto;" type="button">Načíst příklad</button>
                     <button type="submit" style="margin: 1.5rem auto; scale: 1.5;">Odeslat na tabuli</button>
+                    <button id="resetAllSettings" style="height: 36px; margin: auto;" type="button">Resetovat nastavení</button>
                 </div>
 
-                <div class="board-timing-panels">
-                    <fieldset id="flapTimingPanel" class="flap-timing-settings">
-                        <div><legend>Rychlost split-flapů</legend></div>
-                        <div class="flap-timing-controls">
-                            <label class="lamp-control-range" for="flapTimingDuration">
-                                <span class="lamp-control-range-header">
-                                    <span>Délka jednoho flapu</span>
-                                    <output id="flapTimingDurationOutput">190 ms</output>
-                                </span>
-                                <input
-                                    id="flapTimingDuration"
-                                    type="range"
-                                    min="50"
-                                    max="500"
-                                    step="10"
-                                    value="190"
-                                >
-                            </label>
-                            <label class="lamp-control-range" for="flapTimingVariation">
-                                <span class="lamp-control-range-header">
-                                    <span>Náhodná variace</span>
-                                    <output id="flapTimingVariationOutput">±0 ms</output>
-                                </span>
-                                <input
-                                    id="flapTimingVariation"
-                                    type="range"
-                                    min="0"
-                                    max="10"
-                                    step="1"
-                                    value="0"
-                                >
-                            </label>
-                        </div>
-                        <small class="flap-timing-help">
-                            Nastavení se použije pro každý jednotlivý flap včetně
-                            času, typu vlaku, zpoždění a názvů stanic.
-                        </small>
-                    </fieldset>
-
-                    <fieldset id="departureBoardRowsPanel" class="flap-timing-settings">
-                        <div><legend>Odjezdová tabule</legend></div>
-                        <label class="board-form-field" for="departureBoardRows">
-                            Počet řádků
-                            <input
-                                id="departureBoardRows"
-                                type="number"
-                                min="1"
-                                max="24"
-                                step="1"
-                                value="12"
-                                inputmode="numeric"
-                            >
-                            <small>
-                                Kolik odjezdů se zobrazí. Výchozí je 12, rozsah 1–24.
-                                Stejné číslo jde nastavit i parametrem
-                                <code>?rows=16</code> u departureBoard.html.
-                            </small>
-                        </label>
-                    </fieldset>
-
-                    <fieldset id="departureDelayOffsetPanel" class="flap-timing-settings">
-                        <div><legend>Offset zpoždění odjezdu</legend></div>
-                        <label class="lamp-control-check" for="delayOffsetEnabled">
-                            <input id="delayOffsetEnabled" type="checkbox">
-                            Odečíst 5 minut
-                        </label>
-                        <small class="flap-timing-help">
-                            Zapnutý offset skryje zpoždění do 5 minut včetně
-                            a vyšší hodnoty zaokrouhlí na nižší položku katalogu.
-                            Vypnutím se od zpoždění nic neodečítá.
-                        </small>
-                    </fieldset>
-                </div>
-
-                <fieldset id="departureBoardLogoPanel" class="flap-timing-settings">
-                    <div><legend>Logo odjezdové tabule</legend></div>
-                    <div class="board-logo-options" role="radiogroup" aria-label="Logo odjezdové tabule">
-                        <label class="board-logo-option" for="departureBoardLogoCd">
-                            <input
-                                id="departureBoardLogoCd"
-                                type="radio"
-                                name="departureBoardLogo"
-                                value="cd"
-                            >
-                            <span class="board-logo-preview">
-                                <img src="images/CD_logo.svg" alt="">
-                            </span>
-                            <span>ČD</span>
-                        </label>
-                        <label class="board-logo-option" for="departureBoardLogoSprzel">
-                            <input
-                                id="departureBoardLogoSprzel"
-                                type="radio"
-                                name="departureBoardLogo"
-                                value="sprzel"
-                                checked
-                            >
-                            <span class="board-logo-preview">
-                                <img src="images/sprzel.svg" alt="">
-                            </span>
-                            <span>SŽ</span>
-                        </label>
-                        <label class="board-logo-option" for="departureBoardLogoSprzelWhite">
-                            <input
-                                id="departureBoardLogoSprzelWhite"
-                                type="radio"
-                                name="departureBoardLogo"
-                                value="sprzel-white"
-                            >
-                            <span class="board-logo-preview">
-                                <img src="images/sprzel_bile.svg" alt="">
-                            </span>
-                            <span>SŽ bílé</span>
-                        </label>
-                        <label class="board-logo-option" for="departureBoardLogoPragotron">
-                            <input
-                                id="departureBoardLogoPragotron"
-                                type="radio"
-                                name="departureBoardLogo"
-                                value="pragotron"
-                            >
-                            <span class="board-logo-preview">
-                                <img src="images/pragotron_bile.svg" alt="">
-                            </span>
-                            <span>Pragotron</span>
-                        </label>
-                        <label class="board-logo-option" for="departureBoardLogoCustom">
-                            <input
-                                id="departureBoardLogoCustom"
-                                type="radio"
-                                name="departureBoardLogo"
-                                value="custom"
-                            >
-                            <span class="board-logo-preview">
-                                <img id="departureBoardLogoCustomPreview" alt="" hidden>
-                                <span id="departureBoardLogoCustomPlaceholder">SVG</span>
-                            </span>
-                            <span>Vlastní SVG</span>
-                        </label>
-                    </div>
-                    <label class="board-form-field" for="departureBoardLogoSvg">
-                        Vlastní SVG
-                        <textarea
-                            id="departureBoardLogoSvg"
-                            rows="4"
-                            spellcheck="false"
-                            placeholder="<svg …></svg>"
-                        ></textarea>
-                        <small class="flap-timing-help">
-                            Vložte značku <code>&lt;svg&gt;</code>. Použije se po
-                            zvolení varianty Vlastní SVG.
-                        </small>
-                    </label>
-                </fieldset>
-                
-                <div class="board-form-actions" style="justify-content: center;">
-                    <button id="nightModeButton" type="button" aria-pressed="false">
+                <div class="board-form-other-actions" style="text-align: center; margin-top: 2rem;">
+                    <button id="nightModeButton" style="margin: auto; padding: 0.45rem 0.7rem;" type="button" aria-pressed="false">
                         🌙 Noční režim
                     </button>
-                    <label class="auto-night-toggle" for="autoNightMode">
-                        <input id="autoNightMode" type="checkbox">
+                    <label class="auto-night-toggle" for="autoNightMode" style="height: 36px; margin: auto;">
+                        <input id="autoNightMode" style="vertical-align: middle;" type="checkbox">
                         Automaticky podle slunce
                     </label>
-                    <button id="startButton" type="button">Načíst příklad</button>
-                    <button id="resetAllSettings" type="button">
-                        Resetovat všechna nastavení
-                    </button>
                 </div>
-
-                <fieldset id="lampSettingsPanel" class="lamp-settings" hidden>
-                    <div><legend>Nastavení jednotlivých žárovek</legend></div>
-                    <div id="lampControls" class="lamp-controls">
-                        <fieldset id="clockLightControl" class="lamp-control clock-light-control">
-                            <div><legend>Osvětlení hodin</legend></div>
-                            <div class="clock-light-controls">
-                                <label class="lamp-control-check" for="clockLightEnabled">
-                                    <input id="clockLightEnabled" type="checkbox">
-                                    Svítí
-                                </label>
-                                <label class="lamp-control-range" for="clockLightIntensity">
-                                    <span class="lamp-control-range-header">
-                                        <span>Intenzita</span>
-                                        <output id="clockLightIntensityOutput">50%</output>
-                                    </span>
-                                    <input
-                                        id="clockLightIntensity"
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                        value="50"
-                                    >
-                                </label>
-                            </div>
-                        </fieldset>
-                    </div>
-                    <p class="lamp-settings-help">
-                        Checkbox „S efektem“ zapíná vybraný světelný efekt. Volba
-                        „Bez pohasínání“ udrží žárovku ve stálém svitu. Délka
-                        cyklu je skutečný čas celého efektu; vyšší hodnota
-                        znamená pomalejší změny.
-                    </p>
-                    <div class="lamp-settings-actions">
-                        <button id="resetLampSettings" type="button">
-                            Obnovit výchozí světla
-                        </button>
-                    </div>
-                </fieldset>
 
                 <p id="boardFormStatus" role="status" aria-live="polite"></p>
             </fieldset>
@@ -454,50 +257,163 @@
                 </div>
                 <p id="liveDeparturesStatus" role="status" aria-live="polite"></p>
             </fieldset>
+
+            <fieldset id="departureBoardLogoPanel" class="flap-timing-settings">
+                <div><legend>Logo odjezdové tabule</legend></div>
+                <div class="board-logo-options" role="radiogroup" aria-label="Logo odjezdové tabule">
+                    <label class="board-logo-option" for="departureBoardLogoCd">
+                        <input
+                            id="departureBoardLogoCd"
+                            type="radio"
+                            name="departureBoardLogo"
+                            value="cd"
+                        >
+                        <span class="board-logo-preview">
+                            <img src="images/CD_logo.svg" alt="">
+                        </span>
+                        <span>ČD</span>
+                    </label>
+                    <label class="board-logo-option" for="departureBoardLogoSprzel">
+                        <input
+                            id="departureBoardLogoSprzel"
+                            type="radio"
+                            name="departureBoardLogo"
+                            value="sprzel"
+                            checked
+                        >
+                        <span class="board-logo-preview">
+                            <img src="images/sprzel.svg" alt="">
+                        </span>
+                        <span>SŽ</span>
+                    </label>
+                    <label class="board-logo-option" for="departureBoardLogoSprzelWhite">
+                        <input
+                            id="departureBoardLogoSprzelWhite"
+                            type="radio"
+                            name="departureBoardLogo"
+                            value="sprzel-white"
+                        >
+                        <span class="board-logo-preview">
+                            <img src="images/sprzel_bile.svg" alt="">
+                        </span>
+                        <span>SŽ bílé</span>
+                    </label>
+                    <label class="board-logo-option" for="departureBoardLogoPragotron">
+                        <input
+                            id="departureBoardLogoPragotron"
+                            type="radio"
+                            name="departureBoardLogo"
+                            value="pragotron"
+                        >
+                        <span class="board-logo-preview">
+                            <img src="images/pragotron_bile.svg" alt="">
+                        </span>
+                        <span>Pragotron</span>
+                    </label>
+                    <label class="board-logo-option" for="departureBoardLogoCustom">
+                        <input
+                            id="departureBoardLogoCustom"
+                            type="radio"
+                            name="departureBoardLogo"
+                            value="custom"
+                        >
+                        <span class="board-logo-preview">
+                            <img id="departureBoardLogoCustomPreview" alt="" hidden>
+                            <span id="departureBoardLogoCustomPlaceholder">SVG</span>
+                        </span>
+                        <span>Vlastní SVG</span>
+                    </label>
+                </div>
+                <label class="board-form-field" for="departureBoardLogoSvg">
+                    Vlastní SVG
+                    <textarea
+                        id="departureBoardLogoSvg"
+                        rows="4"
+                        spellcheck="false"
+                        placeholder="<svg …></svg>"
+                    ></textarea>
+                    <small class="flap-timing-help">
+                        Vložte značku <code>&lt;svg&gt;</code>. Použije se po
+                        zvolení varianty Vlastní SVG.
+                    </small>
+                </label>
+            </fieldset>
+
+            <div class="board-timing-panels">
+                <fieldset id="departureDelayOffsetPanel" class="flap-timing-settings">
+                    <div><legend>Offset zpoždění odjezdu</legend></div>
+                    <label class="lamp-control-check" for="delayOffsetEnabled">
+                        <input id="delayOffsetEnabled" type="checkbox">
+                        Odečíst 5 minut
+                    </label>
+                    <small class="flap-timing-help">
+                        Zapnutý offset skryje zpoždění do 5 minut včetně
+                        a vyšší hodnoty zaokrouhlí na nižší položku katalogu.
+                        Vypnutím se od zpoždění nic neodečítá.
+                    </small>
+                </fieldset>
+            </div>
         </div>
 
         <div class="manage-side-column">
-            <fieldset id="activeBoardsPanel" class="manage-panel">
-            <div><legend>Připojené tabule</legend></div>
-            <div id="activeBoardsList" class="active-boards-list">
-                <p class="manage-empty-state">Zatím nebyla nalezena žádná tabule.</p>
-            </div>
+            <fieldset id="departuresPanel" class="manage-panel">
+                <div class="departures-panel-heading">
+                    <legend>Odjezdy na tabulích</legend>
+                    <button id="clearAllDeparturesButton" type="button" disabled>
+                        Vymazat všechny odjezdy
+                    </button>
+                </div>
+                <div class="departures-table-wrap">
+                    <table id="departuresTable">
+                        <thead>
+                            <tr>
+                                <th scope="col">Čočky</th>
+                                <th scope="col"><button type="button" data-sort-key="stationOne">Stanice 1</button></th>
+                                <th scope="col"><button type="button" data-sort-key="stationTwo">Stanice 2</button></th>
+                                <th scope="col"><button type="button" data-sort-key="train">Typ vlaku</button></th>
+                                <th scope="col"><button type="button" data-sort-key="trainNumber">Číslo vlaku</button></th>
+                                <th scope="col"><button type="button" data-sort-key="operator">Dopravce</button></th>
+                                <th scope="col"><button type="button" data-sort-key="departureTime">Odjezd</button></th>
+                                <th scope="col"><button type="button" data-sort-key="delay">Zpoždění</button></th>
+                                <th scope="col"><button type="button" data-sort-key="platform">Nástupiště</button></th>
+                                <th scope="col"><button type="button" data-sort-key="track">Kolej</button></th>
+                                <th scope="col"><button type="button" data-sort-key="sector">Sektor</button></th>
+                                <th scope="col">Akce</th>
+                            </tr>
+                        </thead>
+                        <tbody id="departuresTableBody"></tbody>
+                    </table>
+                    <p id="departuresEmptyState" class="manage-empty-state">
+                        Zatím nebyl odeslán žádný odjezd.
+                    </p>
+                </div>
             </fieldset>
 
-            <fieldset id="departuresPanel" class="manage-panel">
-            <div class="departures-panel-heading">
-                <legend>Odjezdy na tabulích</legend>
-                <button id="clearAllDeparturesButton" type="button" disabled>
-                    Vymazat všechny odjezdy
-                </button>
-            </div>
-            <div class="departures-table-wrap">
-                <table id="departuresTable">
-                    <thead>
-                        <tr>
-                            <th scope="col">Čočky</th>
-                            <th scope="col"><button type="button" data-sort-key="stationOne">Stanice 1</button></th>
-                            <th scope="col"><button type="button" data-sort-key="stationTwo">Stanice 2</button></th>
-                            <th scope="col"><button type="button" data-sort-key="train">Typ vlaku</button></th>
-                            <th scope="col"><button type="button" data-sort-key="trainNumber">Číslo vlaku</button></th>
-                            <th scope="col"><button type="button" data-sort-key="operator">Dopravce</button></th>
-                            <th scope="col"><button type="button" data-sort-key="departureTime">Odjezd</button></th>
-                            <th scope="col"><button type="button" data-sort-key="delay">Zpoždění</button></th>
-                            <th scope="col"><button type="button" data-sort-key="platform">Nástupiště</button></th>
-                            <th scope="col"><button type="button" data-sort-key="track">Kolej</button></th>
-                            <th scope="col"><button type="button" data-sort-key="sector">Sektor</button></th>
-                            <th scope="col">Akce</th>
-                        </tr>
-                    </thead>
-                    <tbody id="departuresTableBody"></tbody>
-                </table>
-                <p id="departuresEmptyState" class="manage-empty-state">
-                    Zatím nebyl odeslán žádný odjezd.
-                </p>
-            </div>
+            <fieldset id="activeBoardsPanel" class="manage-panel">
+                <div><legend>Připojené tabule</legend></div>
+                <div id="activeBoardsList" class="active-boards-list">
+                    <p class="manage-empty-state">Zatím nebyla nalezena žádná tabule.</p>
+                </div>
+            </fieldset>
+
+            <fieldset id="logPanel" class="manage-panel">
+                <div><legend>Záznam komunikace</legend></div>
+                <pre id="logOutput" class="log-output"></pre>
             </fieldset>
         </div>
     </div>
+
+    <dialog id="boardSettingsDialog" class="board-settings-dialog">
+        <form method="dialog" class="board-settings-form">
+            <header class="board-settings-header">
+                <h2 id="boardSettingsTitle">Nastavení tabule</h2>
+                <button type="submit" class="board-settings-close" aria-label="Zavřít">
+                    ×
+                </button>
+            </header>
+            <div id="boardSettingsBody"></div>
+        </form>
+    </dialog>
 
     <script src="src/demos/platformTableManageLoader.js"></script>
 </body>

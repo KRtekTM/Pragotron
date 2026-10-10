@@ -19,7 +19,12 @@ import {
     DELAY_OFFSET_DEFAULT,
     normalizeDelayOffset,
     normalizeFlapTiming,
+    PLATFORM_FLAP_TIMING_DEFAULTS,
+    resolveBoardFlapTiming,
     parseDelayMinutes,
+    parseLensColors,
+    readInitialLensColors,
+    writeStoredLensColors,
     TRAIN_TYPES
 } from '../platform/index.js';
 import { PLATFORM_TABLE_TEMPLATE } from '../templates/platformTable.js';
@@ -50,6 +55,79 @@ let delayOffset = normalizeDelayOffset(
 );
 let heartbeatTimer = null;
 let commandQueue = Promise.resolve();
+let boardLensColors = readInitialLensColors();
+const BOARD_LIGHTING_STORAGE_KEY = 'pragotron.board.lighting.v1';
+
+const readStoredLighting = () => {
+    try {
+        const raw = window.sessionStorage.getItem(BOARD_LIGHTING_STORAGE_KEY);
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        return {
+            lamps: parsed.lamps && typeof parsed.lamps === 'object'
+                ? parsed.lamps
+                : null,
+            clockLight: parsed.clockLight && typeof parsed.clockLight === 'object'
+                ? parsed.clockLight
+                : null
+        };
+    } catch {
+        return null;
+    }
+};
+
+const writeStoredLighting = (lightingState) => {
+    try {
+        window.sessionStorage.setItem(
+            BOARD_LIGHTING_STORAGE_KEY,
+            JSON.stringify(lightingState)
+        );
+    } catch {
+        // The board can still keep the lights for this page view.
+    }
+};
+
+const storedLighting = readStoredLighting();
+let boardLightingCustom = Boolean(storedLighting);
+
+const withBoardLensColors = (state) => {
+    if (!boardLensColors || !state?.lenses?.lenses) {
+        return state;
+    }
+
+    return {
+        ...state,
+        lenses: {
+            ...state.lenses,
+            lenses: state.lenses.lenses.map((lens, index) => ({
+                ...lens,
+                color: boardLensColors[index] || boardLensColors[0]
+            }))
+        }
+    };
+};
+
+const paintBoardLensColors = () => {
+    if (!boardLensColors) {
+        return;
+    }
+
+    currentDisplayState = withBoardLensColors(
+        currentDisplayState || createEmptyDisplayState()
+    );
+    if (identificationActive) {
+        normalLensState = cloneLensState(currentDisplayState.lenses);
+        applyIdentificationLensState();
+        return;
+    }
+
+    lensDisplay.set(currentDisplayState.lenses || createEmptyLensState());
+};
 
 const createEmptyDisplayState = () => ({
     ...createEmptyBoardState(),
@@ -91,12 +169,46 @@ const isValidBoardState = (state) => {
 };
 
 const audio = new SplitFlapAudio();
+const BOARD_FLAP_TIMING_STORAGE_KEY = 'pragotron.board.flapTiming.v1';
+
+const readStoredFlapTiming = () => {
+    try {
+        const raw = window.sessionStorage.getItem(BOARD_FLAP_TIMING_STORAGE_KEY);
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        return normalizeFlapTiming(parsed);
+    } catch {
+        return null;
+    }
+};
+
+const writeStoredFlapTiming = (timing) => {
+    try {
+        window.sessionStorage.setItem(
+            BOARD_FLAP_TIMING_STORAGE_KEY,
+            JSON.stringify(normalizeFlapTiming(timing))
+        );
+    } catch {
+        // The board can still keep the timing for this page view.
+    }
+};
+
+const storedFlapTiming = readStoredFlapTiming();
+let boardFlapTimingCustom = storedFlapTiming !== null;
 const board = createBoard({
     root: documentRef.querySelector(PLATFORM_TABLE_TEMPLATE.rootSelector),
     slots: PLATFORM_TABLE_TEMPLATE.slots,
     registry: createDefaultRegistry({ audio }),
     initialState: createEmptyDisplayState(),
-    flapTiming: normalizeFlapTiming(savedSettings?.flapTiming)
+    flapTiming: storedFlapTiming || resolveBoardFlapTiming(
+        savedSettings?.flapTiming,
+        PLATFORM_FLAP_TIMING_DEFAULTS
+    )
 });
 
 const lensDisplay = board.getComponent('lenses');
@@ -106,6 +218,7 @@ let lensAnimationStartedAt = Date.now();
 let currentDisplayState = createEmptyDisplayState();
 let identificationActive = false;
 let normalLensState = null;
+paintBoardLensColors();
 let operationalPreDepartureActive = true;
 
 const cancelLensActivation = () => {
@@ -244,7 +357,7 @@ const setIdentificationActive = (forceOn) => {
 
 const setBoardState = (state, options = {}) => {
     cancelLensActivation();
-    const nextState = state || createEmptyDisplayState();
+    const nextState = withBoardLensColors(state || createEmptyDisplayState());
     currentDisplayState = nextState;
     if (identificationActive) {
         normalLensState = nextState.lenses || createEmptyLensState();
@@ -262,8 +375,10 @@ audio.bindUserActivation(screenElement || documentRef);
 const nightLighting = new NightLighting({
     root: screenElement,
     clockBlock: documentRef.querySelector('#clockBlock'),
-    initialLamps: savedSettings?.lamps || {},
-    initialClock: savedSettings?.clockLight || NIGHT_CLOCK_DEFAULTS
+    initialLamps: storedLighting?.lamps || savedSettings?.lamps || {},
+    initialClock: storedLighting?.clockLight
+        || savedSettings?.clockLight
+        || NIGHT_CLOCK_DEFAULTS
 }).mount();
 
 const analogClock = new AnalogClock(
@@ -345,18 +460,21 @@ const applySettings = ({
     flapTiming,
     delayOffset: nextDelayOffset
 } = {}) => {
-    if (flapTiming) {
-        board.setFlapTiming(flapTiming);
+    if (flapTiming && !boardFlapTimingCustom) {
+        board.setFlapTiming(resolveBoardFlapTiming(
+            flapTiming,
+            PLATFORM_FLAP_TIMING_DEFAULTS
+        ));
     }
     if (typeof nextDelayOffset === 'boolean') {
         delayOffset = normalizeDelayOffset(nextDelayOffset);
         board.setDelayOffset(delayOffset);
         scheduleLensActivation(currentDisplayState);
     }
-    if (lamps) {
+    if (lamps && !boardLightingCustom) {
         nightLighting.setLampSettings(lamps);
     }
-    if (clockLight) {
+    if (clockLight && !boardLightingCustom) {
         nightLighting.setClockLight(clockLight);
     }
     if (typeof autoNightMode === 'boolean') {
@@ -380,6 +498,14 @@ const waitForBoardToSettle = () => new Promise((resolve) => {
     check();
 });
 
+const getBoardLensColors = () => {
+    const lenses = (normalLensState || lensDisplay.getValue())?.lenses || [];
+    return [
+        boardLensColors?.[0] || lenses[0]?.color || 'green',
+        boardLensColors?.[1] || lenses[1]?.color || lenses[0]?.color || 'green'
+    ];
+};
+
 const getLensPresenceState = () => ({
     ...(normalLensState || lensDisplay.getValue()),
     preDepartureActive: normalLensState
@@ -395,6 +521,7 @@ const acknowledge = (message, payload = {}) => {
         instanceId: transport.id,
         revision: appliedRevision,
         lensState: getLensPresenceState(),
+        lensColors: getBoardLensColors(),
         identificationActive,
         ...payload
     }, {
@@ -422,6 +549,10 @@ const publishReady = () => {
         autoNightMode: automaticNightMode,
         appliedRevision,
         lensState: getLensPresenceState(),
+        lensColors: getBoardLensColors(),
+        lamps: nightLighting.getLampSettings(),
+        clockLight: nightLighting.getClockSettings(),
+        flapTiming: board.getFlapTiming(),
         audio: audio.getState(),
         identificationActive,
         userAgent: String(globalThis.navigator?.userAgent || '')
@@ -440,6 +571,10 @@ const publishHeartbeat = () => {
         configured: Boolean(boardIdentity.platform && boardIdentity.track),
         appliedRevision,
         lensState: getLensPresenceState(),
+        lensColors: getBoardLensColors(),
+        lamps: nightLighting.getLampSettings(),
+        clockLight: nightLighting.getClockSettings(),
+        flapTiming: board.getFlapTiming(),
         audio: audio.getState(),
         identificationActive,
         userAgent: String(globalThis.navigator?.userAgent || '')
@@ -462,6 +597,10 @@ const handleCommand = async (message) => {
         forceOn,
         muted,
         volume,
+        colors,
+        lamps,
+        clockLight,
+        flapTiming,
         immediate = false
     } = message.payload || {};
 
@@ -471,13 +610,21 @@ const handleCommand = async (message) => {
         const isIdentificationAction = action === 'identify-lenses';
         const isAudioMuteAction = action === 'set-audio-muted';
         const isAudioVolumeAction = action === 'set-audio-volume';
+        const isLensColorAction = action === 'set-lens-colors';
+        const isLightingAction = action === 'set-lighting';
+        const isFlapTimingAction = action === 'set-flap-timing';
         if (isTargetedAction) {
             if (!message.payload?.target
                 || !identitiesMatch(boardIdentity, message.payload.target)) {
                 return;
             }
         }
-        if ((isIdentificationAction || isAudioMuteAction || isAudioVolumeAction)
+        if ((isIdentificationAction
+            || isAudioMuteAction
+            || isAudioVolumeAction
+            || isLensColorAction
+            || isLightingAction
+            || isFlapTimingAction)
             && message.target?.source !== transport.id) {
             return;
         }
@@ -488,7 +635,10 @@ const handleCommand = async (message) => {
             'reset-all',
             'identify-lenses',
             'set-audio-muted',
-            'set-audio-volume'
+            'set-audio-volume',
+            'set-lens-colors',
+            'set-lighting',
+            'set-flap-timing'
         ].includes(action)) {
             throw new Error('Neznámá akce tabule.');
         }
@@ -508,6 +658,55 @@ const handleCommand = async (message) => {
             acknowledge(message, {
                 ok: true,
                 audio: audio.getState()
+            });
+            publishHeartbeat();
+            return;
+        }
+
+        if (isFlapTimingAction) {
+            const nextTiming = board.setFlapTiming(flapTiming);
+            boardFlapTimingCustom = true;
+            writeStoredFlapTiming(nextTiming);
+            acknowledge(message, {
+                ok: true,
+                flapTiming: nextTiming
+            });
+            publishHeartbeat();
+            return;
+        }
+
+        if (isLightingAction) {
+            if (lamps && typeof lamps === 'object') {
+                nightLighting.setLampSettings(lamps);
+            }
+            if (clockLight && typeof clockLight === 'object') {
+                nightLighting.setClockLight(clockLight);
+            }
+            boardLightingCustom = true;
+            writeStoredLighting({
+                lamps: nightLighting.getLampSettings(),
+                clockLight: nightLighting.getClockSettings()
+            });
+            acknowledge(message, {
+                ok: true,
+                lamps: nightLighting.getLampSettings(),
+                clockLight: nightLighting.getClockSettings()
+            });
+            publishHeartbeat();
+            return;
+        }
+
+        if (isLensColorAction) {
+            const parsed = writeStoredLensColors(colors) || parseLensColors(colors);
+            if (!parsed) {
+                throw new Error('Neplatná barva čoček.');
+            }
+
+            boardLensColors = parsed;
+            paintBoardLensColors();
+            acknowledge(message, {
+                ok: true,
+                lensColors: parsed
             });
             publishHeartbeat();
             return;
@@ -572,7 +771,10 @@ transport.subscribe((message) => {
     if (message.type === 'board:command') {
         if (message.payload?.action === 'identify-lenses'
             || message.payload?.action === 'set-audio-muted'
-            || message.payload?.action === 'set-audio-volume') {
+            || message.payload?.action === 'set-audio-volume'
+            || message.payload?.action === 'set-lens-colors'
+            || message.payload?.action === 'set-lighting'
+            || message.payload?.action === 'set-flap-timing') {
             // Instance actions must stay responsive during a long flap animation.
             void handleCommand(message);
         } else {
@@ -589,7 +791,10 @@ transport.subscribe((message) => {
 applySettings({
     nightMode: savedSettings?.nightMode === true,
     autoNightMode: automaticNightMode,
-    flapTiming: savedSettings?.flapTiming,
+    flapTiming: resolveBoardFlapTiming(
+        savedSettings?.flapTiming,
+        PLATFORM_FLAP_TIMING_DEFAULTS
+    ),
     delayOffset
 });
 publishReady();

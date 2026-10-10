@@ -13,6 +13,8 @@ export {
     DEPARTURE_BOARD_ROW_COUNT_MAX,
     DEPARTURE_BOARD_ROW_COUNT_MIN,
     FLAP_TIMING_DEFAULTS,
+    DEPARTURE_FLAP_TIMING_DEFAULTS,
+    PLATFORM_FLAP_TIMING_DEFAULTS,
     FLAP_TIMING_DURATION_MAX,
     FLAP_TIMING_DURATION_MIN,
     FLAP_TIMING_VARIATION_MS,
@@ -46,7 +48,8 @@ export {
     normalizeDelayOffset,
     normalizeDepartureBoardLogoId,
     normalizeDepartureBoardRowCount,
-    normalizeFlapTiming
+    normalizeFlapTiming,
+    resolveBoardFlapTiming
 } from './data.js';
 
 export { SplitFlapAudio, createSplitFlapAudio } from './audio.js';
@@ -75,7 +78,12 @@ export {
     LensDisplay,
     createDefaultLensState,
     createEmptyLensState,
-    getLensBlinkPhase
+    getLensBlinkPhase,
+    parseLensColors,
+    readInitialLensColors,
+    readLensColorOverride,
+    readStoredLensColors,
+    writeStoredLensColors
 } from './lenses.js';
 export {
     BoardRuntime,

@@ -94,12 +94,38 @@ if (JSON.stringify(keptOnBoard) !== JSON.stringify(['recent', 'later', 'older'])
 const sorted = [
     { id: 'overnight', departureTime: { hours: 0, minutes: 15 }, delay: '' },
     { id: 'evening', departureTime: { hours: 23, minutes: 10 }, delay: '' },
-    { id: 'delayed', departureTime: { hours: 18, minutes: 0 }, delay: 60 }
+    { id: 'delayed', departureTime: { hours: 18, minutes: 0 }, delay: 180 }
 ].sort((first, second) => compareDeparturesByTime(first, second, evening))
     .map((departure) => departure.id);
 
 if (JSON.stringify(sorted) !== JSON.stringify(['delayed', 'evening', 'overnight'])) {
     throw new Error(`sort order mismatch: ${sorted.join(', ')}`);
+}
+
+const beforeMidnight = at('2026-10-07T23:55:00');
+const overnightWithDelay = [
+    { id: 'later', departureTime: { hours: 0, minutes: 46 }, delay: 5 },
+    { id: 'soon', departureTime: { hours: 0, minutes: 5 }, delay: '' },
+    { id: 'evening', departureTime: { hours: 23, minutes: 58 }, delay: '' }
+].sort((first, second) => compareDeparturesByTime(first, second, beforeMidnight))
+    .map((departure) => departure.id);
+
+if (JSON.stringify(overnightWithDelay) !== JSON.stringify(['evening', 'soon', 'later'])) {
+    throw new Error(
+        `delayed overnight train sorted as this morning: ${overnightWithDelay.join(', ')}`
+    );
+}
+
+const departedDespiteDelay = [
+    { id: 'stale', departureTime: { hours: 18, minutes: 0 }, delay: 60 },
+    { id: 'evening', departureTime: { hours: 23, minutes: 10 }, delay: '' }
+].sort((first, second) => compareDeparturesByTime(first, second, evening))
+    .map((departure) => departure.id);
+
+if (JSON.stringify(departedDespiteDelay) !== JSON.stringify(['evening', 'stale'])) {
+    throw new Error(
+        `delay kept an already departed train on today: ${departedDespiteDelay.join(', ')}`
+    );
 }
 
 const afterMidnight = at('2026-10-08T00:56:00');

@@ -15,6 +15,8 @@ import {
     DEPARTURE_SECTOR_VALUES,
     DEPARTURE_TRACK_VALUES,
     FLAP_TIMING_DEFAULTS,
+    DEPARTURE_FLAP_TIMING_DEFAULTS,
+    PLATFORM_FLAP_TIMING_DEFAULTS,
     FLAP_TIMING_DURATION_MAX,
     FLAP_TIMING_DURATION_MIN,
     DELAY_OFFSET_DEFAULT,
@@ -75,7 +77,39 @@ if (!currentState && legacyState) {
     });
 }
 const savedSettings = savedState.settings || savedState;
-const transport = new BoardTransport();
+const logOutput = documentRef.querySelector('#logOutput');
+const manageLogEntries = [];
+const MANAGE_LOG_LIMIT = 250;
+
+const appendManageLog = (line, details) => {
+    if (!logOutput) {
+        return;
+    }
+
+    let body = '';
+    try {
+        body = JSON.stringify(details, null, 2);
+    } catch {
+        body = String(details);
+    }
+
+    manageLogEntries.push(body ? `${line}\n${body}` : line);
+    if (manageLogEntries.length > MANAGE_LOG_LIMIT) {
+        manageLogEntries.splice(0, manageLogEntries.length - MANAGE_LOG_LIMIT);
+    }
+
+    const pinnedToBottom = logOutput.scrollHeight
+        - logOutput.scrollTop
+        - logOutput.clientHeight < 48;
+    logOutput.textContent = manageLogEntries.join('\n\n');
+    if (pinnedToBottom) {
+        logOutput.scrollTop = logOutput.scrollHeight;
+    }
+};
+
+const transport = new BoardTransport({
+    onLog: appendManageLog
+});
 
 const boardForm = documentRef.querySelector('#boardForm');
 const stationInputs = [
@@ -90,26 +124,14 @@ const trainNumberInput = documentRef.querySelector('#trainNumber');
 const operatorInput = documentRef.querySelector('#operatorValue');
 const departureTimeInput = documentRef.querySelector('#departureTime');
 const delayValueInput = documentRef.querySelector('#delayValue');
-const flapTimingDurationInput = documentRef.querySelector(
-    '#flapTimingDuration'
-);
-const flapTimingDurationOutput = documentRef.querySelector(
-    '#flapTimingDurationOutput'
-);
-const flapTimingVariationInput = documentRef.querySelector(
-    '#flapTimingVariation'
-);
-const flapTimingVariationOutput = documentRef.querySelector(
-    '#flapTimingVariationOutput'
-);
 const delayOffsetEnabledInput = documentRef.querySelector(
     '#delayOffsetEnabled'
 );
 const manageHeaderClock = documentRef.querySelector('#manageHeaderClock');
 const manageHeaderStation = documentRef.querySelector('#manageHeaderStation');
-const departureBoardRowsInput = documentRef.querySelector(
-    '#departureBoardRows'
-);
+const boardSettingsDialog = documentRef.querySelector('#boardSettingsDialog');
+const boardSettingsTitle = documentRef.querySelector('#boardSettingsTitle');
+const boardSettingsBody = documentRef.querySelector('#boardSettingsBody');
 const departureBoardLogoInputs = [
     ...documentRef.querySelectorAll('input[name="departureBoardLogo"]')
 ];
@@ -128,15 +150,6 @@ const manageHeaderBoardLogoWrap = documentRef.querySelector(
 );
 const boardFormStatus = documentRef.querySelector('#boardFormStatus');
 const lensControls = documentRef.querySelector('#lensControls');
-const lampSettingsPanel = documentRef.querySelector('#lampSettingsPanel');
-const lampControls = documentRef.querySelector('#lampControls');
-const clockLightControl = documentRef.querySelector('#clockLightControl');
-const clockLightEnabledInput = documentRef.querySelector('#clockLightEnabled');
-const clockLightIntensityInput = documentRef.querySelector('#clockLightIntensity');
-const clockLightIntensityOutput = documentRef.querySelector(
-    '#clockLightIntensityOutput'
-);
-const resetLampSettingsButton = documentRef.querySelector('#resetLampSettings');
 const nightModeButton = documentRef.querySelector('#nightModeButton');
 const autoNightModeInput = documentRef.querySelector('#autoNightMode');
 const startButton = documentRef.querySelector('#startButton');
@@ -178,9 +191,7 @@ let flapTiming = normalizeFlapTiming(savedSettings?.flapTiming);
 let delayOffset = normalizeDelayOffset(
     savedSettings?.delayOffset ?? DELAY_OFFSET_DEFAULT
 );
-let departureBoardRows = normalizeDepartureBoardRowCount(
-    savedSettings?.departureBoardRows ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT
-);
+let boardSettingsInstanceId = '';
 let departureBoardLogo = normalizeDepartureBoardLogoId(
     savedSettings?.departureBoardLogo ?? DEPARTURE_BOARD_LOGO_DEFAULT
 );
@@ -352,12 +363,8 @@ const setSavedFormValues = (formState) => {
 };
 
 const getLightingSettingsState = () => ({
-    lamps: lighting.getLampSettings(),
-    clockLight: lighting.getClockSettings(),
     nightMode,
     autoNightMode,
-    flapTiming: { ...flapTiming },
-    departureBoardRows,
     delayOffset,
     departureBoardLogo,
     departureBoardLogoSvg,
@@ -390,6 +397,7 @@ const getManagedLensState = () =>
 
 const getSettingsState = () => ({
     ...getLightingSettingsState(),
+    flapTiming: { ...flapTiming },
     lenses: getManagedLensState()
 });
 
@@ -568,7 +576,11 @@ departures = departures
     .filter((departure) => departure.departureTime);
 
 const persistState = () => {
-    const settings = getSettingsState();
+    const settings = {
+        ...getSettingsState(),
+        lamps: lighting.getLampSettings(),
+        clockLight: lighting.getClockSettings()
+    };
     storage.save({
         version: 2,
         form: getDraftFormState(),
@@ -618,31 +630,6 @@ const publishSettings = ({ persist = true } = {}) => {
     transport.publish('board:settings', getLightingSettingsState());
 };
 
-const syncFlapTimingControls = () => {
-    if (!flapTimingDurationInput || !flapTimingVariationInput) {
-        return;
-    }
-
-    flapTimingDurationInput.min = String(FLAP_TIMING_DURATION_MIN);
-    flapTimingDurationInput.max = String(FLAP_TIMING_DURATION_MAX);
-    flapTimingDurationInput.step = '10';
-    flapTimingVariationInput.min = String(FLAP_TIMING_VARIATION_MIN);
-    flapTimingVariationInput.max = String(FLAP_TIMING_VARIATION_MAX);
-    flapTimingDurationInput.value = String(flapTiming.duration);
-    flapTimingVariationInput.value = String(flapTiming.variation);
-    flapTimingDurationOutput.textContent = `${flapTiming.duration} ms`;
-    flapTimingVariationOutput.textContent = `±${flapTiming.variation} ms`;
-};
-
-const updateFlapTimingFromControls = () => {
-    flapTiming = normalizeFlapTiming({
-        duration: flapTimingDurationInput.value,
-        variation: flapTimingVariationInput.value
-    });
-    syncFlapTimingControls();
-    publishSettings();
-};
-
 const syncDelayOffsetControls = () => {
     if (!delayOffsetEnabledInput) {
         return;
@@ -656,24 +643,6 @@ const updateDelayOffsetFromControls = () => {
     syncDelayOffsetControls();
     publishSettings();
     renderDeparturesTable();
-};
-
-const syncDepartureBoardRowControls = () => {
-    if (!departureBoardRowsInput) {
-        return;
-    }
-
-    departureBoardRowsInput.min = String(DEPARTURE_BOARD_ROW_COUNT_MIN);
-    departureBoardRowsInput.max = String(DEPARTURE_BOARD_ROW_COUNT_MAX);
-    departureBoardRowsInput.value = String(departureBoardRows);
-};
-
-const updateDepartureBoardRowsFromControls = () => {
-    departureBoardRows = normalizeDepartureBoardRowCount(
-        departureBoardRowsInput.value
-    );
-    syncDepartureBoardRowControls();
-    publishSettings();
 };
 
 const applyDisplayedLogos = () => {
@@ -836,7 +805,7 @@ const getLensPresentation = (
 
     return settings.map((setting, index) => {
         const on = setting.enabled && preDepartureActive;
-        const color = LENS_COLORS[setting.color] || LENS_COLORS.green;
+        const color = LENS_COLORS.yellow; //LENS_COLORS[setting.color] || LENS_COLORS.green;
         const blinkInterval = LENS_DEFAULTS.blinkInterval;
         const animationPhase = getLensBlinkPhase({
             now,
@@ -1078,7 +1047,8 @@ const renderActiveBoards = () => {
         return;
     }
 
-    if (document.activeElement?.classList?.contains('board-volume-range')) {
+    if (document.activeElement?.classList?.contains('board-volume-range')
+        && activeBoardsList?.contains(document.activeElement)) {
         activeBoardRenderDeferred = true;
         return;
     }
@@ -1169,6 +1139,13 @@ const renderActiveBoards = () => {
         );
         const actions = documentRef.createElement('div');
         actions.className = 'active-board-actions';
+        const settingsButton = documentRef.createElement('button');
+        settingsButton.type = 'button';
+        settingsButton.className = 'board-settings-button';
+        settingsButton.dataset.boardInstanceId = boardPresence.instanceId;
+        settingsButton.replaceChildren(createGearIcon());
+        settingsButton.setAttribute('aria-label', 'Nastavení tabule');
+        settingsButton.title = 'Nastavení tabule';
         const identifyButton = documentRef.createElement('button');
         identifyButton.type = 'button';
         identifyButton.className = 'identify-board-button';
@@ -1233,10 +1210,25 @@ const renderActiveBoards = () => {
             }
         });
         volumeControl.append(volumeText, volumeRange, volumeOutput);
-        actions.append(identifyButton, volumeControl, muteButton);
-        item.append(identity, details, status, audioStatus, actions, connectionLine);
+        actions.append(volumeControl, muteButton, settingsButton);
+        const heading = documentRef.createElement('div');
+        heading.className = 'active-board-heading';
+        heading.append(identifyButton, identity);
+        item.append(heading, details, status, audioStatus, actions, connectionLine);
         activeBoardsList.appendChild(item);
     });
+};
+
+const createGearIcon = () => {
+    const icon = documentRef.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'svg'
+    );
+    icon.classList.add('board-settings-icon');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = '<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"></path>';
+    return icon;
 };
 
 const createSpeakerIcon = (muted) => {
@@ -1264,6 +1256,17 @@ const setBoardVolume = (boardPresence, volume) => {
         ...(boardPresence.audioState || {}),
         volume: nextVolume
     };
+    documentRef.querySelectorAll('.board-volume-range').forEach((input) => {
+        if (input.dataset.boardInstanceId !== boardPresence.instanceId
+            || input === documentRef.activeElement) {
+            return;
+        }
+        input.value = String(nextVolume);
+        const output = input.parentElement?.querySelector('output');
+        if (output) {
+            output.textContent = `${nextVolume} %`;
+        }
+    });
     transport.publish('board:command', {
         action: 'set-audio-volume',
         volume: nextVolume
@@ -1272,6 +1275,7 @@ const setBoardVolume = (boardPresence, volume) => {
             source: boardPresence.instanceId
         }
     });
+    syncOpenBoardSettingsAudio(boardPresence);
 };
 
 const toggleBoardMute = (boardPresence) => {
@@ -1298,9 +1302,571 @@ const toggleBoardMute = (boardPresence) => {
             ? 'Zvuk flapů na tabuli je ztlumený.'
             : 'Zvuk flapů na tabuli je zapnutý.'
     );
+    syncOpenBoardSettingsAudio(boardPresence);
+};
+
+const findBoardPresence = (instanceId) => [...activeBoards.values()].find(
+    (presence) => presence.instanceId === instanceId
+);
+
+const boardSettingsTitleFor = (boardPresence) => {
+    if (boardPresence.page === 'departureBoard') {
+        return 'Odjezdová tabule';
+    }
+    if (boardPresence.configured === false) {
+        return 'Tabule bez identity';
+    }
+    return formatBoardIdentity(boardPresence.identity);
+};
+
+const currentLensColors = (boardPresence) => {
+    const reported = Array.isArray(boardPresence.lensColors)
+        ? boardPresence.lensColors
+        : [];
+    const fromState = boardPresence.lensState?.lenses || [];
+    return [
+        reported[0] || fromState[0]?.color || 'green',
+        reported[1] || fromState[1]?.color || reported[0] || fromState[0]?.color || 'green'
+    ];
+};
+
+const syncOpenBoardSettingsAudio = (boardPresence) => {
+    if (!boardSettingsDialog?.open
+        || boardSettingsInstanceId !== boardPresence?.instanceId) {
+        return;
+    }
+
+    const range = boardSettingsDialog.querySelector('.board-settings-volume');
+    const output = boardSettingsDialog.querySelector('.board-settings-volume-output');
+    const volume = normalizeBoardVolume(boardPresence.audioState?.volume);
+    if (range && documentRef.activeElement !== range) {
+        range.value = String(volume);
+    }
+    if (output && documentRef.activeElement !== range) {
+        output.textContent = `${volume} %`;
+    }
+
+    const muteButton = boardSettingsDialog.querySelector('.board-settings-mute');
+    if (!muteButton) {
+        return;
+    }
+    const muted = boardPresence.audioState?.muted === true;
+    muteButton.replaceChildren(createSpeakerIcon(muted));
+    muteButton.setAttribute('aria-pressed', String(muted));
+    muteButton.setAttribute(
+        'aria-label',
+        muted
+            ? 'Zapnout zvuk flapů na této tabuli'
+            : 'Ztlumit zvuk flapů na této tabuli'
+    );
+};
+
+const publishBoardCommand = (presence, payload) => {
+    transport.publish('board:command', payload, {
+        target: {
+            source: presence.instanceId
+        }
+    });
+};
+
+const appendSynchronizeRowsControl = (boardPresence) => {
+    const label = documentRef.createElement('label');
+    label.className = 'lamp-control-check board-sync-rows';
+    const input = documentRef.createElement('input');
+    input.type = 'checkbox';
+    input.checked = boardPresence.synchronizeRows !== false;
+    label.append(
+        input,
+        documentRef.createTextNode(' Stejná strana ve všech řádcích')
+    );
+    input.addEventListener('change', () => {
+        const presence = findBoardPresence(boardSettingsInstanceId);
+        if (!presence) {
+            return;
+        }
+        presence.synchronizeRows = input.checked;
+        publishBoardCommand(presence, {
+            action: 'set-synchronize-rows',
+            synchronizeRows: input.checked
+        });
+    });
+    boardSettingsBody.append(label);
+};
+
+const lampValue = (source, id, field, fallback) => {
+    const value = source?.[id]?.[field];
+    return value === undefined ? fallback : value;
+};
+
+const appendPlatformLighting = (boardPresence) => {
+    const lamps = boardPresence.lamps || lighting.getLampSettings();
+    const clock = boardPresence.clockLight || lighting.getClockSettings();
+    const section = documentRef.createElement('fieldset');
+    section.className = 'lamp-settings';
+    const legendWrap = documentRef.createElement('div');
+    const legend = documentRef.createElement('legend');
+    legend.textContent = 'Osvětlení žárovek';
+    legendWrap.append(legend);
+    const controls = documentRef.createElement('div');
+    controls.className = 'lamp-controls';
+
+    const clockPanel = documentRef.createElement('fieldset');
+    clockPanel.className = 'lamp-control clock-light-control';
+    const clockLegendWrap = documentRef.createElement('div');
+    const clockLegend = documentRef.createElement('legend');
+    clockLegend.textContent = 'Osvětlení hodin';
+    clockLegendWrap.append(clockLegend);
+    const clockEnabledLabel = documentRef.createElement('label');
+    clockEnabledLabel.className = 'lamp-control-check';
+    const clockEnabled = documentRef.createElement('input');
+    clockEnabled.type = 'checkbox';
+    clockEnabled.dataset.clockField = 'enabled';
+    clockEnabled.checked = clock.enabled !== false;
+    clockEnabledLabel.append(clockEnabled, documentRef.createTextNode(' Svítí'));
+    const clockIntensityLabel = documentRef.createElement('label');
+    clockIntensityLabel.className = 'lamp-control-range';
+    const clockHeader = documentRef.createElement('span');
+    clockHeader.className = 'lamp-control-range-header';
+    clockHeader.append(documentRef.createTextNode('Intenzita'));
+    const clockOutput = documentRef.createElement('output');
+    clockOutput.textContent = `${clock.intensity ?? NIGHT_CLOCK_DEFAULTS.intensity}%`;
+    clockHeader.append(clockOutput);
+    const clockIntensity = documentRef.createElement('input');
+    clockIntensity.type = 'range';
+    clockIntensity.min = '0';
+    clockIntensity.max = '100';
+    clockIntensity.step = '1';
+    clockIntensity.dataset.clockField = 'intensity';
+    clockIntensity.value = String(
+        clock.intensity ?? NIGHT_CLOCK_DEFAULTS.intensity
+    );
+    clockIntensityLabel.append(clockHeader, clockIntensity);
+    clockIntensity.addEventListener('input', () => {
+        clockOutput.textContent = `${clockIntensity.value}%`;
+    });
+    const clockControls = documentRef.createElement('div');
+    clockControls.className = 'clock-light-controls';
+    clockControls.append(clockEnabledLabel, clockIntensityLabel);
+    clockPanel.append(clockLegendWrap, clockControls);
+
+    NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
+        const panel = documentRef.createElement('fieldset');
+        panel.className = 'lamp-control';
+        panel.dataset.lampId = defaultSetting.id;
+        const panelLegendWrap = documentRef.createElement('div');
+        const panelLegend = documentRef.createElement('legend');
+        panelLegend.textContent = defaultSetting.label;
+        panelLegendWrap.append(panelLegend);
+        const toggles = documentRef.createElement('div');
+        toggles.className = 'lamp-control-toggles';
+        const enabledLabel = documentRef.createElement('label');
+        enabledLabel.className = 'lamp-control-check';
+        const enabled = documentRef.createElement('input');
+        enabled.type = 'checkbox';
+        enabled.dataset.lampField = 'enabled';
+        enabled.checked = lampValue(
+            lamps,
+            defaultSetting.id,
+            'enabled',
+            defaultSetting.enabled
+        ) !== false;
+        enabledLabel.append(enabled, documentRef.createTextNode(' Svítí'));
+        const variationLabel = documentRef.createElement('label');
+        variationLabel.className = 'lamp-control-check';
+        const variation = documentRef.createElement('input');
+        variation.type = 'checkbox';
+        variation.dataset.lampField = 'variation';
+        variation.checked = Boolean(lampValue(
+            lamps,
+            defaultSetting.id,
+            'variation',
+            defaultSetting.variation
+        ));
+        variationLabel.append(variation, documentRef.createTextNode(' S efektem'));
+        toggles.append(enabledLabel, variationLabel);
+
+        const intensityLabel = documentRef.createElement('label');
+        intensityLabel.className = 'lamp-control-range';
+        const intensityHeader = documentRef.createElement('span');
+        intensityHeader.className = 'lamp-control-range-header';
+        intensityHeader.append(documentRef.createTextNode('Intenzita'));
+        const intensityOutput = documentRef.createElement('output');
+        const intensityValue = lampValue(
+            lamps,
+            defaultSetting.id,
+            'intensity',
+            defaultSetting.intensity
+        );
+        intensityOutput.textContent = `${intensityValue}%`;
+        intensityHeader.append(intensityOutput);
+        const intensity = documentRef.createElement('input');
+        intensity.type = 'range';
+        intensity.min = '0';
+        intensity.max = '100';
+        intensity.step = '1';
+        intensity.dataset.lampField = 'intensity';
+        intensity.value = String(intensityValue);
+        intensityLabel.append(intensityHeader, intensity);
+        intensity.addEventListener('input', () => {
+            intensityOutput.textContent = `${intensity.value}%`;
+        });
+
+        const speedLabel = documentRef.createElement('label');
+        speedLabel.className = 'lamp-control-range';
+        const speedHeader = documentRef.createElement('span');
+        speedHeader.className = 'lamp-control-range-header';
+        speedHeader.append(documentRef.createTextNode('Délka cyklu'));
+        const speedOutput = documentRef.createElement('output');
+        const speedValue = lampValue(
+            lamps,
+            defaultSetting.id,
+            'speed',
+            defaultSetting.speed
+        );
+        speedOutput.textContent = `${Number(speedValue).toFixed(1)} s`;
+        speedHeader.append(speedOutput);
+        const speed = documentRef.createElement('input');
+        speed.type = 'range';
+        speed.min = '1';
+        speed.max = '120';
+        speed.step = '0.5';
+        speed.dataset.lampField = 'speed';
+        speed.value = String(speedValue);
+        speedLabel.append(speedHeader, speed);
+        speed.addEventListener('input', () => {
+            speedOutput.textContent = `${Number(speed.value).toFixed(1)} s`;
+        });
+
+        const fadeLabel = documentRef.createElement('label');
+        fadeLabel.className = 'lamp-control-select';
+        fadeLabel.append(documentRef.createTextNode('Efekt'));
+        const fade = documentRef.createElement('select');
+        fade.dataset.lampField = 'fade';
+        NIGHT_FADE_MODES.forEach((mode) => {
+            const option = documentRef.createElement('option');
+            option.value = mode.value;
+            option.textContent = mode.label;
+            fade.append(option);
+        });
+        fade.value = String(lampValue(
+            lamps,
+            defaultSetting.id,
+            'fade',
+            defaultSetting.fade
+        ));
+        fadeLabel.append(fade);
+        panel.append(
+            panelLegendWrap,
+            toggles,
+            intensityLabel,
+            speedLabel,
+            fadeLabel
+        );
+        controls.append(panel);
+    });
+
+    const help = documentRef.createElement('p');
+    help.className = 'lamp-settings-help';
+    help.textContent = 'Checkbox „S efektem“ zapíná vybraný světelný efekt. '
+        + 'Volba „Bez pohasínání“ udrží žárovku ve stálém svitu. Délka cyklu '
+        + 'je skutečný čas celého efektu; vyšší hodnota znamená pomalejší změny.';
+    const actions = documentRef.createElement('div');
+    actions.className = 'lamp-settings-actions';
+    const resetButton = documentRef.createElement('button');
+    resetButton.type = 'button';
+    resetButton.textContent = 'Obnovit výchozí světla';
+    actions.append(resetButton);
+    section.append(legendWrap, controls, clockPanel, help, actions);
+    boardSettingsBody.append(section);
+
+    const publishLighting = () => {
+        const presence = findBoardPresence(boardSettingsInstanceId);
+        if (!presence) {
+            return;
+        }
+        const nextLamps = {};
+        controls.querySelectorAll('[data-lamp-id]').forEach((panel) => {
+            nextLamps[panel.dataset.lampId] = {
+                enabled: panel.querySelector('[data-lamp-field="enabled"]').checked,
+                variation: panel.querySelector('[data-lamp-field="variation"]').checked,
+                intensity: Number(
+                    panel.querySelector('[data-lamp-field="intensity"]').value
+                ),
+                speed: Number(panel.querySelector('[data-lamp-field="speed"]').value),
+                fade: panel.querySelector('[data-lamp-field="fade"]').value
+            };
+        });
+        const nextClock = {
+            enabled: clockEnabled.checked,
+            intensity: Number(clockIntensity.value)
+        };
+        presence.lamps = nextLamps;
+        presence.clockLight = nextClock;
+        publishBoardCommand(presence, {
+            action: 'set-lighting',
+            lamps: nextLamps,
+            clockLight: nextClock
+        });
+    };
+
+    section.addEventListener('input', publishLighting);
+    section.addEventListener('change', publishLighting);
+    resetButton.addEventListener('click', () => {
+        clockEnabled.checked = NIGHT_CLOCK_DEFAULTS.enabled;
+        clockIntensity.value = String(NIGHT_CLOCK_DEFAULTS.intensity);
+        clockOutput.textContent = `${NIGHT_CLOCK_DEFAULTS.intensity}%`;
+        NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
+            const panel = controls.querySelector(
+                `[data-lamp-id="${defaultSetting.id}"]`
+            );
+            if (!panel) {
+                return;
+            }
+            panel.querySelector('[data-lamp-field="enabled"]').checked =
+                defaultSetting.enabled;
+            panel.querySelector('[data-lamp-field="variation"]').checked =
+                defaultSetting.variation;
+            const intensity = panel.querySelector('[data-lamp-field="intensity"]');
+            intensity.value = String(defaultSetting.intensity);
+            intensity.parentElement.querySelector('output').textContent =
+                `${defaultSetting.intensity}%`;
+            const speed = panel.querySelector('[data-lamp-field="speed"]');
+            speed.value = String(defaultSetting.speed);
+            speed.parentElement.querySelector('output').textContent =
+                `${Number(defaultSetting.speed).toFixed(1)} s`;
+            panel.querySelector('[data-lamp-field="fade"]').value =
+                defaultSetting.fade;
+        });
+        publishLighting();
+    });
+};
+
+const appendFlapTimingControl = (boardPresence) => {
+    const fallback = boardPresence.page === 'departureBoard'
+        ? DEPARTURE_FLAP_TIMING_DEFAULTS
+        : PLATFORM_FLAP_TIMING_DEFAULTS;
+    const timing = boardPresence.flapTiming
+        ? normalizeFlapTiming(boardPresence.flapTiming)
+        : normalizeFlapTiming(fallback);
+    const section = documentRef.createElement('fieldset');
+    section.className = 'flap-timing-settings';
+    const legendWrap = documentRef.createElement('div');
+    const legend = documentRef.createElement('legend');
+    legend.textContent = 'Rychlost split-flapů';
+    legendWrap.append(legend);
+    const controls = documentRef.createElement('div');
+    controls.className = 'flap-timing-controls';
+
+    const createRange = (labelText, min, max, step, value, format) => {
+        const field = documentRef.createElement('label');
+        field.className = 'lamp-control-range';
+        const header = documentRef.createElement('span');
+        header.className = 'lamp-control-range-header';
+        header.append(documentRef.createTextNode(labelText));
+        const output = documentRef.createElement('output');
+        output.textContent = format(value);
+        header.append(output);
+        const input = documentRef.createElement('input');
+        input.type = 'range';
+        input.min = String(min);
+        input.max = String(max);
+        input.step = String(step);
+        input.value = String(value);
+        field.append(header, input);
+        return { field, input, output };
+    };
+
+    const duration = createRange(
+        'Délka jednoho flapu',
+        FLAP_TIMING_DURATION_MIN,
+        FLAP_TIMING_DURATION_MAX,
+        10,
+        timing.duration,
+        (value) => `${value} ms`
+    );
+    const variation = createRange(
+        'Náhodná variace',
+        FLAP_TIMING_VARIATION_MIN,
+        FLAP_TIMING_VARIATION_MAX,
+        1,
+        timing.variation,
+        (value) => `±${value} ms`
+    );
+    controls.append(duration.field, variation.field);
+    const help = documentRef.createElement('small');
+    help.className = 'flap-timing-help';
+    help.textContent = 'Nastavení se použije pro každý jednotlivý flap včetně '
+        + 'času, typu vlaku, zpoždění a názvů stanic. Platí jen pro tuto tabuli.';
+    section.append(legendWrap, controls, help);
+    boardSettingsBody.append(section);
+
+    const publishTiming = () => {
+        const presence = findBoardPresence(boardSettingsInstanceId);
+        if (!presence) {
+            return;
+        }
+        const nextTiming = normalizeFlapTiming({
+            duration: duration.input.value,
+            variation: variation.input.value
+        });
+        duration.output.textContent = `${nextTiming.duration} ms`;
+        variation.output.textContent = `±${nextTiming.variation} ms`;
+        presence.flapTiming = nextTiming;
+        publishBoardCommand(presence, {
+            action: 'set-flap-timing',
+            flapTiming: nextTiming
+        });
+    };
+    duration.input.addEventListener('input', publishTiming);
+    variation.input.addEventListener('input', publishTiming);
+};
+
+const openBoardSettings = (boardPresence) => {
+    if (!boardSettingsDialog || !boardSettingsBody || !boardPresence) {
+        return;
+    }
+
+    boardSettingsInstanceId = boardPresence.instanceId;
+    boardSettingsDialog.classList.toggle(
+        'is-platform-board',
+        boardPresence.page !== 'departureBoard'
+    );
+    if (boardSettingsTitle) {
+        boardSettingsTitle.textContent = boardSettingsTitleFor(boardPresence);
+    }
+
+    boardSettingsBody.replaceChildren();
+    const colors = currentLensColors(boardPresence);
+    const firstColor = createLensColorSelect('Barva 1. čočky');
+    const secondColor = createLensColorSelect('Barva 2. čočky');
+    firstColor.select.value = LENS_COLORS[colors[0]] ? colors[0] : 'green';
+    secondColor.select.value = LENS_COLORS[colors[1]] ? colors[1] : firstColor.select.value;
+
+    const publishLensColors = () => {
+        const presence = findBoardPresence(boardSettingsInstanceId);
+        if (!presence) {
+            return;
+        }
+        const nextColors = [
+            firstColor.select.value,
+            secondColor.select.value
+        ];
+        presence.lensColors = nextColors;
+        transport.publish('board:command', {
+            action: 'set-lens-colors',
+            colors: nextColors
+        }, {
+            target: {
+                source: presence.instanceId
+            }
+        });
+    };
+    firstColor.select.addEventListener('change', publishLensColors);
+    secondColor.select.addEventListener('change', publishLensColors);
+
+    const colorStack = documentRef.createElement('div');
+    colorStack.className = 'lens-control-stack';
+    colorStack.append(firstColor.label, secondColor.label);
+    boardSettingsBody.append(colorStack);
+
+    if (boardPresence.page === 'departureBoard') {
+        appendSynchronizeRowsControl(boardPresence);
+        const rowLabel = documentRef.createElement('label');
+        rowLabel.className = 'board-form-field';
+        rowLabel.append(documentRef.createTextNode('Počet řádků'));
+        const rowInput = documentRef.createElement('input');
+        rowInput.type = 'number';
+        rowInput.min = String(DEPARTURE_BOARD_ROW_COUNT_MIN);
+        rowInput.max = String(DEPARTURE_BOARD_ROW_COUNT_MAX);
+        rowInput.step = '1';
+        rowInput.inputMode = 'numeric';
+        rowInput.value = String(normalizeDepartureBoardRowCount(
+            boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT
+        ));
+        const rowHelp = documentRef.createElement('small');
+        rowHelp.textContent = 'Platí jen pro tuto odjezdovou tabuli. Rozsah je 1–24.';
+        rowLabel.append(rowInput, rowHelp);
+        rowInput.addEventListener('change', () => {
+            const presence = findBoardPresence(boardSettingsInstanceId);
+            if (!presence) {
+                return;
+            }
+            const nextCount = normalizeDepartureBoardRowCount(rowInput.value);
+            rowInput.value = String(nextCount);
+            presence.rowCount = nextCount;
+            transport.publish('board:command', {
+                action: 'set-row-count',
+                rowCount: nextCount
+            }, {
+                target: {
+                    source: presence.instanceId
+                }
+            });
+        });
+        boardSettingsBody.append(rowLabel);
+    }
+
+    if (boardPresence.page !== 'departureBoard') {
+        appendPlatformLighting(boardPresence);
+    }
+
+    appendFlapTimingControl(boardPresence);
+
+    const audioRow = documentRef.createElement('div');
+    audioRow.className = 'board-settings-audio';
+    const volume = normalizeBoardVolume(boardPresence.audioState?.volume);
+    const volumeLabel = documentRef.createElement('label');
+    volumeLabel.className = 'board-volume';
+    const volumeText = documentRef.createElement('span');
+    volumeText.textContent = 'Hlasitost';
+    const volumeRange = documentRef.createElement('input');
+    volumeRange.type = 'range';
+    volumeRange.className = 'board-volume-range board-settings-volume';
+    volumeRange.min = '0';
+    volumeRange.max = '100';
+    volumeRange.step = '1';
+    volumeRange.value = String(volume);
+    const volumeOutput = documentRef.createElement('output');
+    volumeOutput.className = 'board-settings-volume-output';
+    volumeOutput.textContent = `${volume} %`;
+    volumeRange.addEventListener('input', () => {
+        volumeOutput.textContent = `${volumeRange.value} %`;
+        const presence = findBoardPresence(boardSettingsInstanceId);
+        setBoardVolume(presence, volumeRange.value);
+    });
+    volumeLabel.append(volumeText, volumeRange, volumeOutput);
+
+    const muteButton = documentRef.createElement('button');
+    muteButton.type = 'button';
+    muteButton.className = 'board-settings-mute';
+    const muted = boardPresence.audioState?.muted === true;
+    muteButton.replaceChildren(createSpeakerIcon(muted));
+    muteButton.setAttribute('aria-pressed', String(muted));
+    muteButton.setAttribute(
+        'aria-label',
+        muted
+            ? 'Zapnout zvuk flapů na této tabuli'
+            : 'Ztlumit zvuk flapů na této tabuli'
+    );
+    muteButton.addEventListener('click', () => {
+        const presence = findBoardPresence(boardSettingsInstanceId);
+        toggleBoardMute(presence);
+    });
+    audioRow.append(volumeLabel, muteButton);
+    boardSettingsBody.append(audioRow);
+
+    if (!boardSettingsDialog.open) {
+        boardSettingsDialog.showModal();
+    }
 };
 
 activeBoardsList?.addEventListener('click', (event) => {
+    const settingsButton = event.target.closest('.board-settings-button');
+    if (settingsButton) {
+        openBoardSettings(findBoardPresence(settingsButton.dataset.boardInstanceId));
+        return;
+    }
+
     const muteButton = event.target.closest('.mute-board-button');
     if (muteButton) {
         const boardPresence = [...activeBoards.values()].find(
@@ -1381,127 +1947,6 @@ DEPARTURE_SECTOR_VALUES.slice(1).forEach((sector) => {
     sectorInput.appendChild(option);
 });
 
-const lampControlElements = new Map();
-
-const syncLampControls = (setting) => {
-    const controls = lampControlElements.get(setting.id);
-    if (!controls) {
-        return;
-    }
-
-    controls.enabled.checked = setting.enabled;
-    controls.variation.checked = setting.variation;
-    controls.intensity.value = String(setting.intensity);
-    controls.intensityOutput.textContent = `${setting.intensity}%`;
-    controls.speed.value = String(setting.speed);
-    controls.speedOutput.textContent = `${setting.speed.toFixed(1)} s`;
-    controls.fade.value = setting.fade;
-};
-
-const readLampControls = (id) => {
-    const controls = lampControlElements.get(id);
-    return {
-        enabled: controls.enabled.checked,
-        variation: controls.variation.checked,
-        intensity: Number(controls.intensity.value),
-        speed: Number(controls.speed.value),
-        fade: controls.fade.value
-    };
-};
-
-const updateLampFromControls = (id) => {
-    lighting.updateLamp(id, readLampControls(id));
-    syncLampControls(lighting.getLampSettings()[id]);
-    publishSettings();
-};
-
-NIGHT_LIGHT_DEFAULTS.forEach((defaultSetting) => {
-    const panel = documentRef.createElement('fieldset');
-    panel.className = 'lamp-control';
-
-    const legend = documentRef.createElement('legend');
-    legend.textContent = defaultSetting.label;
-    const legendWrapper = documentRef.createElement('div');
-    legendWrapper.appendChild(legend);
-    panel.appendChild(legendWrapper);
-
-    const toggles = documentRef.createElement('div');
-    toggles.className = 'lamp-control-toggles';
-
-    const enabledLabel = documentRef.createElement('label');
-    enabledLabel.className = 'lamp-control-check';
-    const enabled = documentRef.createElement('input');
-    enabled.type = 'checkbox';
-    enabledLabel.append(enabled, documentRef.createTextNode(' Svítí'));
-
-    const variationLabel = documentRef.createElement('label');
-    variationLabel.className = 'lamp-control-check';
-    const variation = documentRef.createElement('input');
-    variation.type = 'checkbox';
-    variationLabel.append(variation, documentRef.createTextNode(' S efektem'));
-    toggles.append(enabledLabel, variationLabel);
-
-    const intensityLabel = documentRef.createElement('label');
-    intensityLabel.className = 'lamp-control-range';
-    const intensityHeader = documentRef.createElement('span');
-    intensityHeader.className = 'lamp-control-range-header';
-    intensityHeader.appendChild(documentRef.createTextNode('Intenzita'));
-    const intensityOutput = documentRef.createElement('output');
-    intensityHeader.appendChild(intensityOutput);
-    const intensity = documentRef.createElement('input');
-    intensity.type = 'range';
-    intensity.min = '0';
-    intensity.max = '100';
-    intensity.step = '1';
-    intensityLabel.append(intensityHeader, intensity);
-
-    const speedLabel = documentRef.createElement('label');
-    speedLabel.className = 'lamp-control-range';
-    const speedHeader = documentRef.createElement('span');
-    speedHeader.className = 'lamp-control-range-header';
-    speedHeader.appendChild(documentRef.createTextNode('Délka cyklu'));
-    const speedOutput = documentRef.createElement('output');
-    speedHeader.appendChild(speedOutput);
-    const speed = documentRef.createElement('input');
-    speed.type = 'range';
-    speed.min = '1';
-    speed.max = '120';
-    speed.step = '0.5';
-    speedLabel.append(speedHeader, speed);
-
-    const fadeLabel = documentRef.createElement('label');
-    fadeLabel.className = 'lamp-control-select';
-    fadeLabel.appendChild(documentRef.createTextNode('Efekt'));
-    const fade = documentRef.createElement('select');
-    NIGHT_FADE_MODES.forEach((mode) => {
-        const option = documentRef.createElement('option');
-        option.value = mode.value;
-        option.textContent = mode.label;
-        fade.appendChild(option);
-    });
-    fadeLabel.appendChild(fade);
-
-    panel.append(toggles, intensityLabel, speedLabel, fadeLabel);
-    lampControls.appendChild(panel);
-
-    const controls = {
-        enabled,
-        variation,
-        intensity,
-        intensityOutput,
-        speed,
-        speedOutput,
-        fade
-    };
-    lampControlElements.set(defaultSetting.id, controls);
-    syncLampControls(lighting.getLampSettings()[defaultSetting.id]);
-
-    [enabled, variation, intensity, speed, fade].forEach((input) => {
-        input.addEventListener('input', () => updateLampFromControls(defaultSetting.id));
-        input.addEventListener('change', () => updateLampFromControls(defaultSetting.id));
-    });
-});
-
 const lensControlElements = new Map();
 
 const syncLensControls = () => {
@@ -1514,10 +1959,6 @@ const syncLensControls = () => {
 
     controls.enabled.checked = settings.some((setting) => setting.enabled);
     controls.blinking.checked = true;
-    controls.synchronizeRows.checked =
-        lensState.synchronizeRows !== false;
-    controls.firstColor.value = settings[0].color;
-    controls.secondColor.value = (settings[1] || settings[0]).color;
     controls.blinkInterval.value = String(LENS_DEFAULTS.blinkInterval);
     controls.blinkIntervalOutput.textContent =
         `${LENS_DEFAULTS.blinkInterval.toFixed(1)} s`;
@@ -1538,12 +1979,8 @@ const updateLensFromControls = () => {
         enabled: controls.enabled.checked,
         blinking: true,
         blinkInterval: LENS_DEFAULTS.blinkInterval,
-        blinkDelay: index * LENS_DEFAULTS.blinkInterval,
-        color: index === 0
-            ? controls.firstColor.value
-            : controls.secondColor.value
+        blinkDelay: index * LENS_DEFAULTS.blinkInterval
     }));
-    state.synchronizeRows = controls.synchronizeRows.checked;
     state.preDeparture = {
         enabled: controls.preDepartureEnabled.checked,
         seconds: Number(controls.preDepartureSeconds.value)
@@ -1606,16 +2043,6 @@ if (lensControls) {
     });
     blinkingLabel.append(blinking, documentRef.createTextNode(' Bliká'));
 
-    const synchronizeRowsLabel = documentRef.createElement('label');
-    synchronizeRowsLabel.className = 'lamp-control-check';
-    const synchronizeRows = documentRef.createElement('input');
-    synchronizeRows.type = 'checkbox';
-    synchronizeRows.checked = true;
-    synchronizeRowsLabel.append(
-        synchronizeRows,
-        documentRef.createTextNode(' Stejná strana ve všech řádcích')
-    );
-
     const preDepartureEnabledLabel = documentRef.createElement('label');
     preDepartureEnabledLabel.className = 'lamp-control-check';
     const preDepartureEnabled = documentRef.createElement('input');
@@ -1628,12 +2055,9 @@ if (lensControls) {
     toggles.append(
         enabledLabel,
         blinkingLabel,
-        synchronizeRowsLabel,
         preDepartureEnabledLabel
     );
 
-    const firstColor = createLensColorSelect('Barva 1. čočky');
-    const secondColor = createLensColorSelect('Barva 2. čočky');
     const blinkIntervalLabel = documentRef.createElement('label');
     blinkIntervalLabel.className = 'lamp-control-range';
     const blinkIntervalHeader = documentRef.createElement('span');
@@ -1676,27 +2100,16 @@ if (lensControls) {
         preDepartureSeconds
     );
 
-    const colorControls = documentRef.createElement('div');
-    colorControls.className = 'lens-control-stack';
-    colorControls.append(firstColor.label, secondColor.label);
-
     const timingControls = documentRef.createElement('div');
     timingControls.className = 'lens-control-stack';
     timingControls.append(blinkIntervalLabel, preDepartureSecondsLabel);
 
-    panel.append(
-        toggles,
-        colorControls,
-        timingControls
-    );
+    panel.append(toggles, timingControls);
     lensControls.replaceChildren(panel);
 
     lensControlElements.set('component', {
         enabled,
         blinking,
-        synchronizeRows,
-        firstColor: firstColor.select,
-        secondColor: secondColor.select,
         blinkInterval,
         blinkIntervalOutput,
         preDepartureEnabled,
@@ -1707,10 +2120,7 @@ if (lensControls) {
     [
         enabled,
         blinking,
-        synchronizeRows,
         preDepartureEnabled,
-        firstColor.select,
-        secondColor.select,
         preDepartureSeconds
     ]
         .forEach((input) => {
@@ -1720,46 +2130,8 @@ if (lensControls) {
     syncLensControls();
 }
 
-lampControls.appendChild(clockLightControl);
-
-const syncClockLightControls = () => {
-    const settings = lighting.getClockSettings();
-    clockLightEnabledInput.checked = settings.enabled;
-    clockLightIntensityInput.value = String(settings.intensity);
-    clockLightIntensityOutput.textContent = `${settings.intensity}%`;
-};
-
-const updateClockLightFromControls = ({ persist = false } = {}) => {
-    lighting.setClockLight({
-        enabled: clockLightEnabledInput.checked,
-        intensity: Number(clockLightIntensityInput.value)
-    });
-    syncClockLightControls();
-    publishSettings({ persist });
-};
-
-clockLightEnabledInput.addEventListener('input', updateClockLightFromControls);
-clockLightIntensityInput.addEventListener('input', updateClockLightFromControls);
-[clockLightEnabledInput, clockLightIntensityInput].forEach((input) => {
-    input.addEventListener('change', () =>
-        updateClockLightFromControls({ persist: true })
-    );
-});
-
-flapTimingDurationInput.addEventListener('input', updateFlapTimingFromControls);
-flapTimingVariationInput.addEventListener('input', updateFlapTimingFromControls);
-syncFlapTimingControls();
 delayOffsetEnabledInput?.addEventListener('change', updateDelayOffsetFromControls);
 syncDelayOffsetControls();
-departureBoardRowsInput?.addEventListener(
-    'input',
-    updateDepartureBoardRowsFromControls
-);
-departureBoardRowsInput?.addEventListener(
-    'change',
-    updateDepartureBoardRowsFromControls
-);
-syncDepartureBoardRowControls();
 departureBoardLogoInputs.forEach((input) => {
     input.addEventListener('change', updateDepartureBoardLogoFromControls);
 });
@@ -1771,7 +2143,6 @@ syncDepartureBoardLogoControls();
 
 const renderNightMode = () => {
     documentRef.body.classList.toggle('manage-night-mode', nightMode);
-    lampSettingsPanel.hidden = !nightMode;
     autoNightModeInput.checked = autoNightMode;
     nightModeButton.disabled = autoNightMode;
     nightModeButton.setAttribute('aria-disabled', String(autoNightMode));
@@ -1857,16 +2228,6 @@ autoNightModeInput.addEventListener('change', () => {
     );
 });
 
-resetLampSettingsButton.addEventListener('click', () => {
-    lighting.reset();
-    NIGHT_LIGHT_DEFAULTS.forEach((setting) =>
-        syncLampControls(lighting.getLampSettings()[setting.id])
-    );
-    syncClockLightControls();
-    publishSettings();
-    setBoardFormStatus('Výchozí nastavení světel obnoveno.');
-});
-
 const boardActionButtons = [
     submitButton,
     startButton,
@@ -1904,6 +2265,36 @@ const getDesiredStateForBoard = (identity) => {
             target: null
         });
     }
+
+    const applies = matching.filter((desired) =>
+        desired.action === 'apply-board' && desired.state?.departureTime
+    );
+    if (applies.length > 0) {
+        const now = new Date();
+        applies.sort((first, second) => compareDeparturesByTime(
+            {
+                ...first.state,
+                id: getBoardIdentityKey(first.target)
+            },
+            {
+                ...second.state,
+                id: getBoardIdentityKey(second.target)
+            },
+            now,
+            delayOffset
+        ));
+        const nearest = applies[0];
+        const newerReset = matching
+            .filter((desired) => desired.action !== 'apply-board')
+            .sort((first, second) =>
+                Number(second.revision) - Number(first.revision)
+            )[0];
+        if (!newerReset
+            || Number(newerReset.revision) <= Number(nearest.revision)) {
+            return nearest;
+        }
+    }
+
     return matching.sort(
         (first, second) => Number(second.revision) - Number(first.revision)
     )[0];
@@ -1970,6 +2361,21 @@ const updateBoardPresence = (message) => {
             && Boolean(identity.platform && identity.track)
         ),
         rowCount: Number(payload.rowCount) || previous?.rowCount || 0,
+        lensColors: Array.isArray(payload.lensColors) && payload.lensColors.length
+            ? payload.lensColors.slice(0, 2)
+            : previous?.lensColors || null,
+        synchronizeRows: typeof payload.synchronizeRows === 'boolean'
+            ? payload.synchronizeRows
+            : previous?.synchronizeRows !== false,
+        lamps: payload.lamps && typeof payload.lamps === 'object'
+            ? payload.lamps
+            : previous?.lamps || null,
+        clockLight: payload.clockLight && typeof payload.clockLight === 'object'
+            ? payload.clockLight
+            : previous?.clockLight || null,
+        flapTiming: payload.flapTiming && typeof payload.flapTiming === 'object'
+            ? normalizeFlapTiming(payload.flapTiming)
+            : previous?.flapTiming || null,
         capabilities: payload.capabilities || previous?.capabilities || [],
         appliedRevision: Number(payload.appliedRevision)
             || previous?.appliedRevision
@@ -2218,6 +2624,30 @@ transport.subscribe((message) => {
             if (message.payload?.audio) {
                 boardPresence.audioState = message.payload.audio;
             }
+            if (Array.isArray(message.payload?.lensColors)
+                && message.payload.lensColors.length) {
+                boardPresence.lensColors = message.payload.lensColors.slice(0, 2);
+            }
+            if (Number.isInteger(Number(message.payload?.rowCount))
+                && Number(message.payload.rowCount) > 0) {
+                boardPresence.rowCount = Number(message.payload.rowCount);
+            }
+            if (typeof message.payload?.synchronizeRows === 'boolean') {
+                boardPresence.synchronizeRows = message.payload.synchronizeRows;
+            }
+            if (message.payload?.lamps && typeof message.payload.lamps === 'object') {
+                boardPresence.lamps = message.payload.lamps;
+            }
+            if (message.payload?.clockLight
+                && typeof message.payload.clockLight === 'object') {
+                boardPresence.clockLight = message.payload.clockLight;
+            }
+            if (message.payload?.flapTiming
+                && typeof message.payload.flapTiming === 'object') {
+                boardPresence.flapTiming = normalizeFlapTiming(
+                    message.payload.flapTiming
+                );
+            }
             boardPresence.lastSeen = Date.now();
             const desired = getDesiredStateForBoard(boardPresence.identity);
             if (desired
@@ -2450,6 +2880,94 @@ const findPreviousLiveDeparture = (departure, previousLive) => {
     }) || null;
 };
 
+const nearestDepartureForTarget = (target) => {
+    if (!isConfiguredTarget(target)) {
+        return null;
+    }
+
+    const now = new Date();
+    return departures
+        .filter((departure) =>
+            isConfiguredTarget(departure.target)
+            && sameTarget(departure.target, target)
+        )
+        .sort((first, second) =>
+            compareDeparturesByTime(first, second, now, delayOffset)
+        )[0] || null;
+};
+
+const collectBoardTargets = (...groups) => {
+    const targets = new Map();
+    groups.flat().forEach((departure) => {
+        if (!isConfiguredTarget(departure?.target)) {
+            return;
+        }
+        targets.set(
+            getBoardIdentityKey(departure.target),
+            departure.target
+        );
+    });
+    Object.values(desiredStates).forEach((desired) => {
+        if (!isConfiguredTarget(desired?.target)) {
+            return;
+        }
+        const key = getBoardIdentityKey(desired.target);
+        if (!targets.has(key)) {
+            targets.set(key, desired.target);
+        }
+    });
+    return [...targets.values()];
+};
+
+const syncTargetBoard = (target) => {
+    if (!isConfiguredTarget(target)) {
+        return null;
+    }
+
+    const nearest = nearestDepartureForTarget(target);
+    const current = desiredStates[getBoardIdentityKey(target)];
+    if (!nearest) {
+        if (!current || current.action === 'reset-board') {
+            return null;
+        }
+        const revision = nextStateRevision();
+        setDesiredState(target, 'reset-board', getEmptyState(), revision);
+        return {
+            action: 'reset-board',
+            state: getEmptyState(),
+            target,
+            revision
+        };
+    }
+
+    const nextState = getBoardStateFromDeparture(nearest);
+    if (current?.action === 'apply-board' && sameDepartureContent(
+        { ...current.state, target: current.target },
+        { ...nextState, target: nearest.target }
+    )) {
+        return null;
+    }
+
+    const revision = nextStateRevision();
+    nearest.revision = revision;
+    setDesiredState(
+        nearest.target,
+        'apply-board',
+        nextState,
+        revision
+    );
+    return {
+        action: 'apply-board',
+        state: nextState,
+        target: nearest.target,
+        revision
+    };
+};
+
+const syncAllTargetBoards = () => collectBoardTargets(departures)
+    .map((target) => syncTargetBoard(target))
+    .filter(Boolean);
+
 const reconcileLiveDepartures = async (values) => {
     const previousDepartures = [...departures];
     const previousLive = previousDepartures.filter(
@@ -2507,71 +3025,25 @@ const reconcileLiveDepartures = async (values) => {
             return !previous || !sameDepartureContent(previous, departure);
         });
 
-    if (!changed) {
+    if (changed) {
+        departures = [...manualDepartures, ...nextLive];
+    }
+    const commands = collectBoardTargets(previousDepartures, departures)
+        .map((target) => syncTargetBoard(target))
+        .filter(Boolean)
+        .map((command) => sendBackgroundBoardAction(
+            command.action,
+            command.state,
+            command.target,
+            command.revision
+        ));
+
+    if (!changed && commands.length === 0) {
         return {
             changed: false,
             applied: 0
         };
     }
-
-    departures = [...manualDepartures, ...nextLive];
-    const commands = [];
-
-    previousLive.forEach((previous) => {
-        const next = nextLive.find((departure) =>
-            pairedPrevious.get(departure) === previous
-        );
-        const targetChanged = next && !sameTarget(
-            previous.target,
-            next.target
-        );
-        const removed = !next;
-        if ((removed || targetChanged)
-            && isConfiguredTarget(previous.target)) {
-            const revision = nextStateRevision();
-            setDesiredState(
-                previous.target,
-                'reset-board',
-                getEmptyState(),
-                revision
-            );
-            commands.push(
-                sendBackgroundBoardAction(
-                    'reset-board',
-                    getEmptyState(),
-                    previous.target,
-                    revision
-                )
-            );
-        }
-    });
-
-    nextLive.forEach((next) => {
-        const previous = pairedPrevious.get(next);
-        const needsApply = !previous
-            || !sameDepartureContent(previous, next)
-            || !sameTarget(previous.target, next.target);
-        if (!needsApply || !isConfiguredTarget(next.target)) {
-            return;
-        }
-
-        const revision = nextStateRevision();
-        next.revision = revision;
-        setDesiredState(
-            next.target,
-            'apply-board',
-            getBoardStateFromDeparture(next),
-            revision
-        );
-        commands.push(
-            sendBackgroundBoardAction(
-                'apply-board',
-                getBoardStateFromDeparture(next),
-                next.target,
-                revision
-            )
-        );
-    });
 
     persistState();
     renderDeparturesTable();
@@ -2833,6 +3305,11 @@ Object.values(desiredStates).forEach((desired) => {
     }
 });
 
+const startupBoardCommands = syncAllTargetBoards();
+if (startupBoardCommands.length > 0) {
+    desiredStatesRepaired = true;
+}
+
 const isSameManualTrain = (departure, state) => {
     const leftNumber = normalizeTrainNumber(departure?.trainNumber);
     const rightNumber = normalizeTrainNumber(state?.trainNumber);
@@ -2866,33 +3343,7 @@ const resolveFormDeparture = (state, target) => {
 
 const upsertDeparture = (state, target, existing = null) => {
     const previous = existing?.id ? getDepartureById(existing.id) : null;
-    if (
-        previous
-        && isConfiguredTarget(previous.target)
-        && !sameTarget(previous.target, target)
-    ) {
-        const stillUsed = departures.some((item) =>
-            item.id !== previous.id
-            && isConfiguredTarget(item.target)
-            && sameTarget(item.target, previous.target)
-        );
-        if (!stillUsed) {
-            const resetRevision = nextStateRevision();
-            setDesiredState(
-                previous.target,
-                'reset-board',
-                getEmptyState(),
-                resetRevision
-            );
-            void sendBackgroundBoardAction(
-                'reset-board',
-                getEmptyState(),
-                previous.target,
-                resetRevision
-            );
-        }
-    }
-
+    const previousTarget = previous?.target;
     const revision = nextStateRevision();
     const departure = normalizeDeparture({
         ...(previous || {}),
@@ -2911,14 +3362,31 @@ const upsertDeparture = (state, target, existing = null) => {
         ...departures.filter((item) => item.id !== departure.id),
         departure
     ];
-    if (isConfiguredTarget(target)) {
-        setDesiredState(
-            target,
-            'apply-board',
-            getBoardStateFromDeparture(departure),
-            revision
-        );
+    const commands = [];
+    if (
+        previousTarget
+        && isConfiguredTarget(previousTarget)
+        && !sameTarget(previousTarget, target)
+    ) {
+        const previousCommand = syncTargetBoard(previousTarget);
+        if (previousCommand) {
+            commands.push(previousCommand);
+        }
     }
+    if (isConfiguredTarget(target)) {
+        const nextCommand = syncTargetBoard(target);
+        if (nextCommand) {
+            commands.push(nextCommand);
+        }
+    }
+    commands.forEach((command) => {
+        void sendBackgroundBoardAction(
+            command.action,
+            command.state,
+            command.target,
+            command.revision
+        );
+    });
     persistState();
     renderDeparturesTable();
     publishDepartureSnapshot();
@@ -2930,23 +3398,19 @@ const resetDeparture = (departure) => {
         return;
     }
 
-    const revision = nextStateRevision();
     departures = departures.filter((item) => item.id !== departure.id);
-    setDesiredState(
-        departure.target,
-        'reset-board',
-        getEmptyState(),
-        revision
-    );
+    const command = syncTargetBoard(departure.target);
     persistState();
     renderDeparturesTable();
     publishDepartureSnapshot();
-    void sendBackgroundBoardAction(
-        'reset-board',
-        getEmptyState(),
-        departure.target,
-        revision
-    );
+    if (command) {
+        void sendBackgroundBoardAction(
+            command.action,
+            command.state,
+            command.target,
+            command.revision
+        );
+    }
     setBoardFormStatus(
         `Odjezd pro ${formatBoardIdentity(departure.target)} byl smazán.`
     );
@@ -3049,6 +3513,14 @@ if (savedState?.form && typeof savedState.form === 'object') {
 if (desiredStatesRepaired) {
     persistState();
 }
+startupBoardCommands.forEach((command) => {
+    void sendBackgroundBoardAction(
+        command.action,
+        command.state,
+        command.target,
+        command.revision
+    );
+});
 const padClockPart = (value) => String(value).padStart(2, '0');
 
 const formatManageClock = (date) =>
@@ -3066,9 +3538,33 @@ const renderManageClock = (date = new Date()) => {
 };
 
 let manageClockTimer = null;
+let syncedNearestMinute = new Date().getHours() * 60 + new Date().getMinutes();
+const syncNearestBoardsForClock = () => {
+    const now = new Date();
+    const minute = now.getHours() * 60 + now.getMinutes();
+    if (minute === syncedNearestMinute) {
+        return;
+    }
+    syncedNearestMinute = minute;
+    const commands = syncAllTargetBoards();
+    if (commands.length === 0) {
+        return;
+    }
+    persistState();
+    publishDepartureSnapshot();
+    commands.forEach((command) => {
+        void sendBackgroundBoardAction(
+            command.action,
+            command.state,
+            command.target,
+            command.revision
+        );
+    });
+};
 const scheduleManageClock = () => {
     const now = new Date();
     renderManageClock(now);
+    syncNearestBoardsForClock();
     manageClockTimer = window.setTimeout(
         scheduleManageClock,
         1000 - now.getMilliseconds()
@@ -3079,10 +3575,7 @@ scheduleManageClock();
 
 renderActiveBoards();
 renderDeparturesTable();
-syncClockLightControls();
-syncFlapTimingControls();
 syncDelayOffsetControls();
-syncDepartureBoardRowControls();
 syncDepartureBoardLogoControls();
 renderNightMode();
 syncAutomaticNightMode();
@@ -3105,36 +3598,42 @@ startButton.addEventListener('click', () => {
         const departure = upsertDeparture(state, target);
         startButton.textContent = 'Resetovat tabuli';
         startButton.setAttribute('aria-pressed', 'true');
+        const desired = desiredStates[getBoardIdentityKey(target)];
         sendBoardAction(
-            'apply-board',
-            getBoardStateFromDeparture(departure),
+            desired?.action || 'apply-board',
+            desired?.state || getBoardStateFromDeparture(departure),
             'Příklad načten.',
             {
-                target,
-                revision: departure.revision
+                target: desired?.target || target,
+                revision: desired?.revision || departure.revision
             }
         );
         return;
     }
 
     const target = getFormTarget();
-    const revision = nextStateRevision();
     departures = departures.filter(
         (departure) => departure.id !== getBoardIdentityKey(target)
     );
-    setDesiredState(target, 'reset-board', getEmptyState(), revision);
+    const command = syncTargetBoard(target);
     persistState();
     renderDeparturesTable();
     publishDepartureSnapshot();
     startButton.textContent = 'Načíst příklad';
     startButton.setAttribute('aria-pressed', 'false');
+    if (!command) {
+        setBoardFormStatus('Tabule resetována.');
+        return;
+    }
     sendBoardAction(
-        'reset-board',
-        getEmptyState(),
-        'Tabule resetována.',
+        command.action,
+        command.state,
+        command.action === 'apply-board'
+            ? 'Příklad byl odebrán. Tabule ukazuje další odjezd.'
+            : 'Tabule resetována.',
         {
-            target,
-            revision
+            target: command.target,
+            revision: command.revision
         }
     );
 });
@@ -3159,20 +3658,13 @@ resetAllSettingsButton.addEventListener('click', () => {
     sunSchedule.stop();
     flapTiming = normalizeFlapTiming(FLAP_TIMING_DEFAULTS);
     delayOffset = DELAY_OFFSET_DEFAULT;
-    departureBoardRows = DEPARTURE_BOARD_ROW_COUNT_DEFAULT;
     departureBoardLogo = DEPARTURE_BOARD_LOGO_DEFAULT;
     departureBoardLogoSvg = '';
     renderNightMode();
     renderLiveControls();
     setLiveStatus('Live odjezdy byly vypnuté obnovením nastavení.');
     syncLensControls();
-    NIGHT_LIGHT_DEFAULTS.forEach((setting) =>
-        syncLampControls(lighting.getLampSettings()[setting.id])
-    );
-    syncClockLightControls();
-    syncFlapTimingControls();
     syncDelayOffsetControls();
-    syncDepartureBoardRowControls();
     syncDepartureBoardLogoControls();
     publishSettings({ persist: false });
     setFormValues(exampleState);
@@ -3253,13 +3745,17 @@ boardForm.addEventListener('submit', (event) => {
         return;
     }
 
+    const desired = desiredStates[getBoardIdentityKey(target)];
+    const nearest = nearestDepartureForTarget(target);
     sendBoardAction(
         'apply-board',
-        getBoardStateFromDeparture(departure),
-        'Údaje byly odeslány na tabuli.',
+        desired?.state || getBoardStateFromDeparture(nearest || departure),
+        nearest && nearest.id !== departure.id
+            ? 'Odjezd byl uložen. Nástupištní tabule ukazuje bližší odjezd.'
+            : 'Údaje byly odeslány na tabuli.',
         {
-            target,
-            revision: departure.revision
+            target: desired?.target || target,
+            revision: desired?.revision || departure.revision
         }
     );
 });
@@ -3327,6 +3823,39 @@ liveToggleButton?.addEventListener('click', () => {
     }
 });
 
+const setupManageBlockToggles = () => {
+    documentRef.querySelectorAll('#manage fieldset').forEach((fieldset) => {
+        const legend = fieldset.querySelector(':scope > div > legend');
+        if (!legend || legend.querySelector('.manage-block-toggle')) {
+            return;
+        }
+
+        const heading = legend.parentElement;
+        if (!heading) {
+            return;
+        }
+
+        heading.classList.add('manage-block-heading');
+        const button = documentRef.createElement('button');
+        button.type = 'button';
+        button.className = 'manage-block-toggle';
+        button.setAttribute('aria-expanded', 'true');
+        const mark = documentRef.createElement('span');
+        mark.className = 'manage-block-mark';
+        mark.setAttribute('aria-hidden', 'true');
+        const label = documentRef.createElement('span');
+        label.className = 'manage-block-label';
+        label.textContent = legend.textContent.trim();
+        button.append(mark, label);
+        legend.replaceChildren(button);
+        button.addEventListener('click', () => {
+            const collapsed = fieldset.classList.toggle('is-collapsed');
+            button.setAttribute('aria-expanded', String(!collapsed));
+        });
+    });
+};
+
+setupManageBlockToggles();
 renderLiveControls();
 publishDiscovery();
 publishDepartureSnapshot();

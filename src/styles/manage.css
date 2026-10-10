@@ -362,23 +362,29 @@
 
 .board-timing-panels {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.65rem;
     margin-top: 1rem;
     align-items: stretch;
 }
 
-#boardForm .flap-timing-settings {
-    margin-top: 0;
+#boardForm .flap-timing-settings,
+#departureDelayOffsetPanel,
+#departureBoardLogoPanel {
+    margin: 0;
     min-width: 0;
     padding: 0.9rem;
-    border-color: rgba(255, 255, 255, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 1rem;
     background: #181818;
 }
 
-#boardForm .flap-timing-settings > div > legend {
+#boardForm .flap-timing-settings > div > legend,
+#departureDelayOffsetPanel > div > legend,
+#departureBoardLogoPanel > div > legend {
     margin-bottom: 0.7rem;
+    padding: 0;
     font-size: 1rem;
+    font-weight: 700;
 }
 
 .flap-timing-controls {
@@ -402,7 +408,7 @@
     margin-bottom: 0.15rem;
 }
 
-#boardForm #departureBoardLogoPanel {
+#departureBoardLogoPanel {
     margin-top: 1rem;
 }
 
@@ -494,7 +500,6 @@
     display: grid;
     grid-template-columns:
         max-content
-        minmax(12rem, 1fr)
         minmax(14rem, 1.25fr);
     align-items: end;
     gap: 0.65rem 1rem;
@@ -537,6 +542,101 @@
     font-weight: 700;
 }
 
+#manage fieldset > .manage-block-heading:not(.departures-panel-heading) > legend {
+    display: block;
+    width: 100%;
+}
+
+#manage .manage-block-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    text-align: left;
+}
+
+#manage .manage-block-toggle:hover,
+#manage .manage-block-toggle:focus-visible {
+    background: transparent;
+    color: inherit;
+}
+
+#manage .manage-block-toggle:focus-visible {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 3px;
+}
+
+.manage-block-mark {
+    position: relative;
+    flex: 0 0 auto;
+    width: 0.95rem;
+    height: 0.95rem;
+    box-sizing: border-box;
+    border: 1.5px solid currentColor;
+    border-radius: 0.12rem;
+}
+
+.manage-block-mark::before,
+.manage-block-mark::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: currentColor;
+    transform: translate(-50%, -50%);
+}
+
+.manage-block-mark::before {
+    width: 0.5rem;
+    height: 1.5px;
+}
+
+.manage-block-mark::after {
+    width: 1.5px;
+    height: 0.5rem;
+}
+
+#manage fieldset:not(.is-collapsed) .manage-block-mark::after {
+    content: none;
+}
+
+#manage fieldset.is-collapsed > :not(.manage-block-heading) {
+    display: none;
+}
+
+#manage fieldset.is-collapsed > .manage-block-heading,
+#boardForm fieldset.is-collapsed > .manage-block-heading > legend,
+#manage fieldset.is-collapsed > .manage-block-heading > legend,
+#departureDelayOffsetPanel.is-collapsed > .manage-block-heading > legend,
+#departureBoardLogoPanel.is-collapsed > .manage-block-heading > legend {
+    margin-bottom: 0;
+}
+
+.log-output {
+    max-height: 18rem;
+    margin: 0;
+    padding: 0.7rem 0.8rem;
+    overflow: auto;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 0.5rem;
+    background: #181818;
+    color: #e6e6e6;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .departures-panel-heading {
     display: flex;
     align-items: center;
@@ -546,6 +646,8 @@
 }
 
 .departures-panel-heading > legend {
+    flex: 1 1 auto;
+    min-width: 0;
     margin-bottom: 0;
 }
 
@@ -591,6 +693,17 @@
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 0.5rem;
     background: #292929;
+}
+
+.active-board-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.active-board-heading .identify-board-button {
+    flex-shrink: 0;
 }
 
 .active-board-item > span {
@@ -670,7 +783,8 @@
     font-variant-numeric: tabular-nums;
 }
 
-.active-board-actions button {
+.active-board-actions button,
+.identify-board-button {
     padding: 0.4rem 0.6rem;
     border: 1px solid #aaa;
     border-radius: var(--control-radius);
@@ -682,13 +796,278 @@
     font-weight: 700;
 }
 
-.active-board-actions button:hover {
+.active-board-actions button:hover,
+.identify-board-button:hover {
     background: #fff;
 }
 
-.active-board-actions button:disabled {
+.active-board-actions button:disabled,
+.identify-board-button:disabled {
     cursor: wait;
     opacity: 0.48;
+}
+
+.board-settings-icon {
+    display: block;
+    width: 1.2rem;
+    height: 1.2rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
+.board-settings-dialog {
+    box-sizing: border-box;
+    width: min(28rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 0.6rem;
+    background: #222;
+    color: #fff;
+    color-scheme: light;
+}
+
+.board-settings-dialog.is-platform-board {
+    width: min(68rem, calc(100vw - 2rem));
+}
+
+.board-settings-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.board-settings-form {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    max-height: calc(100vh - 2rem - 2px);
+    margin: 0;
+    padding: 0.75rem 0.85rem 0.85rem;
+    overflow: auto;
+}
+
+.board-settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.board-settings-header h2 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.board-settings-close {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-size: 1.3rem;
+    line-height: 1;
+}
+
+.board-settings-close:hover {
+    background: #fff;
+}
+
+#boardSettingsBody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.board-settings-dialog .lens-control-stack {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem 0.75rem;
+}
+
+.board-settings-dialog .board-sync-rows {
+    margin-top: -0.15rem;
+}
+
+#boardSettingsBody .board-form-field,
+#boardSettingsBody .lamp-control-select,
+#boardSettingsBody .lamp-control-check,
+#boardSettingsBody .lamp-control legend {
+    color: inherit;
+}
+
+.board-settings-dialog input:not([type="checkbox"]):not([type="range"]),
+.board-settings-dialog select {
+    border: 1px solid #999;
+    background: #fff;
+    color: #111;
+    color-scheme: light;
+}
+
+.board-settings-dialog button {
+    border-color: #aaa;
+    background: #dedede;
+    color: #111;
+}
+
+.board-settings-dialog button:hover {
+    background: #fff;
+}
+
+#boardSettingsBody .board-form-field small {
+    color: rgba(255, 255, 255, 0.62);
+}
+
+.board-settings-audio {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.board-settings-audio .board-volume input[type="range"] {
+    width: 9rem;
+}
+
+.board-settings-dialog .lamp-settings {
+    margin: 0;
+    padding: 0.65rem 0.7rem 0.7rem;
+    border-color: rgba(255, 255, 255, 0.28);
+    background: #181818;
+}
+
+.board-settings-dialog .lamp-settings > div > legend,
+.board-settings-dialog .lamp-control legend {
+    margin-bottom: 0.3rem;
+    padding: 0 0.25rem;
+    color: #fff;
+    font-size: 0.9rem;
+}
+
+.board-settings-dialog .lamp-controls {
+    gap: 0.5rem;
+}
+
+.board-settings-dialog .lamp-control {
+    min-width: 0;
+    padding: 0.45rem 0.5rem 0.5rem;
+    border-color: rgba(255, 255, 255, 0.22);
+    border-radius: 0.45rem;
+    background: #252525;
+}
+
+.board-settings-dialog .lamp-control-toggles {
+    gap: 0.35rem 0.65rem;
+    margin-bottom: 0.35rem;
+}
+
+.board-settings-dialog .lamp-control-range,
+.board-settings-dialog .lamp-control-select {
+    margin-top: 0.35rem;
+}
+
+.board-settings-dialog .clock-light-control {
+    margin-top: 0.5rem;
+}
+
+.board-settings-dialog .clock-light-control .clock-light-controls {
+    grid-template-columns: minmax(7rem, max-content) minmax(12rem, 1fr);
+    align-items: end;
+    max-width: 28rem;
+    gap: 0.65rem 1rem;
+}
+
+.board-settings-dialog .lamp-settings-help {
+    margin-top: 0.5rem;
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.board-settings-dialog .lamp-settings-actions {
+    margin-top: 0.5rem;
+}
+
+.board-settings-dialog .flap-timing-settings {
+    margin: 0;
+    padding: 0.65rem 0.7rem 0.7rem;
+    border-color: rgba(255, 255, 255, 0.28);
+    background: #181818;
+}
+
+.board-settings-dialog .flap-timing-settings legend {
+    margin-bottom: 0.35rem;
+    color: #fff;
+    font-size: 0.95rem;
+}
+
+.board-settings-dialog .flap-timing-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem 0.85rem;
+}
+
+.board-settings-dialog .flap-timing-help {
+    color: rgba(255, 255, 255, 0.72);
+}
+
+body.manage-night-mode .board-settings-dialog {
+    border-color: #3f464d;
+    background: #171a1e;
+    color: #f0f2f4;
+    color-scheme: dark;
+}
+
+body.manage-night-mode .board-settings-dialog .lamp-settings {
+    border-color: #3f464d;
+    background: #171a1e;
+}
+
+body.manage-night-mode .board-settings-dialog .lamp-control {
+    border-color: #3a424a;
+    background: #20252a;
+}
+
+body.manage-night-mode .board-settings-dialog .lamp-settings legend,
+body.manage-night-mode .board-settings-dialog .lamp-control legend {
+    color: #f0f2f4;
+}
+
+body.manage-night-mode .board-settings-dialog input:not([type="checkbox"]):not([type="range"]),
+body.manage-night-mode .board-settings-dialog select {
+    border-color: #59636d;
+    background: #272d33;
+    color: #f0f2f4;
+    color-scheme: dark;
+}
+
+body.manage-night-mode .board-settings-dialog button {
+    border-color: #626d77;
+    background: #30363d;
+    color: #f0f2f4;
+}
+
+body.manage-night-mode .board-settings-dialog button:hover {
+    background: #424b54;
+}
+
+body.manage-night-mode .board-settings-dialog .flap-timing-settings {
+    border-color: #3f464d;
+    background: #171a1e;
+}
+
+body.manage-night-mode .board-settings-dialog .flap-timing-settings legend {
+    color: #f0f2f4;
+}
+
+body.manage-night-mode .board-settings-dialog .lamp-settings-help,
+body.manage-night-mode .board-settings-dialog .flap-timing-help,
+body.manage-night-mode .board-settings-dialog .board-form-field small {
+    color: #aeb5bc;
 }
 
 .identify-eye-icon {
@@ -992,6 +1371,13 @@ body.manage-night-mode #manage .manage-side-column > .manage-panel {
     background: #171a1e;
 }
 
+#skrin.night-mode ~ #manage .log-output,
+body.manage-night-mode #manage .log-output {
+    border-color: #3f464d;
+    background: #111417;
+    color: #f0f2f4;
+}
+
 #skrin.night-mode ~ #manage #boardForm .lamp-control,
 body.manage-night-mode #manage #boardForm .lamp-control {
     border-color: #3a424a;
@@ -1001,13 +1387,19 @@ body.manage-night-mode #manage #boardForm .lamp-control {
 #skrin.night-mode ~ #manage #boardForm .lens-settings,
 body.manage-night-mode #manage #boardForm .lens-settings,
 #skrin.night-mode ~ #manage #boardForm .flap-timing-settings,
-body.manage-night-mode #manage #boardForm .flap-timing-settings {
+body.manage-night-mode #manage #boardForm .flap-timing-settings,
+#skrin.night-mode ~ #manage #departureDelayOffsetPanel,
+body.manage-night-mode #departureDelayOffsetPanel,
+#skrin.night-mode ~ #manage #departureBoardLogoPanel,
+body.manage-night-mode #departureBoardLogoPanel {
     border-color: #3f464d;
     background: #171a1e;
 }
 
 #skrin.night-mode ~ #manage #boardForm .board-logo-option,
-body.manage-night-mode #manage #boardForm .board-logo-option {
+body.manage-night-mode #manage #boardForm .board-logo-option,
+#skrin.night-mode ~ #manage #departureBoardLogoPanel .board-logo-option,
+body.manage-night-mode #departureBoardLogoPanel .board-logo-option {
     border-color: #3f464d;
     background: #111417;
 }
@@ -1023,7 +1415,9 @@ body.manage-night-mode #manage #boardForm .board-form-field textarea,
 body.manage-night-mode #manage #boardForm .lamp-control-select select,
 body.manage-night-mode #manage #boardForm .lens-settings select,
 #skrin.night-mode ~ #manage #liveDeparturesPanel input,
-body.manage-night-mode #liveDeparturesPanel input {
+body.manage-night-mode #liveDeparturesPanel input,
+#skrin.night-mode ~ #manage #departureBoardLogoSvg,
+body.manage-night-mode #departureBoardLogoSvg {
     border-color: #59636d;
     background: #272d33;
     color: #f0f2f4;
@@ -1050,10 +1444,29 @@ body.manage-night-mode #liveDeparturesPanel button:hover {
     background: #424b54;
 }
 
+#skrin.night-mode ~ #manage #boardForm .manage-block-toggle,
+#skrin.night-mode ~ #manage #boardForm .manage-block-toggle:hover,
+body.manage-night-mode #manage #boardForm .manage-block-toggle,
+body.manage-night-mode #manage #boardForm .manage-block-toggle:hover,
+#skrin.night-mode ~ #manage #liveDeparturesPanel .manage-block-toggle,
+#skrin.night-mode ~ #manage #liveDeparturesPanel .manage-block-toggle:hover,
+body.manage-night-mode #liveDeparturesPanel .manage-block-toggle,
+body.manage-night-mode #liveDeparturesPanel .manage-block-toggle:hover {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    opacity: 1;
+}
+
 #skrin.night-mode ~ #manage #boardForm .lamp-settings-help,
 body.manage-night-mode #manage #boardForm .lamp-settings-help,
 #skrin.night-mode ~ #manage #boardForm .flap-timing-help,
-body.manage-night-mode #manage #boardForm .flap-timing-help {
+body.manage-night-mode #manage #boardForm .flap-timing-help,
+#skrin.night-mode ~ #manage #departureDelayOffsetPanel .flap-timing-help,
+body.manage-night-mode #departureDelayOffsetPanel .flap-timing-help,
+#skrin.night-mode ~ #manage #departureBoardLogoPanel .flap-timing-help,
+body.manage-night-mode #departureBoardLogoPanel .flap-timing-help {
     color: #aeb5bc;
 }
 
@@ -1093,7 +1506,9 @@ body.manage-night-mode #manage .active-board-item {
 }
 
 #skrin.night-mode ~ #manage .active-board-actions button,
-body.manage-night-mode #manage .active-board-actions button {
+body.manage-night-mode #manage .active-board-actions button,
+#skrin.night-mode ~ #manage .identify-board-button,
+body.manage-night-mode #manage .identify-board-button {
     border-color: #626d77;
     background: #30363d;
     color: #f0f2f4;
@@ -1116,7 +1531,9 @@ body.manage-night-mode #manage #clearAllDeparturesButton {
 }
 
 #skrin.night-mode ~ #manage .active-board-actions button:hover,
-body.manage-night-mode #manage .active-board-actions button:hover {
+body.manage-night-mode #manage .active-board-actions button:hover,
+#skrin.night-mode ~ #manage .identify-board-button:hover,
+body.manage-night-mode #manage .identify-board-button:hover {
     background: #424b54;
 }
 
@@ -1174,7 +1591,8 @@ body.manage-night-mode #manage #departuresTable th {
     .board-form-grid,
     .lamp-controls,
     .lens-component-controls,
-    .board-timing-panels {
+    .board-timing-panels,
+    .board-settings-dialog .flap-timing-controls {
         grid-template-columns: 1fr;
     }
 
