@@ -668,6 +668,11 @@
   var soundUrl = (fileName) => typeof document === "undefined" ? fileName : new URL(fileName, document.baseURI).href;
   var DEFAULT_SOUND_URL = soundUrl("split-flap.wav");
   var PITCHED_SOUND_URL = soundUrl("split-flap_pitched_down.wav");
+  var FLAP_SOUND_DURATION_MS = 170;
+  var DEFAULT_PLAYBACK_RATE = Math.min(
+    16,
+    Math.max(0.0625, FLAP_SOUND_DURATION_MS / STATION_FLIP_DURATION)
+  );
 
   // src/platform/lenses.js
   var LENS_COLORS = Object.freeze({

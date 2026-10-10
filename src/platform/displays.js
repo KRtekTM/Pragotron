@@ -76,17 +76,19 @@ export const restartFlapAnimation = (element, duration) => {
         return;
     }
 
+    // `both` holds the closed pose during the bottom flap's delay. `forwards`
+    // alone lets Chromium paint one open frame before that delay starts.
     element._flapAnims = [
         top.animate(TOP_FLIP_FRAMES, {
             duration: half,
             easing: 'ease-in',
-            fill: 'forwards'
+            fill: 'both'
         }),
         bottom.animate(BOTTOM_FLIP_FRAMES, {
             duration: half,
             delay: half,
             easing: 'ease-out',
-            fill: 'forwards'
+            fill: 'both'
         })
     ];
 };

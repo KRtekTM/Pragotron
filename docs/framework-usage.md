@@ -701,8 +701,13 @@ const registry = createDefaultRegistry({ audio });
 Výchozí cesta je `split-flap.wav` relativně k aktuálnímu dokumentu.
 Jednoznakové klapky ho používají dál. Typ vlaku, zpoždění, nástupiště, kolej
 a sektor volají `play('pitched')` a hrají `split-flap_pitched_down.wav`.
-Oba soubory trvají 170 ms; `playbackRate` je `170 / délka flapu`, takže zvuk
-skončí zároveň s otočením i při jiné nastavené rychlosti.
+Oba soubory trvají 170 ms; `playbackRate` je `170 / délka flapu` a
+`preservesPitch` drží původní výšku tónu. Dohraný klon znovu spustí
+`play()` od začátku, bez samostatného přetočení. Gecko stejný vzorek
+přehraje jedním společným výstupem: SoundTouch v samostatných prvcích
+`<audio>` by při více klapkách naráz zvuk ořezal do bzučení. Ostatní
+prohlížeče zůstávají u klonů `<audio>` a `preservesPitch` se před každým
+startem znovu potvrdí, aby výška tónu uprostřed chodu nespadla.
 Vlastní audio objekt lze předat všem display komponentám nebo sdílet přes
 `createDefaultRegistry()`.
 
