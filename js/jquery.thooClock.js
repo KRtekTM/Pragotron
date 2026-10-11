@@ -143,7 +143,7 @@
                     pragotronImgLoading = false;
                     console.error('Failed to load the SVG file.');
                 };
-                pragotronImg.src = 'images/pragotron.svg';
+                pragotronImg.src = 'images/tabule/pragotron.svg';
                 if(pragotronImg.complete && pragotronImg.naturalWidth > 0) {
                     pragotronImgReady = true;
                     pragotronImgLoading = false;

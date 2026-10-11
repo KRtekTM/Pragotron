@@ -6,8 +6,8 @@ const soundUrl = (fileName) => (
         : new URL(fileName, document.baseURI).href
 );
 
-const DEFAULT_SOUND_URL = soundUrl('split-flap.wav');
-const PITCHED_SOUND_URL = soundUrl('split-flap_pitched_down.wav');
+const DEFAULT_SOUND_URL = soundUrl('sounds/split-flap.wav');
+const PITCHED_SOUND_URL = soundUrl('sounds/split-flap_pitched_down.wav');
 const FLAP_SOUND_DURATION_MS = 170;
 const FLAP_SOUND_POOL_SIZE = 48;
 const DEFAULT_PLAYBACK_RATE = Math.min(

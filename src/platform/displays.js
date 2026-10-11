@@ -11,7 +11,8 @@ import {
     STATION_FLAP_SEQUENCE,
     TRAIN_TYPES,
     findTrainType,
-    formatStationName
+    formatStationName,
+    trainTypeImageUrl
 } from './data.js';
 import { SplitFlapAudio } from './audio.js';
 import { nextFlapDeadline, scheduleFlapStep, scheduleFlapStepAt } from './flap-clock.js';
@@ -674,7 +675,8 @@ export class TrainFlapDisplay {
         face.half.style.setProperty('--train-flap-background', type.background);
         face.half.style.setProperty('--train-flap-foreground', type.foreground);
 
-        if (type.source) {
+        const imageUrl = trainTypeImageUrl(type.source);
+        if (imageUrl) {
             if (face.kind !== 'image') {
                 face.kind = 'image';
                 const content = document.createElement('span');
@@ -687,9 +689,9 @@ export class TrainFlapDisplay {
                 face.main = null;
                 face.suffix = null;
             }
-            if (face.source !== type.source) {
-                face.source = type.source;
-                face.content.style.backgroundImage = `url("${type.source}")`;
+            if (face.source !== imageUrl) {
+                face.source = imageUrl;
+                face.content.style.backgroundImage = `url("${imageUrl}")`;
             }
             return;
         }

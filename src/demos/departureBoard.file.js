@@ -214,22 +214,22 @@
   var DEPARTURE_BOARD_LOGO_PRESETS = Object.freeze([
     {
       id: "cd",
-      src: "images/CD_logo.svg",
+      src: "images/tabule/CD_logo.svg",
       label: "\u010CD"
     },
     {
       id: "sprzel",
-      src: "images/sprzel.svg",
+      src: "images/tabule/sprzel.svg",
       label: "Spr\xE1va \u017Eeleznic"
     },
     {
       id: "sprzel-white",
-      src: "images/sprzel_bile.svg",
+      src: "images/tabule/sprzel_bile.svg",
       label: "Spr\xE1va \u017Eeleznic b\xEDl\xE9"
     },
     {
       id: "pragotron",
-      src: "images/pragotron_bile.svg",
+      src: "images/tabule/pragotron_bile.svg",
       label: "Pragotron"
     }
   ]);
@@ -260,6 +260,55 @@
       return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : "";
     }
     return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.src || "";
+  };
+  var TRAIN_TYPE_IMAGE_FILE_NAMES = [
+    "EuroCity_Logo.svg",
+    "InterCity_Austria.svg",
+    "intercity.svg",
+    "Nightjet_logo.svg",
+    "nightjet.svg",
+    "Railjet_logo.svg",
+    "railjet.svg",
+    "Regiojet_logo.svg",
+    "regiojet.svg",
+    "Spr\xE1va_\u017Eeleznic_logo.svg",
+    "supercity.svg"
+  ];
+  var trainTypeImageLabel = (file) => String(file || "").replace(/\.svg$/i, "").replaceAll("_", " ");
+  var TRAIN_TYPE_IMAGE_FILES = Object.freeze(
+    [...TRAIN_TYPE_IMAGE_FILE_NAMES].sort(
+      (left, right) => trainTypeImageLabel(left).localeCompare(
+        trainTypeImageLabel(right),
+        "cs",
+        { sensitivity: "base" }
+      )
+    )
+  );
+  var TRAIN_TYPE_IMAGE_FILE_SET = new Set(TRAIN_TYPE_IMAGE_FILES);
+  var trainTypeImageSrc = (file) => `images/typy-vlaku/${file}`;
+  var normalizeTrainTypeSource = (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) {
+      return "";
+    }
+    if (/<svg[\s>]/i.test(raw)) {
+      return normalizeCustomBoardLogoSvg(raw);
+    }
+    const file = raw.split(/[/\\]/).pop();
+    if (TRAIN_TYPE_IMAGE_FILE_SET.has(file) && (raw === trainTypeImageSrc(file) || raw === `images/${file}` || raw === file)) {
+      return trainTypeImageSrc(file);
+    }
+    return "";
+  };
+  var trainTypeImageUrl = (value) => {
+    const source = normalizeTrainTypeSource(value);
+    if (!source) {
+      return "";
+    }
+    if (source.startsWith("<")) {
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+    }
+    return source;
   };
   var clampInteger = (value, minimum, maximum, fallback) => {
     const number = Number(value);
@@ -476,28 +525,28 @@
     },
     {
       name: "Intercity",
-      source: "images/intercity.svg",
+      source: "images/typy-vlaku/intercity.svg",
       label: "Intercity (IC)",
       background: "#fff",
       foreground: "#CC3333"
     },
     {
       name: "Eurocity",
-      source: "images/EuroCity_Logo.svg",
+      source: "images/typy-vlaku/EuroCity_Logo.svg",
       label: "Eurocity (EC)",
       background: "#fff",
       foreground: "#000"
     },
     {
       name: "rj",
-      source: "images/railjet.svg",
+      source: "images/typy-vlaku/railjet.svg",
       label: "Railjet (rj)",
       background: "#D80300",
       foreground: "#fff"
     },
     {
       name: "RJ",
-      source: "images/regiojet.svg",
+      source: "images/typy-vlaku/regiojet.svg",
       label: "RegioJet (RJ)",
       background: "#F1B504",
       foreground: "#000"
@@ -511,14 +560,14 @@
     },
     {
       name: "nj",
-      source: "images/nightjet.svg",
+      source: "images/typy-vlaku/nightjet.svg",
       label: "NightJet (nj)",
       background: "#1e3c69",
       foreground: "#fff"
     },
     {
       name: "SuperCity",
-      source: "images/supercity.svg",
+      source: "images/typy-vlaku/supercity.svg",
       label: "SuperCity (SC)",
       background: "#fff",
       foreground: "#F1B504"
@@ -732,8 +781,8 @@
 
   // src/platform/audio.js
   var soundUrl = (fileName) => typeof document === "undefined" ? fileName : new URL(fileName, document.baseURI).href;
-  var DEFAULT_SOUND_URL = soundUrl("split-flap.wav");
-  var PITCHED_SOUND_URL = soundUrl("split-flap_pitched_down.wav");
+  var DEFAULT_SOUND_URL = soundUrl("sounds/split-flap.wav");
+  var PITCHED_SOUND_URL = soundUrl("sounds/split-flap_pitched_down.wav");
   var FLAP_SOUND_DURATION_MS = 170;
   var FLAP_SOUND_POOL_SIZE = 48;
   var DEFAULT_PLAYBACK_RATE = Math.min(
@@ -2012,7 +2061,8 @@
     paintFace(face, type) {
       face.half.style.setProperty("--train-flap-background", type.background);
       face.half.style.setProperty("--train-flap-foreground", type.foreground);
-      if (type.source) {
+      const imageUrl = trainTypeImageUrl(type.source);
+      if (imageUrl) {
         if (face.kind !== "image") {
           face.kind = "image";
           const content = document.createElement("span");
@@ -2025,9 +2075,9 @@
           face.main = null;
           face.suffix = null;
         }
-        if (face.source !== type.source) {
-          face.source = type.source;
-          face.content.style.backgroundImage = `url("${type.source}")`;
+        if (face.source !== imageUrl) {
+          face.source = imageUrl;
+          face.content.style.backgroundImage = `url("${imageUrl}")`;
         }
         return;
       }
@@ -2598,7 +2648,7 @@
       name,
       text: cleanToken(source.text).slice(0, 16),
       suffix: cleanToken(source.suffix).slice(0, 12),
-      source: clean(source.source).slice(0, 180),
+      source: normalizeTrainTypeSource(source.source),
       label: clean(source.label).slice(0, 40),
       background: colorOr(source.background, "var(--flap-background)"),
       foreground: colorOr(source.foreground, "var(--flap-foreground)"),

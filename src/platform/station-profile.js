@@ -4,7 +4,8 @@ import {
     DEPARTURE_TRACK_VALUES,
     TRAIN_NUMBER_CARD_STYLES,
     TRAIN_TYPES,
-    getTrainNumberCardStyle
+    getTrainNumberCardStyle,
+    normalizeTrainTypeSource
 } from './data.js';
 
 export const STATION_PROFILE_STORAGE_KEY = 'pragotron.stationProfile.v1';
@@ -165,7 +166,7 @@ const normalizeTrainType = (value, styles) => {
         name,
         text: cleanToken(source.text).slice(0, 16),
         suffix: cleanToken(source.suffix).slice(0, 12),
-        source: clean(source.source).slice(0, 180),
+        source: normalizeTrainTypeSource(source.source),
         label: clean(source.label).slice(0, 40),
         background: colorOr(source.background, 'var(--flap-background)'),
         foreground: colorOr(source.foreground, 'var(--flap-foreground)'),

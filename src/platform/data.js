@@ -169,22 +169,22 @@ export const DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH = 80_000;
 export const DEPARTURE_BOARD_LOGO_PRESETS = Object.freeze([
     {
         id: 'cd',
-        src: 'images/CD_logo.svg',
+        src: 'images/tabule/CD_logo.svg',
         label: 'ČD'
     },
     {
         id: 'sprzel',
-        src: 'images/sprzel.svg',
+        src: 'images/tabule/sprzel.svg',
         label: 'Správa železnic'
     },
     {
         id: 'sprzel-white',
-        src: 'images/sprzel_bile.svg',
+        src: 'images/tabule/sprzel_bile.svg',
         label: 'Správa železnic bílé'
     },
     {
         id: 'pragotron',
-        src: 'images/pragotron_bile.svg',
+        src: 'images/tabule/pragotron_bile.svg',
         label: 'Pragotron'
     }
 ]);
@@ -240,6 +240,87 @@ export const getDepartureBoardLogoSrc = (
 
     return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.src
         || '';
+};
+
+const TRAIN_TYPE_IMAGE_FILE_NAMES = [
+    'EuroCity_Logo.svg',
+    'InterCity_Austria.svg',
+    'intercity.svg',
+    'Nightjet_logo.svg',
+    'nightjet.svg',
+    'Railjet_logo.svg',
+    'railjet.svg',
+    'Regiojet_logo.svg',
+    'regiojet.svg',
+    'Správa_železnic_logo.svg',
+    'supercity.svg'
+];
+
+export const TRAIN_TYPE_IMAGE_CUSTOM = 'custom';
+
+export const trainTypeImageLabel = (file) =>
+    String(file || '').replace(/\.svg$/i, '').replaceAll('_', ' ');
+
+export const TRAIN_TYPE_IMAGE_FILES = Object.freeze(
+    [...TRAIN_TYPE_IMAGE_FILE_NAMES].sort((left, right) =>
+        trainTypeImageLabel(left).localeCompare(
+            trainTypeImageLabel(right),
+            'cs',
+            { sensitivity: 'base' }
+        )
+    )
+);
+
+const TRAIN_TYPE_IMAGE_FILE_SET = new Set(TRAIN_TYPE_IMAGE_FILES);
+
+export const trainTypeImageSrc = (file) => `images/typy-vlaku/${file}`;
+
+export const normalizeTrainTypeSource = (value) => {
+    const raw = String(value ?? '').trim();
+    if (!raw) {
+        return '';
+    }
+
+    if (/<svg[\s>]/i.test(raw)) {
+        return normalizeCustomBoardLogoSvg(raw);
+    }
+
+    const file = raw.split(/[/\\]/).pop();
+    if (TRAIN_TYPE_IMAGE_FILE_SET.has(file) && (
+        raw === trainTypeImageSrc(file)
+        || raw === `images/${file}`
+        || raw === file
+    )) {
+        return trainTypeImageSrc(file);
+    }
+
+    return '';
+};
+
+export const trainTypeImageUrl = (value) => {
+    const source = normalizeTrainTypeSource(value);
+    if (!source) {
+        return '';
+    }
+
+    if (source.startsWith('<')) {
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+    }
+
+    return source;
+};
+
+export const trainTypeImageChoice = (value) => {
+    const source = normalizeTrainTypeSource(value);
+    if (!source) {
+        return { choice: '', svg: '' };
+    }
+
+    if (source.startsWith('<')) {
+        return { choice: TRAIN_TYPE_IMAGE_CUSTOM, svg: source };
+    }
+
+    return { choice: source, svg: '' };
 };
 
 const clampInteger = (value, minimum, maximum, fallback) => {
@@ -545,28 +626,28 @@ export const TRAIN_TYPES = Object.freeze([
     },
     {
         name: 'Intercity',
-        source: 'images/intercity.svg',
+        source: 'images/typy-vlaku/intercity.svg',
         label: 'Intercity (IC)',
         background: '#fff',
         foreground: '#CC3333'
     },
     {
         name: 'Eurocity',
-        source: 'images/EuroCity_Logo.svg',
+        source: 'images/typy-vlaku/EuroCity_Logo.svg',
         label: 'Eurocity (EC)',
         background: '#fff',
         foreground: '#000'
     },
     {
         name: 'rj',
-        source: 'images/railjet.svg',
+        source: 'images/typy-vlaku/railjet.svg',
         label: 'Railjet (rj)',
         background: '#D80300',
         foreground: '#fff'
     },
     {
         name: 'RJ',
-        source: 'images/regiojet.svg',
+        source: 'images/typy-vlaku/regiojet.svg',
         label: 'RegioJet (RJ)',
         background: '#F1B504',
         foreground: '#000'
@@ -580,14 +661,14 @@ export const TRAIN_TYPES = Object.freeze([
     },
     {
         name: 'nj',
-        source: 'images/nightjet.svg',
+        source: 'images/typy-vlaku/nightjet.svg',
         label: 'NightJet (nj)',
         background: '#1e3c69',
         foreground: '#fff'
     },
     {
         name: 'SuperCity',
-        source: 'images/supercity.svg',
+        source: 'images/typy-vlaku/supercity.svg',
         label: 'SuperCity (SC)',
         background: '#fff',
         foreground: '#F1B504'

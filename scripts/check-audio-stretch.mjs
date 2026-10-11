@@ -42,7 +42,7 @@ const assert = (condition, message) => {
     }
 };
 
-const file = readWav('split-flap.wav');
+const file = readWav('sounds/split-flap.wav');
 const rate = 170 / 190;
 const startedAt = performance.now();
 const stretched = stretchPreservePitch(file.channels, file.sampleRate, rate);

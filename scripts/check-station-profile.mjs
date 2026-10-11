@@ -1,3 +1,4 @@
+import { trainTypeImageUrl } from '../src/platform/data.js';
 import {
     createDefaultStationProfile,
     normalizeStationProfile,
@@ -61,6 +62,11 @@ assert(
     'A-C pokrývá A, B a C'
 );
 
+assert(
+    brno.trainTypes.find((type) => type.name === 'RJ')?.source
+        === 'images/typy-vlaku/regiojet.svg',
+    'výchozí RJ používá obrázek z images/typy-vlaku'
+);
 assert(resolveProfileTrainType('IC') === 'Intercity', 'IC je Intercity');
 assert(resolveProfileTrainType('RJ', 'RJET') === 'RJ', 'RJ a RJET je RegioJet');
 assert(resolveProfileTrainType('rj', 'ČD') === 'rj', 'rj a ČD je railjet');
@@ -113,6 +119,37 @@ assert(
 assert(
     normalizeStationProfile(null) === null,
     'prázdný import je neplatný'
+);
+
+const images = normalizeStationProfile({
+    name: 'Obrázky',
+    platforms: ['1'],
+    tracks: ['1'],
+    trainTypes: [
+        { name: 'RJ', source: 'images/regiojet.svg' },
+        {
+            name: 'Znacka',
+            source: '<svg viewBox="0 0 8 8"><rect width="8" height="8"/></svg>'
+        },
+        { name: 'Skodlive', source: '<svg onload="alert(1)"></svg>' }
+    ]
+});
+const imageType = (name) => images.trainTypes.find((type) => type.name === name);
+assert(
+    imageType('RJ')?.source === 'images/typy-vlaku/regiojet.svg',
+    'stará cesta obrázku se přemapuje'
+);
+assert(
+    imageType('Znacka')?.source.startsWith('<svg'),
+    'vlastní svg zůstane v profilu'
+);
+assert(imageType('Skodlive')?.source === '', 'svg s událostí se zahodí');
+const svgUrl = trainTypeImageUrl(imageType('Znacka')?.source);
+assert(svgUrl.startsWith('data:image/svg+xml'), 'vlastní svg je data url');
+assert(!svgUrl.includes('"'), 'data url neobsahuje uvozovky');
+assert(
+    trainTypeImageUrl('images/railjet.svg') === 'images/typy-vlaku/railjet.svg',
+    'url staré cesty míří do typy-vlaku'
 );
 
 console.log('ok');

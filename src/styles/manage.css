@@ -317,6 +317,14 @@
     grid-column: 1 / -1;
 }
 
+#stationProfilePanel .station-profile-svg-field {
+    display: none;
+}
+
+#stationProfilePanel .station-profile-svg-field.is-visible {
+    display: flex;
+}
+
 .station-profile-swatch,
 .station-profile-flap {
     display: inline-flex;

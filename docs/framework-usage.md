@@ -159,7 +159,7 @@ Používají tento společný kontrakt:
 `BoardRuntime` tento lifecycle používá automaticky. Aplikační controller by
 měl před dalším odesláním dat počkat na `board.isSettled()`.
 
-`set()` a `clear()` používají skutečnou animaci, zvuk `split-flap.wav` a
+`set()` a `clear()` používají skutečnou animaci, zvuk `sounds/split-flap.wav` a
 náhodnou mechanickou odchylku podle `variation`. Všechny klapky jednoho slova
 nebo řádku začínají flipovat naráz; odchylka mění jen délku jednotlivých
 flipů, ne jejich start. Platí to i pro číslice času, typ vlaku a zpoždění.
@@ -579,7 +579,7 @@ Položka katalogu může mít tyto vlastnosti:
 | `name` | veřejná hodnota používaná v `set()` a `aria-label` |
 | `text` | hlavní text zobrazený na flapě |
 | `suffix` | menší doplňkový text, například `lôžk.` nebo `miest.` |
-| `source` | URL obrázku; obrázek se vloží do obou polovin flap |
+| `source` | cesta `images/typy-vlaku/….svg` nebo celá značka `<svg>`; obrázek má přednost před textem |
 | `background` | barva pozadí |
 | `foreground` | barva textu |
 
@@ -601,7 +601,7 @@ const CUSTOM_TRAIN_TYPES = Object.freeze([
     },
     {
         name: 'Airport Express',
-        source: 'images/airport-express.svg',
+        source: 'images/typy-vlaku/airport-express.svg',
         background: '#fff',
         foreground: '#000'
     }
@@ -614,8 +614,8 @@ const customTrain = new TrainFlapDisplay(element, CUSTOM_TRAIN_TYPES, {
 customTrain.set('IC');
 ```
 
-`source` je relativní k dokumentu, stejně jako `src` u běžného HTML obrázku.
-Pokud použijete obrázek, musí být dostupný v HTTP i ve fallback/file režimu.
+`source` je cesta k souboru v `images/typy-vlaku/` nebo vlastní značka `<svg>`.
+Souborová cesta je relativní k dokumentu a musí být dostupná v HTTP i ve fallback/file režimu.
 
 ## Odjezdová tabule
 
@@ -722,9 +722,9 @@ const audio = new SplitFlapAudio('assets/split-flap.wav');
 const registry = createDefaultRegistry({ audio });
 ```
 
-Výchozí cesta je `split-flap.wav` relativně k aktuálnímu dokumentu.
+Výchozí cesta je `sounds/split-flap.wav` relativně k aktuálnímu dokumentu.
 Jednoznakové klapky ho používají dál. Typ vlaku, zpoždění, nástupiště, kolej
-a sektor volají `play('pitched')` a hrají `split-flap_pitched_down.wav`.
+a sektor volají `play('pitched')` a hrají `sounds/split-flap_pitched_down.wav`.
 Oba soubory trvají 170 ms; `playbackRate` je `170 / délka flapu` a
 `preservesPitch` drží původní výšku tónu. Dohraný klon znovu spustí
 `play()` od začátku, bez samostatného přetočení. Gecko stejný vzorek

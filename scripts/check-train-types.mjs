@@ -1,20 +1,32 @@
+import { readdirSync } from 'node:fs';
 import {
     extractStationName,
     parseStationTable
 } from '../src/platform/live-departures.js';
 import {
+    TRAIN_TYPE_IMAGE_FILES,
     TRAIN_TYPES,
     findTrainType,
     getTrainNumberCardStyle,
     resolveCanonicalTrainType
 } from '../src/platform/data.js';
 
+const catalogFiles = readdirSync(new URL('../images/typy-vlaku/', import.meta.url))
+    .filter((name) => name.toLowerCase().endsWith('.svg'));
+const listedFiles = [...TRAIN_TYPE_IMAGE_FILES];
+if (catalogFiles.length !== listedFiles.length
+    || catalogFiles.some((name) => !listedFiles.includes(name))) {
+    throw new Error(
+        `Train image catalog mismatch: ${listedFiles.join(', ')} vs ${catalogFiles.join(', ')}`
+    );
+}
+
 const expectedVisuals = {
-    Intercity: { source: 'images/intercity.svg', background: '#fff' },
-    rj: { source: 'images/railjet.svg', background: '#D80300' },
-    RJ: { source: 'images/regiojet.svg', background: '#F1B504' },
-    SuperCity: { source: 'images/supercity.svg', background: '#fff' },
-    nj: { source: 'images/nightjet.svg', background: '#1e3c69' }
+    Intercity: { source: 'images/typy-vlaku/intercity.svg', background: '#fff' },
+    rj: { source: 'images/typy-vlaku/railjet.svg', background: '#D80300' },
+    RJ: { source: 'images/typy-vlaku/regiojet.svg', background: '#F1B504' },
+    SuperCity: { source: 'images/typy-vlaku/supercity.svg', background: '#fff' },
+    nj: { source: 'images/typy-vlaku/nightjet.svg', background: '#1e3c69' }
 };
 
 Object.entries(expectedVisuals).forEach(([name, expected]) => {
@@ -140,10 +152,10 @@ if (resolveCanonicalTrainType('rj', 'ČD') !== 'rj') {
 
 const regiojetType = findTrainType('RJ');
 const railjetType = findTrainType('rj');
-if (regiojetType?.source !== 'images/regiojet.svg') {
+if (regiojetType?.source !== 'images/typy-vlaku/regiojet.svg') {
     throw new Error(`RJ flap is ${regiojetType?.source}, expected regiojet`);
 }
-if (railjetType?.source !== 'images/railjet.svg') {
+if (railjetType?.source !== 'images/typy-vlaku/railjet.svg') {
     throw new Error(`rj flap is ${railjetType?.source}, expected railjet`);
 }
 if (findTrainType('regiojet')?.name !== 'RJ' || findTrainType('railjet')?.name !== 'rj') {

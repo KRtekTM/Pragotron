@@ -214,22 +214,22 @@
   var DEPARTURE_BOARD_LOGO_PRESETS = Object.freeze([
     {
       id: "cd",
-      src: "images/CD_logo.svg",
+      src: "images/tabule/CD_logo.svg",
       label: "\u010CD"
     },
     {
       id: "sprzel",
-      src: "images/sprzel.svg",
+      src: "images/tabule/sprzel.svg",
       label: "Spr\xE1va \u017Eeleznic"
     },
     {
       id: "sprzel-white",
-      src: "images/sprzel_bile.svg",
+      src: "images/tabule/sprzel_bile.svg",
       label: "Spr\xE1va \u017Eeleznic b\xEDl\xE9"
     },
     {
       id: "pragotron",
-      src: "images/pragotron_bile.svg",
+      src: "images/tabule/pragotron_bile.svg",
       label: "Pragotron"
     }
   ]);
@@ -260,6 +260,66 @@
       return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : "";
     }
     return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.src || "";
+  };
+  var TRAIN_TYPE_IMAGE_FILE_NAMES = [
+    "EuroCity_Logo.svg",
+    "InterCity_Austria.svg",
+    "intercity.svg",
+    "Nightjet_logo.svg",
+    "nightjet.svg",
+    "Railjet_logo.svg",
+    "railjet.svg",
+    "Regiojet_logo.svg",
+    "regiojet.svg",
+    "Spr\xE1va_\u017Eeleznic_logo.svg",
+    "supercity.svg"
+  ];
+  var TRAIN_TYPE_IMAGE_CUSTOM = "custom";
+  var trainTypeImageLabel = (file) => String(file || "").replace(/\.svg$/i, "").replaceAll("_", " ");
+  var TRAIN_TYPE_IMAGE_FILES = Object.freeze(
+    [...TRAIN_TYPE_IMAGE_FILE_NAMES].sort(
+      (left, right) => trainTypeImageLabel(left).localeCompare(
+        trainTypeImageLabel(right),
+        "cs",
+        { sensitivity: "base" }
+      )
+    )
+  );
+  var TRAIN_TYPE_IMAGE_FILE_SET = new Set(TRAIN_TYPE_IMAGE_FILES);
+  var trainTypeImageSrc = (file) => `images/typy-vlaku/${file}`;
+  var normalizeTrainTypeSource = (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) {
+      return "";
+    }
+    if (/<svg[\s>]/i.test(raw)) {
+      return normalizeCustomBoardLogoSvg(raw);
+    }
+    const file = raw.split(/[/\\]/).pop();
+    if (TRAIN_TYPE_IMAGE_FILE_SET.has(file) && (raw === trainTypeImageSrc(file) || raw === `images/${file}` || raw === file)) {
+      return trainTypeImageSrc(file);
+    }
+    return "";
+  };
+  var trainTypeImageUrl = (value) => {
+    const source = normalizeTrainTypeSource(value);
+    if (!source) {
+      return "";
+    }
+    if (source.startsWith("<")) {
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+    }
+    return source;
+  };
+  var trainTypeImageChoice = (value) => {
+    const source = normalizeTrainTypeSource(value);
+    if (!source) {
+      return { choice: "", svg: "" };
+    }
+    if (source.startsWith("<")) {
+      return { choice: TRAIN_TYPE_IMAGE_CUSTOM, svg: source };
+    }
+    return { choice: source, svg: "" };
   };
   var clampInteger = (value, minimum, maximum, fallback) => {
     const number = Number(value);
@@ -458,28 +518,28 @@
     },
     {
       name: "Intercity",
-      source: "images/intercity.svg",
+      source: "images/typy-vlaku/intercity.svg",
       label: "Intercity (IC)",
       background: "#fff",
       foreground: "#CC3333"
     },
     {
       name: "Eurocity",
-      source: "images/EuroCity_Logo.svg",
+      source: "images/typy-vlaku/EuroCity_Logo.svg",
       label: "Eurocity (EC)",
       background: "#fff",
       foreground: "#000"
     },
     {
       name: "rj",
-      source: "images/railjet.svg",
+      source: "images/typy-vlaku/railjet.svg",
       label: "Railjet (rj)",
       background: "#D80300",
       foreground: "#fff"
     },
     {
       name: "RJ",
-      source: "images/regiojet.svg",
+      source: "images/typy-vlaku/regiojet.svg",
       label: "RegioJet (RJ)",
       background: "#F1B504",
       foreground: "#000"
@@ -493,14 +553,14 @@
     },
     {
       name: "nj",
-      source: "images/nightjet.svg",
+      source: "images/typy-vlaku/nightjet.svg",
       label: "NightJet (nj)",
       background: "#1e3c69",
       foreground: "#fff"
     },
     {
       name: "SuperCity",
-      source: "images/supercity.svg",
+      source: "images/typy-vlaku/supercity.svg",
       label: "SuperCity (SC)",
       background: "#fff",
       foreground: "#F1B504"
@@ -636,8 +696,8 @@
 
   // src/platform/audio.js
   var soundUrl = (fileName) => typeof document === "undefined" ? fileName : new URL(fileName, document.baseURI).href;
-  var DEFAULT_SOUND_URL = soundUrl("split-flap.wav");
-  var PITCHED_SOUND_URL = soundUrl("split-flap_pitched_down.wav");
+  var DEFAULT_SOUND_URL = soundUrl("sounds/split-flap.wav");
+  var PITCHED_SOUND_URL = soundUrl("sounds/split-flap_pitched_down.wav");
   var FLAP_SOUND_DURATION_MS = 170;
   var DEFAULT_PLAYBACK_RATE = Math.min(
     16,
@@ -762,7 +822,7 @@
       name,
       text: cleanToken(source.text).slice(0, 16),
       suffix: cleanToken(source.suffix).slice(0, 12),
-      source: clean(source.source).slice(0, 180),
+      source: normalizeTrainTypeSource(source.source),
       label: clean(source.label).slice(0, 40),
       background: colorOr(source.background, "var(--flap-background)"),
       foreground: colorOr(source.foreground, "var(--flap-foreground)"),
@@ -4727,7 +4787,7 @@
     const sectorsInput = documentRef2.querySelector("#stationProfileSectors");
     const rangesInput = documentRef2.querySelector("#stationProfileSectorRanges");
     const stylesRoot = documentRef2.querySelector("#stationProfileNumberStyles");
-    const typesRoot = documentRef2.querySelector("#stationProfileTrainTypes");
+    const typesRoot = documentRef2.querySelector("#stationProfileTrainTypeList");
     const searchInput = documentRef2.querySelector("#stationProfileTypeSearch");
     const applyButton = documentRef2.querySelector("#stationProfileApply");
     const exportButton = documentRef2.querySelector("#stationProfileExport");
@@ -4800,8 +4860,8 @@
       return control;
     };
     const orderButtons = (row) => {
-      const up = iconButton("Posunout v\xFD\u0161", "images/MoveItemUp.svg");
-      const down = iconButton("Posunout n\xED\u017E", "images/MoveItemDown.svg");
+      const up = iconButton("Posunout v\xFD\u0161", "images/buttons/MoveItemUp.svg");
+      const down = iconButton("Posunout n\xED\u017E", "images/buttons/MoveItemDown.svg");
       up.dataset.move = "up";
       down.dataset.move = "down";
       up.addEventListener("click", () => moveRow(row, -1));
@@ -4842,7 +4902,7 @@
       background.addEventListener("input", paint);
       foreground.addEventListener("input", paint);
       paint();
-      const remove = iconButton("Odebrat", "images/Delete.svg");
+      const remove = iconButton("Odebrat", "images/buttons/Delete.svg");
       const syncDefault = () => {
         const locked = id.value.trim().toLocaleLowerCase("cs-CZ") === "default";
         id.readOnly = locked;
@@ -4887,7 +4947,47 @@
       const label = textInput(documentRef2, type.label || "", "Text v seznamu", "label");
       const text = textInput(documentRef2, type.text || "", "Text na flapu", "text");
       const suffix = textInput(documentRef2, type.suffix || "", "Dopln\u011Bk na flapu", "suffix");
-      const source = textInput(documentRef2, type.source || "", "Obr\xE1zek", "source");
+      const imageChoice = trainTypeImageChoice(type.source);
+      const source = documentRef2.createElement("select");
+      source.dataset.field = "sourceChoice";
+      source.setAttribute("aria-label", "Obr\xE1zek m\xEDsto textu");
+      const blankImage = documentRef2.createElement("option");
+      blankImage.value = "";
+      blankImage.textContent = "Nepou\u017E\xEDt obr\xE1zek";
+      source.append(blankImage);
+      TRAIN_TYPE_IMAGE_FILES.forEach((file) => {
+        const option = documentRef2.createElement("option");
+        option.value = trainTypeImageSrc(file);
+        option.textContent = trainTypeImageLabel(file);
+        source.append(option);
+      });
+      const customImage = documentRef2.createElement("option");
+      customImage.value = TRAIN_TYPE_IMAGE_CUSTOM;
+      customImage.textContent = "Vlastn\xED";
+      source.append(customImage);
+      source.value = imageChoice.choice;
+      const sourceSvg = documentRef2.createElement("textarea");
+      sourceSvg.dataset.field = "sourceSvg";
+      sourceSvg.value = imageChoice.svg;
+      sourceSvg.rows = 5;
+      sourceSvg.spellcheck = false;
+      sourceSvg.placeholder = '<svg viewBox="0 0 100 40"></svg>';
+      sourceSvg.setAttribute("aria-label", "Vlastn\xED SVG");
+      const sourceSvgField = labeledField(
+        documentRef2,
+        "Vlastn\xED SVG",
+        sourceSvg,
+        "Vlo\u017Ete celou zna\u010Dku <svg>\u2026</svg>.",
+        true
+      );
+      sourceSvgField.classList.add("station-profile-svg-field");
+      const syncCustomSvgField = () => {
+        const custom = source.value === TRAIN_TYPE_IMAGE_CUSTOM;
+        sourceSvgField.hidden = !custom;
+        sourceSvgField.classList.toggle("is-visible", custom);
+      };
+      syncCustomSvgField();
+      const currentImageSource = () => source.value === TRAIN_TYPE_IMAGE_CUSTOM ? sourceSvg.value : source.value;
       const background = textInput(
         documentRef2,
         type.background || "var(--flap-background)",
@@ -4916,13 +5016,14 @@
       const title = documentRef2.createElement("strong");
       const meta = documentRef2.createElement("span");
       const paint = () => {
+        const imageUrl = trainTypeImageUrl(currentImageSource());
         flap.style.background = background.value;
         flap.style.color = foreground.value;
         flap.replaceChildren();
-        if (source.value.trim()) {
+        if (imageUrl) {
           const image = documentRef2.createElement("img");
           image.alt = "";
-          image.src = source.value.trim();
+          image.src = imageUrl;
           flap.append(image);
         } else {
           flap.append(documentRef2.createTextNode(text.value.trim() || "\u2014"));
@@ -4936,13 +5037,17 @@
         const styleLabel = numberStyle.selectedOptions[0]?.textContent || "V\xFDchoz\xED";
         const aliasText = aliases.value.trim();
         meta.textContent = [
-          source.value.trim() ? "obr\xE1zek" : text.value.trim() ? `flap ${text.value.trim()}` : "pr\xE1zdn\xFD flap",
+          imageUrl ? "obr\xE1zek" : text.value.trim() ? `flap ${text.value.trim()}` : "pr\xE1zdn\xFD flap",
           `\u010D\xEDslo ${styleLabel}`,
           aliasText ? `zkratky ${aliasText}` : ""
         ].filter(Boolean).join(" \xB7 ");
       };
       typePainters.add(paint);
-      [name, label, text, suffix, source, background, foreground, aliases].forEach((input) => input.addEventListener("input", paint));
+      [name, label, text, suffix, background, foreground, aliases, sourceSvg].forEach((input) => input.addEventListener("input", paint));
+      source.addEventListener("change", () => {
+        syncCustomSvgField();
+        paint();
+      });
       numberStyle.addEventListener("change", paint);
       const body = documentRef2.createElement("div");
       body.className = "station-profile-type-body board-form-grid";
@@ -4960,9 +5065,10 @@
           documentRef2,
           "Obr\xE1zek m\xEDsto textu",
           source,
-          "Cesta, t\u0159eba images/railjet.svg. M\xE1 p\u0159ednost p\u0159ed textem.",
+          "Pr\xE1zdn\xE1 volba nech\xE1 na flapu text. Obr\xE1zek m\xE1 p\u0159ednost.",
           true
         ),
+        sourceSvgField,
         labeledField(documentRef2, "Pozad\xED flapu", background),
         labeledField(documentRef2, "Barva p\xEDsma", foreground),
         labeledField(documentRef2, "Barva \u010D\xEDsla vlaku", numberStyle),
@@ -4976,7 +5082,7 @@
       );
       const toggle = iconButton(
         open ? "Skr\xFDt" : "Upravit",
-        "images/Edit.svg"
+        "images/buttons/Edit.svg"
       );
       const setOpen = (next) => {
         row.classList.toggle("is-open", next);
@@ -4987,7 +5093,7 @@
       };
       setOpen(open);
       toggle.addEventListener("click", () => setOpen(!row.classList.contains("is-open")));
-      const remove = iconButton("Odebrat", "images/Delete.svg");
+      const remove = iconButton("Odebrat", "images/buttons/Delete.svg");
       remove.addEventListener("click", () => {
         typePainters.delete(paint);
         row.remove();
@@ -5017,7 +5123,10 @@
     const filterTypes = () => {
       const query = String(searchInput?.value || "").trim().toLocaleLowerCase("cs-CZ");
       typesRoot.querySelectorAll(".station-profile-type").forEach((row) => {
-        const haystack = [...row.querySelectorAll("input, select")].map((control) => control.value).join(" ").toLocaleLowerCase("cs-CZ");
+        const haystack = [...row.querySelectorAll("input, select, textarea")].map((control) => [
+          control.value,
+          control.selectedOptions?.[0]?.textContent || ""
+        ].join(" ")).join(" ").toLocaleLowerCase("cs-CZ");
         row.classList.toggle("is-filtered", Boolean(query) && !haystack.includes(query));
       });
       refreshOrder(typesRoot);
@@ -5032,7 +5141,7 @@
       label: fieldValue(row, "label"),
       text: fieldValue(row, "text"),
       suffix: fieldValue(row, "suffix"),
-      source: fieldValue(row, "source"),
+      source: fieldValue(row, "sourceChoice") === TRAIN_TYPE_IMAGE_CUSTOM ? fieldValue(row, "sourceSvg") : fieldValue(row, "sourceChoice"),
       background: fieldValue(row, "background"),
       foreground: fieldValue(row, "foreground"),
       numberStyle: row.querySelector("[data-number-style]")?.value || "default",

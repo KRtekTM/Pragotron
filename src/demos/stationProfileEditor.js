@@ -1,4 +1,12 @@
 import {
+    TRAIN_TYPE_IMAGE_CUSTOM,
+    TRAIN_TYPE_IMAGE_FILES,
+    trainTypeImageChoice,
+    trainTypeImageLabel,
+    trainTypeImageSrc,
+    trainTypeImageUrl
+} from '../platform/data.js';
+import {
     createDefaultStationProfile,
     getActiveStationProfile,
     normalizeStationProfile,
@@ -53,7 +61,7 @@ export const mountStationProfileEditor = ({
     const sectorsInput = documentRef.querySelector('#stationProfileSectors');
     const rangesInput = documentRef.querySelector('#stationProfileSectorRanges');
     const stylesRoot = documentRef.querySelector('#stationProfileNumberStyles');
-    const typesRoot = documentRef.querySelector('#stationProfileTrainTypes');
+    const typesRoot = documentRef.querySelector('#stationProfileTrainTypeList');
     const searchInput = documentRef.querySelector('#stationProfileTypeSearch');
     const applyButton = documentRef.querySelector('#stationProfileApply');
     const exportButton = documentRef.querySelector('#stationProfileExport');
@@ -139,8 +147,8 @@ export const mountStationProfileEditor = ({
     };
 
     const orderButtons = (row) => {
-        const up = iconButton('Posunout výš', 'images/MoveItemUp.svg');
-        const down = iconButton('Posunout níž', 'images/MoveItemDown.svg');
+        const up = iconButton('Posunout výš', 'images/buttons/MoveItemUp.svg');
+        const down = iconButton('Posunout níž', 'images/buttons/MoveItemDown.svg');
         up.dataset.move = 'up';
         down.dataset.move = 'down';
         up.addEventListener('click', () => moveRow(row, -1));
@@ -186,7 +194,7 @@ export const mountStationProfileEditor = ({
         foreground.addEventListener('input', paint);
         paint();
 
-        const remove = iconButton('Odebrat', 'images/Delete.svg');
+        const remove = iconButton('Odebrat', 'images/buttons/Delete.svg');
         const syncDefault = () => {
             const locked = id.value.trim().toLocaleLowerCase('cs-CZ') === 'default';
             id.readOnly = locked;
@@ -233,7 +241,51 @@ export const mountStationProfileEditor = ({
         const label = textInput(documentRef, type.label || '', 'Text v seznamu', 'label');
         const text = textInput(documentRef, type.text || '', 'Text na flapu', 'text');
         const suffix = textInput(documentRef, type.suffix || '', 'Doplněk na flapu', 'suffix');
-        const source = textInput(documentRef, type.source || '', 'Obrázek', 'source');
+        const imageChoice = trainTypeImageChoice(type.source);
+        const source = documentRef.createElement('select');
+        source.dataset.field = 'sourceChoice';
+        source.setAttribute('aria-label', 'Obrázek místo textu');
+        const blankImage = documentRef.createElement('option');
+        blankImage.value = '';
+        blankImage.textContent = 'Nepoužít obrázek';
+        source.append(blankImage);
+        TRAIN_TYPE_IMAGE_FILES.forEach((file) => {
+            const option = documentRef.createElement('option');
+            option.value = trainTypeImageSrc(file);
+            option.textContent = trainTypeImageLabel(file);
+            source.append(option);
+        });
+        const customImage = documentRef.createElement('option');
+        customImage.value = TRAIN_TYPE_IMAGE_CUSTOM;
+        customImage.textContent = 'Vlastní';
+        source.append(customImage);
+        source.value = imageChoice.choice;
+        const sourceSvg = documentRef.createElement('textarea');
+        sourceSvg.dataset.field = 'sourceSvg';
+        sourceSvg.value = imageChoice.svg;
+        sourceSvg.rows = 5;
+        sourceSvg.spellcheck = false;
+        sourceSvg.placeholder = '<svg viewBox="0 0 100 40"></svg>';
+        sourceSvg.setAttribute('aria-label', 'Vlastní SVG');
+        const sourceSvgField = labeledField(
+            documentRef,
+            'Vlastní SVG',
+            sourceSvg,
+            'Vložte celou značku <svg>…</svg>.',
+            true
+        );
+        sourceSvgField.classList.add('station-profile-svg-field');
+        const syncCustomSvgField = () => {
+            const custom = source.value === TRAIN_TYPE_IMAGE_CUSTOM;
+            sourceSvgField.hidden = !custom;
+            sourceSvgField.classList.toggle('is-visible', custom);
+        };
+        syncCustomSvgField();
+        const currentImageSource = () => (
+            source.value === TRAIN_TYPE_IMAGE_CUSTOM
+                ? sourceSvg.value
+                : source.value
+        );
         const background = textInput(
             documentRef,
             type.background || 'var(--flap-background)',
@@ -263,13 +315,14 @@ export const mountStationProfileEditor = ({
         const title = documentRef.createElement('strong');
         const meta = documentRef.createElement('span');
         const paint = () => {
+            const imageUrl = trainTypeImageUrl(currentImageSource());
             flap.style.background = background.value;
             flap.style.color = foreground.value;
             flap.replaceChildren();
-            if (source.value.trim()) {
+            if (imageUrl) {
                 const image = documentRef.createElement('img');
                 image.alt = '';
-                image.src = source.value.trim();
+                image.src = imageUrl;
                 flap.append(image);
             } else {
                 flap.append(documentRef.createTextNode(text.value.trim() || '—'));
@@ -283,7 +336,7 @@ export const mountStationProfileEditor = ({
             const styleLabel = numberStyle.selectedOptions[0]?.textContent || 'Výchozí';
             const aliasText = aliases.value.trim();
             meta.textContent = [
-                source.value.trim()
+                imageUrl
                     ? 'obrázek'
                     : (text.value.trim() ? `flap ${text.value.trim()}` : 'prázdný flap'),
                 `číslo ${styleLabel}`,
@@ -291,8 +344,12 @@ export const mountStationProfileEditor = ({
             ].filter(Boolean).join(' · ');
         };
         typePainters.add(paint);
-        [name, label, text, suffix, source, background, foreground, aliases]
+        [name, label, text, suffix, background, foreground, aliases, sourceSvg]
             .forEach((input) => input.addEventListener('input', paint));
+        source.addEventListener('change', () => {
+            syncCustomSvgField();
+            paint();
+        });
         numberStyle.addEventListener('change', paint);
 
         const body = documentRef.createElement('div');
@@ -311,9 +368,10 @@ export const mountStationProfileEditor = ({
                 documentRef,
                 'Obrázek místo textu',
                 source,
-                'Cesta, třeba images/railjet.svg. Má přednost před textem.',
+                'Prázdná volba nechá na flapu text. Obrázek má přednost.',
                 true
             ),
+            sourceSvgField,
             labeledField(documentRef, 'Pozadí flapu', background),
             labeledField(documentRef, 'Barva písma', foreground),
             labeledField(documentRef, 'Barva čísla vlaku', numberStyle),
@@ -328,7 +386,7 @@ export const mountStationProfileEditor = ({
 
         const toggle = iconButton(
             open ? 'Skrýt' : 'Upravit',
-            'images/Edit.svg'
+            'images/buttons/Edit.svg'
         );
         const setOpen = (next) => {
             row.classList.toggle('is-open', next);
@@ -340,7 +398,7 @@ export const mountStationProfileEditor = ({
         setOpen(open);
         toggle.addEventListener('click', () => setOpen(!row.classList.contains('is-open')));
 
-        const remove = iconButton('Odebrat', 'images/Delete.svg');
+        const remove = iconButton('Odebrat', 'images/buttons/Delete.svg');
         remove.addEventListener('click', () => {
             typePainters.delete(paint);
             row.remove();
@@ -374,8 +432,11 @@ export const mountStationProfileEditor = ({
             .trim()
             .toLocaleLowerCase('cs-CZ');
         typesRoot.querySelectorAll('.station-profile-type').forEach((row) => {
-            const haystack = [...row.querySelectorAll('input, select')]
-                .map((control) => control.value)
+            const haystack = [...row.querySelectorAll('input, select, textarea')]
+                .map((control) => [
+                    control.value,
+                    control.selectedOptions?.[0]?.textContent || ''
+                ].join(' '))
                 .join(' ')
                 .toLocaleLowerCase('cs-CZ');
             row.classList.toggle('is-filtered', Boolean(query) && !haystack.includes(query));
@@ -396,7 +457,9 @@ export const mountStationProfileEditor = ({
             label: fieldValue(row, 'label'),
             text: fieldValue(row, 'text'),
             suffix: fieldValue(row, 'suffix'),
-            source: fieldValue(row, 'source'),
+            source: fieldValue(row, 'sourceChoice') === TRAIN_TYPE_IMAGE_CUSTOM
+                ? fieldValue(row, 'sourceSvg')
+                : fieldValue(row, 'sourceChoice'),
             background: fieldValue(row, 'background'),
             foreground: fieldValue(row, 'foreground'),
             numberStyle: row.querySelector('[data-number-style]')?.value || 'default',
