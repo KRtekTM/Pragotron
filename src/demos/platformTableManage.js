@@ -1128,11 +1128,11 @@ const renderDeparturesTable = () => {
         row.appendChild(lensCell);
 
         [
-            departure.stations[0],
-            departure.stations[1],
+            departure.operator || '—',
             departure.train || '—',
             departure.trainNumber || '—',
-            departure.operator || '—',
+            departure.stations[0],
+            departure.stations[1],
             formatDepartureTime(departure.departureTime),
             departure.delay === '' ? '—' : `${departure.delay} min`,
             departure.target.platform || '—',

@@ -172,6 +172,21 @@
             <fieldset id="departureEditorPanel">
                 <div><legend>Nastavení odjezdové tabule</legend></div>
                 <div class="board-form-grid">
+                    <label class="board-form-field" for="operatorValue">
+                        Dopravce
+                        <input
+                            id="operatorValue"
+                            name="operator"
+                            type="text"
+                            maxlength="24"
+                            autocomplete="off"
+                            placeholder="např. ČD, RJET"
+                            aria-describedby="operatorHelp"
+                        >
+                        <small id="operatorHelp">
+                            Podle dopravce se rozliší railjet (ČD) a RegioJet (RJET).
+                        </small>
+                    </label>
                     <label class="board-form-field" for="trainType">
                         Typ vlaku
                         <select id="trainType" name="trainType"></select>
@@ -190,21 +205,7 @@
                         >
                         <small id="trainNumberHelp">Volitelné, nejvýše 4 číslice.</small>
                     </label>
-                    <label class="board-form-field" for="operatorValue">
-                        Dopravce
-                        <input
-                            id="operatorValue"
-                            name="operator"
-                            type="text"
-                            maxlength="24"
-                            autocomplete="off"
-                            placeholder="např. ČD, RJET"
-                            aria-describedby="operatorHelp"
-                        >
-                        <small id="operatorHelp">
-                            Podle dopravce se rozliší railjet (ČD) a RegioJet (RJET).
-                        </small>
-                    </label></div>
+                </div>
                 <div class="board-form-grid board-form-grid-secondary">
                     <label class="board-form-field" for="stationOne">
                         Cílová stanice
@@ -465,11 +466,11 @@
                         <thead>
                             <tr>
                                 <th scope="col">Čočky</th>
-                                <th scope="col"><button type="button" data-sort-key="stationOne">Stanice 1</button></th>
-                                <th scope="col"><button type="button" data-sort-key="stationTwo">Stanice 2</button></th>
+                                <th scope="col"><button type="button" data-sort-key="operator">Dopravce</button></th>
                                 <th scope="col"><button type="button" data-sort-key="train">Typ vlaku</button></th>
                                 <th scope="col"><button type="button" data-sort-key="trainNumber">Číslo vlaku</button></th>
-                                <th scope="col"><button type="button" data-sort-key="operator">Dopravce</button></th>
+                                <th scope="col"><button type="button" data-sort-key="stationOne">Cílová stanice</button></th>
+                                <th scope="col"><button type="button" data-sort-key="stationTwo">Přes</button></th>
                                 <th scope="col"><button type="button" data-sort-key="departureTime">Odjezd</button></th>
                                 <th scope="col"><button type="button" data-sort-key="delay">Zpoždění</button></th>
                                 <th scope="col"><button type="button" data-sort-key="platform">Nástupiště</button></th>

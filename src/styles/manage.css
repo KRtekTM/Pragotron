@@ -1770,6 +1770,9 @@ body.manage-night-mode .board-settings-dialog .board-form-field small {
 }
 
 #departuresTable th button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     padding: 0;
     border: 0;
     background: transparent;
@@ -1780,13 +1783,28 @@ body.manage-night-mode .board-settings-dialog .board-form-field small {
 }
 
 #departuresTable th button::after {
-    content: ' ↕';
+    content: '↕';
     opacity: 0.5;
+    font-size: 0.85em;
+    line-height: 1;
+}
+
+#departuresTable th.is-sorted button {
+    color: var(--control-focus);
 }
 
 #departuresTable th.is-sorted button::after {
-    content: ' ' attr(data-sort-direction);
+    content: '';
+    width: 0.72em;
+    height: 0.72em;
+    background: currentColor;
     opacity: 1;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='black' d='M6 1.1 10.4 6.2H7.6V10.9H4.4V6.2H1.6z'/%3E%3C/svg%3E") center / contain no-repeat;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='black' d='M6 1.1 10.4 6.2H7.6V10.9H4.4V6.2H1.6z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+#departuresTable th[aria-sort='descending'] button::after {
+    transform: scaleY(-1);
 }
 
 #departuresTable th button:focus-visible {
@@ -1794,8 +1812,8 @@ body.manage-night-mode .board-settings-dialog .board-form-field small {
     outline-offset: 2px;
 }
 
-#departuresTable th:nth-child(5),
-#departuresTable td:nth-child(5) {
+#departuresTable th:nth-child(4),
+#departuresTable td:nth-child(4) {
     white-space: nowrap;
 }
 

@@ -7039,11 +7039,11 @@
       });
       row.appendChild(lensCell);
       [
-        departure.stations[0],
-        departure.stations[1],
+        departure.operator || "\u2014",
         departure.train || "\u2014",
         departure.trainNumber || "\u2014",
-        departure.operator || "\u2014",
+        departure.stations[0],
+        departure.stations[1],
         formatDepartureTime(departure.departureTime),
         departure.delay === "" ? "\u2014" : `${departure.delay} min`,
         departure.target.platform || "\u2014",
