@@ -537,9 +537,10 @@ Vlastnosti jedné čočky:
 `LensDisplay` je dvojice řízená jako jeden komponent: první čočka začíná
 rozsvícená a druhá má vždy fázi přesně o jeden nastavený interval později.
 Změna intervalu proto nemůže způsobit překryv nebo náhodné rozhození blikání.
-Komponenta používá CSS animaci, takže při běžném provozu nepotřebuje vlastní
-JavaScriptový timer. `clear()` čočky zhasne, `setImmediate()` nastaví stav bez
-čekání a `getValue()` vrací objekt `{ lenses: [...], preDeparture: {...} }`.
+Fáze se počítá ze společných hodin, takže stejné čočky na všech řádcích
+přepínají naráz i když se řádky vykreslí postupně. `clear()` čočky zhasne,
+`setImmediate()` nastaví stav bez čekání a `getValue()` vrací objekt
+`{ lenses: [...], preDeparture: {...} }`.
 
 Výchozí stav čoček v manage nastavení je zapnutý (`enabled: true`) včetně
 volby `Rozblikat před odjezdem`. Prázdná tabule bez odjezdu zůstává

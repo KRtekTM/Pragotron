@@ -1857,7 +1857,7 @@ body.manage-night-mode .board-settings-dialog .board-form-field small {
     animation:
         manage-lens-status-blink
         var(--lens-blink-duration, 0.4s)
-        steps(1, end)
+        steps(2, end)
         infinite;
     animation-delay: var(--lens-blink-delay, 0s);
     animation-fill-mode: both;

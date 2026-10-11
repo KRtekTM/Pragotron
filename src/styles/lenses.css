@@ -66,11 +66,15 @@
 }
 
 .lens.is-on.is-blinking .lens-light {
-    animation: lens-blink var(--lens-blink-duration, 0.8s) steps(1, end) infinite;
+    animation: lens-blink var(--lens-blink-duration, 0.8s) steps(2, end) infinite;
     animation-delay: var(--lens-blink-delay, 0s);
     animation-fill-mode: both;
     transition: none;
     transform: translateZ(0) scale(1);
+}
+
+.lens.is-on.is-blinking.is-blink-synced .lens-light {
+    animation: none;
 }
 
 @keyframes lens-blink {

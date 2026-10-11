@@ -158,6 +158,81 @@ const resolveColor = (setting, fallback) => {
 const positiveModulo = (value, divisor) =>
     ((value % divisor) + divisor) % divisor;
 
+const lensBlinkEntries = new Map();
+let lensBlinkFrame = 0;
+
+const prefersReducedMotion = () => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+        return false;
+    }
+
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+};
+
+const lensBlinkOpacity = (phase) =>
+    phase < LENS_DEFAULTS.blinkInterval ? '0.95' : '0';
+
+const paintLensBlinks = () => {
+    lensBlinkFrame = 0;
+    const now = Date.now();
+    for (const [light, entry] of lensBlinkEntries) {
+        if (!light.isConnected) {
+            lensBlinkEntries.delete(light);
+            continue;
+        }
+
+        const opacity = lensBlinkOpacity(getLensBlinkPhase({
+            now,
+            lensIndex: entry.lensIndex,
+            rowIndex: entry.rowIndex,
+            synchronizeRows: entry.synchronizeRows
+        }));
+        if (light.style.opacity !== opacity) {
+            light.style.opacity = opacity;
+        }
+    }
+
+    if (lensBlinkEntries.size > 0
+        && typeof window.requestAnimationFrame === 'function') {
+        lensBlinkFrame = window.requestAnimationFrame(paintLensBlinks);
+    }
+};
+
+const syncLensBlink = (lens, light, {
+    now,
+    lensIndex,
+    rowIndex,
+    synchronizeRows,
+    active
+}) => {
+    const canShareClock = active
+        && !prefersReducedMotion()
+        && typeof window !== 'undefined'
+        && typeof window.requestAnimationFrame === 'function';
+    if (!canShareClock) {
+        lensBlinkEntries.delete(light);
+        light.style.opacity = '';
+        lens.classList.remove('is-blink-synced');
+        return;
+    }
+
+    lensBlinkEntries.set(light, {
+        lensIndex,
+        rowIndex,
+        synchronizeRows
+    });
+    lens.classList.add('is-blink-synced');
+    light.style.opacity = lensBlinkOpacity(getLensBlinkPhase({
+        now,
+        lensIndex,
+        rowIndex,
+        synchronizeRows
+    }));
+    if (!lensBlinkFrame) {
+        lensBlinkFrame = window.requestAnimationFrame(paintLensBlinks);
+    }
+};
+
 /**
  * Return the phase that should be used for a lens animation at this instant.
  *
@@ -377,7 +452,7 @@ export class LensDisplay {
         lens.style.setProperty('--lens-light-core-color', color.core);
         lens.style.setProperty(
             '--lens-blink-duration',
-            `${setting.blinkInterval * 2}s`
+            `${LENS_DEFAULTS.blinkInterval * 2}s`
         );
         lens.style.setProperty(
             '--lens-blink-delay',
@@ -390,18 +465,30 @@ export class LensDisplay {
         );
         const preDepartureActive = !this.state.preDeparture.enabled
             || this.preDepartureActive;
+        const blinking = setting.enabled
+            && setting.blinking
+            && preDepartureActive;
         lens.classList.toggle(
             'is-on',
             setting.enabled && preDepartureActive
         );
-        lens.classList.toggle(
-            'is-blinking',
-            setting.enabled && setting.blinking && preDepartureActive
-        );
+        lens.classList.toggle('is-blinking', blinking);
 
         const lightElement = document.createElement('span');
         lightElement.className = 'lens-light';
+        if (blinking
+            && !prefersReducedMotion()
+            && typeof window.requestAnimationFrame === 'function') {
+            lens.classList.add('is-blink-synced');
+        }
         lens.appendChild(lightElement);
+        syncLensBlink(lens, lightElement, {
+            now,
+            lensIndex: index,
+            rowIndex: this.rowIndex,
+            synchronizeRows: this.state.synchronizeRows,
+            active: blinking
+        });
 
         return lens;
     }
@@ -457,25 +544,32 @@ export class LensDisplay {
             const blinking = setting.enabled
                 && setting.blinking
                 && preDepartureActive;
-            // The delay is relative to the moment the animation starts. A phase
-            // captured while the lens was dark would put this row on its own
-            // clock, so refresh it from the shared wall-clock phase now.
-            if (blinking && !lens.classList.contains('is-blinking')) {
-                lens.style.setProperty(
-                    '--lens-blink-delay',
-                    `${-getLensBlinkPhase({
-                        now,
-                        lensIndex: index,
-                        rowIndex: this.rowIndex,
-                        synchronizeRows: this.state.synchronizeRows
-                    })}s`
-                );
-            }
+            const phase = getLensBlinkPhase({
+                now,
+                lensIndex: index,
+                rowIndex: this.rowIndex,
+                synchronizeRows: this.state.synchronizeRows
+            });
+            lens.style.setProperty(
+                '--lens-blink-duration',
+                `${LENS_DEFAULTS.blinkInterval * 2}s`
+            );
+            lens.style.setProperty('--lens-blink-delay', `${-phase}s`);
             lens.classList.toggle(
                 'is-on',
                 setting.enabled && preDepartureActive
             );
             lens.classList.toggle('is-blinking', blinking);
+            const light = lens.querySelector(':scope > .lens-light');
+            if (light) {
+                syncLensBlink(lens, light, {
+                    now,
+                    lensIndex: index,
+                    rowIndex: this.rowIndex,
+                    synchronizeRows: this.state.synchronizeRows,
+                    active: blinking
+                });
+            }
         });
     }
 
