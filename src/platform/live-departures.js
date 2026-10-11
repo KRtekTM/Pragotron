@@ -1,10 +1,11 @@
+import { formatStationName } from './data.js';
 import {
-    DEPARTURE_PLATFORM_VALUES,
-    DEPARTURE_SECTOR_VALUES,
-    DEPARTURE_TRACK_VALUES,
-    formatStationName,
-    resolveCanonicalTrainType
-} from './data.js';
+    getActiveStationProfile,
+    matchProfileValue,
+    profileSectorValues,
+    profileTrainLabels,
+    resolveProfileTrainType
+} from './station-profile.js';
 
 export const LIVE_SOURCE_ORIGIN = 'https://provoz.spravazeleznic.cz';
 export const LIVE_SOURCE_PATH = '/tabule/Pages/StationTable.aspx';
@@ -171,7 +172,11 @@ const findSourceTrainType = (value) => {
 
     const lower = normalized.toLocaleLowerCase('cs-CZ');
     let matchedLength = 0;
-    SOURCE_TRAIN_TYPES.forEach((candidate) => {
+    const candidates = [
+        ...profileTrainLabels(),
+        ...SOURCE_TRAIN_TYPES
+    ];
+    candidates.forEach((candidate) => {
         const candidateLower = candidate.toLocaleLowerCase('cs-CZ');
         if (
             lower.startsWith(candidateLower)
@@ -220,26 +225,11 @@ const parseTrainCell = (cellHtml) => {
         || operatorFromRemainder;
 
     return {
-        train: resolveCanonicalTrainType(sourceType, operator),
+        train: resolveProfileTrainType(sourceType, operator),
         trainNumber,
         sourceTrainNumber,
         operator
     };
-};
-
-const normalizeCatalogValue = (value, values) => {
-    const normalized = cleanText(value)
-        .replace(/[–—−]/g, '-')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (!normalized || normalized === '-') {
-        return '';
-    }
-
-    return values.find((candidate) =>
-        candidate.toLocaleLowerCase('cs-CZ')
-            === normalized.toLocaleLowerCase('cs-CZ')
-    ) || '';
 };
 
 const parsePlatformTarget = (cellHtml) => {
@@ -256,10 +246,11 @@ const parsePlatformTarget = (cellHtml) => {
         };
     }
 
+    const profile = getActiveStationProfile();
     return {
-        platform: normalizeCatalogValue(match[1], DEPARTURE_PLATFORM_VALUES),
-        track: normalizeCatalogValue(match[2], DEPARTURE_TRACK_VALUES),
-        sector: normalizeCatalogValue(match[3] || '', DEPARTURE_SECTOR_VALUES)
+        platform: matchProfileValue(profile.platforms, match[1]),
+        track: matchProfileValue(profile.tracks, match[2]),
+        sector: matchProfileValue(profileSectorValues(profile), match[3] || '')
     };
 };
 

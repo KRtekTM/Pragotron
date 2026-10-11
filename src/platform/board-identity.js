@@ -1,3 +1,5 @@
+import { getActiveStationProfile, sectorsOverlap } from './station-profile.js';
+
 export const BOARD_IDENTITY_STORAGE_KEY =
     'pragotron.platformTable.boardIdentity.v1';
 
@@ -49,17 +51,25 @@ export const formatBoardIdentity = (identity) => {
     }, sektor ${sector}`;
 };
 
-export const identitiesMatch = (boardIdentity, targetIdentity) => {
+export const identitiesMatch = (
+    boardIdentity,
+    targetIdentity,
+    profile = getActiveStationProfile()
+) => {
     const board = normalizeBoardIdentity(boardIdentity);
     const target = normalizeBoardIdentity(targetIdentity);
 
     if (!target.platform || !target.track) {
         return false;
     }
+    if (board.platform !== target.platform || board.track !== target.track) {
+        return false;
+    }
+    if (!target.sector || !board.sector) {
+        return true;
+    }
 
-    return board.platform === target.platform
-        && board.track === target.track
-        && (!target.sector || board.sector === target.sector);
+    return sectorsOverlap(board.sector, target.sector, profile);
 };
 
 export const loadBoardIdentity = ({

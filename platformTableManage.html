@@ -13,7 +13,7 @@
     <meta name="description" content="Ovládání odjezdové tabule Pragotron">
     <title>PRAGOTRON – manage</title>
     <link href="style.css" rel="stylesheet" type="text/css" media="screen,projection">
-    <link href="favicon.ico" rel="icon">
+    <link href="images/pragotron.svg" rel="icon" type="image/svg+xml">
     <script type="importmap">
         {
             "imports": {
@@ -50,8 +50,101 @@
 
     <div id="manage">
         <div class="manage-main-column">
+            <fieldset id="stationProfilePanel" class="manage-panel">
+                <div><legend>Profil stanice</legend></div>
+                <p class="station-profile-help">
+                    Nastavte, jaké hodnoty stanice používá. Profil pak uložte do souboru a příště ho jen načtěte.
+                </p>
+                <label class="board-form-field" for="stationProfileName">
+                    Název profilu
+                    <input id="stationProfileName" type="text" autocomplete="off">
+                </label>
+
+                <section id="stationProfilePlaces" class="station-profile-section">
+                    <div class="station-profile-section-heading">
+                        <h3>
+                            <button type="button" class="manage-block-toggle" aria-expanded="true">
+                                <span class="manage-block-mark" aria-hidden="true"></span>
+                                <span class="manage-block-label">Nástupiště, koleje a sektory</span>
+                            </button>
+                        </h3>
+                    </div>
+                    <p class="station-profile-help">
+                        Jedna hodnota na řádek. Pořadí sektorů určuje rozsah: <code>A-C</code> znamená A až C.
+                        Tabule na sektoru A ukáže i odjezd s rozsahem A-C. Prázdný sektor je celá kolej.
+                    </p>
+                    <div class="station-profile-lists">
+                        <label class="board-form-field" for="stationProfilePlatforms">
+                            Nástupiště
+                            <textarea id="stationProfilePlatforms" rows="5" spellcheck="false"></textarea>
+                        </label>
+                        <label class="board-form-field" for="stationProfileTracks">
+                            Koleje
+                            <textarea id="stationProfileTracks" rows="5" spellcheck="false"></textarea>
+                        </label>
+                        <label class="board-form-field" for="stationProfileSectors">
+                            Sektory
+                            <textarea id="stationProfileSectors" rows="5" spellcheck="false"></textarea>
+                            <small>Pořadí od prvního k poslednímu.</small>
+                        </label>
+                        <label class="board-form-field" for="stationProfileSectorRanges">
+                            Rozsahy sektorů
+                            <textarea id="stationProfileSectorRanges" rows="5" spellcheck="false"></textarea>
+                            <small>Například A-C nebo C-D.</small>
+                        </label>
+                    </div>
+                </section>
+
+                <section id="stationProfileNumberColors" class="station-profile-section">
+                    <div class="station-profile-section-heading">
+                        <h3>
+                            <button type="button" class="manage-block-toggle" aria-expanded="true">
+                                <span class="manage-block-mark" aria-hidden="true"></span>
+                                <span class="manage-block-label">Barvy čísel vlaků</span>
+                            </button>
+                        </h3>
+                        <button type="button" class="station-profile-button station-profile-icon-button" id="stationProfileAddStyle" aria-label="Přidat barvu" title="Přidat barvu">
+                            <img src="images/New.svg" alt="" width="16" height="16">
+                        </button>
+                    </div>
+                    <p class="station-profile-help">
+                        Barva číslic na odjezdové tabuli. U typu vlaku se vybírá podle názvu, třeba cervena.
+                    </p>
+                    <div id="stationProfileNumberStyles"></div>
+                </section>
+
+                <section id="stationProfileTrainTypes" class="station-profile-section">
+                    <div class="station-profile-section-heading">
+                        <h3>
+                            <button type="button" class="manage-block-toggle" aria-expanded="true">
+                                <span class="manage-block-mark" aria-hidden="true"></span>
+                                <span class="manage-block-label">Typy vlaků</span>
+                            </button>
+                        </h3>
+                        <button type="button" class="station-profile-button station-profile-icon-button" id="stationProfileAddType" aria-label="Přidat typ" title="Přidat typ">
+                            <img src="images/New.svg" alt="" width="16" height="16">
+                        </button>
+                    </div>
+                    <p class="station-profile-help">
+                        Každý řádek je položka v seznamu Typ vlaku. Detail, barvy a zkratky z tabule SŽ se upraví po rozbalení.
+                    </p>
+                    <label class="board-form-field" for="stationProfileTypeSearch">
+                        Hledat typ
+                        <input id="stationProfileTypeSearch" type="search" placeholder="Os, IC, railjet…" autocomplete="off">
+                    </label>
+                    <div id="stationProfileTrainTypes"></div>
+                </section>
+
+                <div class="station-profile-actions">
+                    <button type="button" class="station-profile-button" id="stationProfileApply">Použít profil</button>
+                    <button type="button" class="station-profile-button" id="stationProfileExport">Uložit JSON</button>
+                    <button type="button" class="station-profile-button" id="stationProfileImport">Načíst JSON</button>
+                    <button type="button" class="station-profile-button" id="stationProfileReset">Obnovit Brno</button>
+                    <input id="stationProfileFile" type="file" accept="application/json,.json" hidden>
+                </div>
+            </fieldset>
             <form id="boardForm">
-            <fieldset>
+            <fieldset id="departureEditorPanel">
                 <div><legend>Nastavení odjezdové tabule</legend></div>
                 <div class="board-form-grid">
                     <label class="board-form-field" for="trainType">
@@ -160,7 +253,7 @@
                         <select id="sectorValue" name="sector">
                             <option value="">Celá kolej</option>
                         </select>
-                        <small>Volitelné; prázdný sektor znamená celou kolej.</small>
+                        <small>Prázdný sektor je celá kolej. Rozsah z profilu se překrývá s dílčími sektory.</small>
                     </label>
                 </div>
 
@@ -405,7 +498,7 @@
 
             <fieldset id="logPanel" class="manage-panel">
                 <div><legend>Záznam komunikace</legend></div>
-                <pre id="logOutput" class="log-output"></pre>
+                <div id="logOutput" class="log-output" role="log" aria-live="off"></div>
             </fieldset>
         </div>
     </div>

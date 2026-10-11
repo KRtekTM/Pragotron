@@ -21,7 +21,8 @@ import {
     DEPARTURE_BOARD_ROW_COUNT_MIN,
     parseLensColors,
     readInitialLensColors,
-    writeStoredLensColors
+    readStoredStationProfile,
+    setActiveStationProfile
 } from '../platform/index.js';
 
 const STORAGE_KEY = 'pragotron.platformTable.state.v2';
@@ -42,43 +43,22 @@ if (!root) {
 
 const audio = new SplitFlapAudio();
 audio.bindUserActivation(screen || documentRef);
-const BOARD_FLAP_TIMING_STORAGE_KEY = 'pragotron.board.flapTiming.v1';
 
-const readStoredFlapTiming = () => {
+const forgetSessionKey = (key) => {
     try {
-        const raw = window.sessionStorage.getItem(BOARD_FLAP_TIMING_STORAGE_KEY);
-        if (!raw) {
-            return null;
-        }
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') {
-            return null;
-        }
-        return normalizeFlapTiming(parsed);
+        window.sessionStorage.removeItem(key);
     } catch {
-        return null;
+        // A missing store still starts from the default for this page view.
     }
 };
 
-const writeStoredFlapTiming = (timing) => {
-    try {
-        window.sessionStorage.setItem(
-            BOARD_FLAP_TIMING_STORAGE_KEY,
-            JSON.stringify(normalizeFlapTiming(timing))
-        );
-    } catch {
-        // The board can still keep the timing for this page view.
-    }
-};
-
-const storedFlapTiming = readStoredFlapTiming();
-let boardFlapTimingCustom = storedFlapTiming !== null;
-const initialTiming = storedFlapTiming
-    || resolveBoardFlapTiming(
-        savedSettings.flapTiming,
-        DEPARTURE_FLAP_TIMING_DEFAULTS
-    );
-const BOARD_ROW_COUNT_STORAGE_KEY = 'pragotron.board.rowCount.v1';
+forgetSessionKey('pragotron.board.flapTiming.v1');
+let boardFlapTimingCustom = false;
+const initialTiming = resolveBoardFlapTiming(
+    null,
+    DEPARTURE_FLAP_TIMING_DEFAULTS
+);
+forgetSessionKey('pragotron.board.rowCount.v1');
 
 const readRowCountParam = () => {
     try {
@@ -104,84 +84,71 @@ const readRowCountParam = () => {
     }
 };
 
-const readStoredRowCount = () => {
-    try {
-        const stored = window.sessionStorage.getItem(BOARD_ROW_COUNT_STORAGE_KEY);
-        if (stored === null || stored === '') {
-            return null;
-        }
-
-        const numeric = Number(stored);
-        if (!Number.isInteger(numeric)
-            || numeric < DEPARTURE_BOARD_ROW_COUNT_MIN
-            || numeric > DEPARTURE_BOARD_ROW_COUNT_MAX) {
-            return null;
-        }
-
-        return numeric;
-    } catch {
-        return null;
-    }
-};
-
-const writeStoredRowCount = (value) => {
-    try {
-        window.sessionStorage.setItem(BOARD_ROW_COUNT_STORAGE_KEY, String(value));
-    } catch {
-        // The board can still keep the row count for this page view.
-    }
-};
-
 const urlRowCount = readRowCountParam();
-const initialRowCount = urlRowCount
-    ?? readStoredRowCount()
-    ?? normalizeDepartureBoardRowCount(
-        savedSettings.departureBoardRows ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT
-    );
-if (urlRowCount !== null) {
-    writeStoredRowCount(urlRowCount);
-}
+const initialRowCount = urlRowCount ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT;
 
 const lensTemplate = (colors) => ({
     lenses: colors.map((color) => ({ color }))
 });
 let boardLensColors = readInitialLensColors();
-const SYNCHRONIZE_ROWS_STORAGE_KEY = 'pragotron.board.synchronizeRows.v1';
-
-const readStoredSynchronizeRows = () => {
-    try {
-        const stored = window.sessionStorage.getItem(SYNCHRONIZE_ROWS_STORAGE_KEY);
-        if (stored === '0') {
-            return false;
-        }
-        if (stored === '1') {
-            return true;
-        }
-    } catch {
-        // Missing storage keeps the default, same side on every row.
-    }
-
-    return true;
-};
-
-const writeStoredSynchronizeRows = (enabled) => {
-    try {
-        window.sessionStorage.setItem(
-            SYNCHRONIZE_ROWS_STORAGE_KEY,
-            enabled ? '1' : '0'
-        );
-    } catch {
-        // The board can still keep the choice for this page view.
-    }
-};
-
-let boardSynchronizeRows = readStoredSynchronizeRows();
+forgetSessionKey('pragotron.board.synchronizeRows.v1');
+let boardSynchronizeRows = true;
 let delayOffset = normalizeDelayOffset(
     savedSettings.delayOffset ?? DELAY_OFFSET_DEFAULT
 );
 const boardLogoImage = documentRef.querySelector('#departureBoardLogo');
+const BOARD_LOGO_MEMORY_KEY = 'pragotron.departureBoard.logo.v1';
 
-const applyBoardLogo = (settings = savedSettings) => {
+const readRememberedLogo = () => {
+    try {
+        const raw = window.sessionStorage.getItem(BOARD_LOGO_MEMORY_KEY);
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const logoChoice = (source) => ({
+    departureBoardLogo: source?.departureBoardLogo,
+    departureBoardLogoSvg: source?.departureBoardLogoSvg || '',
+    settingsUpdatedAt: Number(source?.settingsUpdatedAt) || 0
+});
+
+const storedLogo = logoChoice(
+    savedSettings?.departureBoardLogo != null
+        || savedSettings?.settingsUpdatedAt
+        ? savedSettings
+        : savedState
+);
+const rememberedLogo = readRememberedLogo();
+let currentLogo = (rememberedLogo?.settingsUpdatedAt || 0)
+    > storedLogo.settingsUpdatedAt
+    ? logoChoice(rememberedLogo)
+    : storedLogo;
+let appliedSettingsAt = currentLogo.settingsUpdatedAt;
+
+const rememberLogo = (settings) => {
+    currentLogo = logoChoice(settings);
+    appliedSettingsAt = Math.max(
+        appliedSettingsAt,
+        currentLogo.settingsUpdatedAt
+    );
+    currentLogo.settingsUpdatedAt = appliedSettingsAt;
+    try {
+        window.sessionStorage.setItem(
+            BOARD_LOGO_MEMORY_KEY,
+            JSON.stringify(currentLogo)
+        );
+    } catch {
+        // The board can still keep the logo for this page view.
+    }
+};
+
+const applyBoardLogo = (settings = currentLogo) => {
     if (!boardLogoImage) {
         return;
     }
@@ -206,7 +173,11 @@ const applyBoardLogo = (settings = savedSettings) => {
     boardLogoImage.alt = label;
 };
 
-applyBoardLogo();
+applyBoardLogo(currentLogo);
+rememberLogo(currentLogo);
+window.addEventListener('pageshow', () => {
+    applyBoardLogo(currentLogo);
+});
 const clockRoot = documentRef.querySelector('#departureBoardClock');
 const boardClock = clockRoot
     ? new DepartureTimeDisplay(clockRoot, {
@@ -256,6 +227,11 @@ documentRef.addEventListener('visibilitychange', () => {
         tickBoardClock(true);
     }
 });
+
+const storedStationProfile = readStoredStationProfile();
+if (storedStationProfile) {
+    setActiveStationProfile(storedStationProfile, { persist: false });
+}
 
 const display = new DepartureBoardDisplay(root, {
     audio,
@@ -503,16 +479,23 @@ const applyRowCount = (value) => {
     return nextCount;
 };
 
+const applyStationProfile = (value) => {
+    const profile = setActiveStationProfile(value);
+    if (profile) {
+        display.applyStationProfile(profile);
+        updateDisplay({ immediate: true });
+    }
+    return profile;
+};
+
 const applyBoardSettings = (settings = {}) => {
     const source = settings && typeof settings === 'object' ? settings : {};
-    if (source.flapTiming && !boardFlapTimingCustom) {
-        boardTiming = resolveBoardFlapTiming(
-            source.flapTiming,
-            DEPARTURE_FLAP_TIMING_DEFAULTS
-        );
-        display.setTiming(boardTiming);
-        boardClock?.setTiming(boardTiming);
-        snapshotSignature = getSnapshotSignature(departures, boardTiming);
+    const stamp = Number(source.settingsUpdatedAt) || 0;
+    if (appliedSettingsAt && stamp < appliedSettingsAt) {
+        return;
+    }
+    if (source.stationProfile) {
+        applyStationProfile(source.stationProfile);
     }
     if (typeof source.delayOffset === 'boolean') {
         const nextOffset = normalizeDelayOffset(source.delayOffset);
@@ -524,7 +507,14 @@ const applyBoardSettings = (settings = {}) => {
     }
     if (source.departureBoardLogo != null
         || source.departureBoardLogoSvg != null) {
-        applyBoardLogo(source);
+        rememberLogo({
+            ...currentLogo,
+            ...source,
+            settingsUpdatedAt: stamp || appliedSettingsAt
+        });
+        applyBoardLogo(currentLogo);
+    } else if (stamp) {
+        appliedSettingsAt = Math.max(appliedSettingsAt, stamp);
     }
     if (source.lenses && !boardLensColors) {
         display.setLensSettings(source.lenses);
@@ -623,7 +613,7 @@ const setIdentificationActive = (forceOn) => {
 };
 
 const applyBoardLensColors = (colors) => {
-    const parsed = writeStoredLensColors(colors) || parseLensColors(colors);
+    const parsed = parseLensColors(colors);
     if (!parsed) {
         return null;
     }
@@ -660,7 +650,6 @@ const handleCommand = (message) => {
             return;
         }
 
-        writeStoredRowCount(numeric);
         applyRowCount(numeric);
         acknowledge(message, {
             ok: true,
@@ -673,7 +662,6 @@ const handleCommand = (message) => {
     if (action === 'set-flap-timing') {
         const nextTiming = normalizeFlapTiming(flapTiming);
         boardFlapTimingCustom = true;
-        writeStoredFlapTiming(nextTiming);
         boardTiming = nextTiming;
         display.setTiming(boardTiming);
         boardClock?.setTiming(boardTiming);
@@ -688,7 +676,6 @@ const handleCommand = (message) => {
 
     if (action === 'set-synchronize-rows') {
         boardSynchronizeRows = synchronizeRows !== false;
-        writeStoredSynchronizeRows(boardSynchronizeRows);
         display.setSynchronizeRows(boardSynchronizeRows);
         acknowledge(message, {
             ok: true,
@@ -766,6 +753,13 @@ const publishHeartbeat = () => {
 };
 
 transport.subscribe((message) => {
+    if (message.type === 'station-profile') {
+        applyStationProfile(
+            message.payload?.stationProfile || message.payload
+        );
+        return;
+    }
+
     if (message.type === 'manage:departures') {
         liveSnapshotReceived = true;
         manageSnapshotReceived = true;
@@ -783,6 +777,7 @@ transport.subscribe((message) => {
 
     if (message.type === 'board:settings') {
         applyBoardSettings(message.payload);
+        publishHeartbeat();
         return;
     }
 
@@ -813,10 +808,7 @@ const storageHandler = (event) => {
                 nextState.departures,
                 nextState.desired || savedDesiredStates
             ),
-            nextState.revision,
-            {
-                timing: (nextState.settings || nextState).flapTiming
-            }
+            nextState.revision
         );
     } catch {
         // Ignore malformed persistence updates.
@@ -840,10 +832,7 @@ const pollPersistedState = () => {
             nextState.departures,
             nextState.desired || savedDesiredStates
         ),
-        nextState.revision,
-        {
-            timing: (nextState.settings || nextState).flapTiming
-        }
+        nextState.revision
     );
 };
 

@@ -104,14 +104,15 @@ export const clearFlapAnimation = (element) => {
 
 export class SplitFlapDisplay {
     constructor(element, {
-        audio = new SplitFlapAudio(),
+        audio = null,
+        ownsAudio = null,
         maxLength = STATION_CHARACTER_COUNT,
         sequence = STATION_FLAP_SEQUENCE,
         timing = FLAP_TIMING_DEFAULTS
     } = {}) {
         this.element = element;
-        this.audio = audio;
-        this.ownsAudio = audio instanceof SplitFlapAudio;
+        this.audio = audio || new SplitFlapAudio();
+        this.ownsAudio = ownsAudio ?? !audio;
         this.maxLength = maxLength;
         this.sequence = sequence;
         this.timing = normalizeFlapTiming(timing);
@@ -358,15 +359,16 @@ export class DelayFlapDisplay {
         element,
         values = DELAY_VALUES,
         {
-            audio = new SplitFlapAudio(),
+            audio = null,
+            ownsAudio = null,
             timing = FLAP_TIMING_DEFAULTS,
             applyDelayOffset = DELAY_OFFSET_DEFAULT
         } = {}
     ) {
         this.element = element;
         this.values = values;
-        this.audio = audio;
-        this.ownsAudio = audio instanceof SplitFlapAudio;
+        this.audio = audio || new SplitFlapAudio();
+        this.ownsAudio = ownsAudio ?? !audio;
         this.timing = normalizeFlapTiming(timing);
         this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
         this.sourceValue = '';
@@ -582,14 +584,15 @@ export class TrainFlapDisplay {
         element,
         types = TRAIN_TYPES,
         {
-            audio = new SplitFlapAudio(),
+            audio = null,
+            ownsAudio = null,
             timing = FLAP_TIMING_DEFAULTS
         } = {}
     ) {
         this.element = element;
         this.types = types;
-        this.audio = audio;
-        this.ownsAudio = audio instanceof SplitFlapAudio;
+        this.audio = audio || new SplitFlapAudio();
+        this.ownsAudio = ownsAudio ?? !audio;
         this.timing = normalizeFlapTiming(timing);
         this.defaultValue = element.dataset.type || element.dataset.src || '';
         this.defaultSource = element.dataset.src || this.defaultValue;
@@ -608,6 +611,27 @@ export class TrainFlapDisplay {
         return { ...this.timing };
     }
 
+    setTypes(types) {
+        if (!Array.isArray(types) || types.length === 0) {
+            return this.types;
+        }
+
+        const current = this.types[this.currentIndex];
+        this.types = types;
+        const nextIndex = current
+            ? this.types.findIndex((type) => type.name === current.name)
+            : 0;
+        const index = nextIndex === -1 ? 0 : nextIndex;
+        this.sequence += 1;
+        clearTimer(this, 'timer');
+        this.currentIndex = index;
+        this.targetIndex = index;
+        clearFlapAnimation(this.element);
+        this.render(this.types[index], this.types[index]);
+        this.updateLabel();
+        return this.types;
+    }
+
     indexFor(value) {
         if (value === '' || value === null || value === undefined) {
             return 0;
@@ -616,15 +640,7 @@ export class TrainFlapDisplay {
         const match = findTrainType(value, this.types);
         const index = match ? this.types.indexOf(match) : -1;
 
-        if (index === -1) {
-            throw new RangeError(
-                `Nepodporovaný typ vlaku "${value}". Povolené typy: ${
-                    this.types.map((type) => type.name || '(prázdné)').join(', ')
-                }`
-            );
-        }
-
-        return index;
+        return index === -1 ? 0 : index;
     }
 
     ensureFaces() {
@@ -840,7 +856,8 @@ export class SequentialNumericFlap {
         minimum,
         maximum,
         {
-            audio = new SplitFlapAudio(),
+            audio = null,
+            ownsAudio = null,
             timing = FLAP_TIMING_DEFAULTS,
             includeBlank = true
         } = {}
@@ -849,8 +866,8 @@ export class SequentialNumericFlap {
         this.minimum = minimum;
         this.maximum = maximum;
         this.includeBlank = includeBlank !== false;
-        this.audio = audio;
-        this.ownsAudio = audio instanceof SplitFlapAudio;
+        this.audio = audio || new SplitFlapAudio();
+        this.ownsAudio = ownsAudio ?? !audio;
         this.timing = normalizeFlapTiming(timing);
         this.currentValue = '';
         this.targetValue = '';

@@ -87,11 +87,17 @@ Odjezdová tabule používá stejné `platformTableManage.html` a stejný
 a začne je zobrazovat od horního řádku. Počet řádků je u každé odjezdové
 tabule zvlášť (výchozí 12, rozsah 1–24). Nastaví se v dialogu ozubeného
 kola u připojené tabule, nebo parametrem `departureBoard.html?rows=16`.
+Po novém načtení platí `rows` z adresy, jinak znovu 12.
 Parametr `volume` (0–100) na odjezdové i nástupištní tabuli nastaví
-počáteční hlasitost flapů a přepíše hodnotu uloženou v okně, například
-`departureBoard.html?volume=40` nebo
-`platformTable.html?platform=1&track=6a&volume=40`. Chybějící nebo
-neplatná hodnota nechá uloženou hlasitost. `0` je ticho, ne ztlumení.
+počáteční hlasitost flapů, například `departureBoard.html?volume=40`
+nebo `platformTable.html?platform=1&track=6a&volume=40`. Chybějící
+nebo neplatná hodnota je 100 %. `0` je ticho, ne ztlumení. Starší
+hlasitost, ztlumení, počet řádků, společná strana řádků, barvy čoček,
+rychlost flapů ani osvětlení nástupištní tabule se z okna po načtení
+neobnoví: platí výchozí hodnota, parametr v adrese, nebo to, co manage
+po připojení pošle (logo, noční režim, posun zpoždění, profil stanice).
+Posuvník a dialog u připojené tabule ukazují hodnotu, kterou tabule
+právě používá.
 Barvu obou čoček nastaví parametr `lenses` klíčem z katalogu
 (`green`, `yellow`, `red`, `blue`, `coolWhite`). Jedna barva platí pro
 obě čočky, dvě barvy oddělené čárkou nastaví první a druhou čočku:
@@ -702,8 +708,9 @@ kartu, `0`, …, `4`. Stejné pravidlo musí dodržovat každý nový katalog.
 
 `departureBoard.html` a `src/demos/departureBoard.js` jsou hotový příklad
 zapojení. Přes `BoardTransport` poslouchají zprávy `manage:departures` a
-`board:settings`; při startu si vezmou poslední odjezdy a timing z uloženého
-stavu. Správa zůstává výhradně na `platformTableManage.html`.
+`board:settings`; při startu si vezmou poslední odjezdy z uloženého
+stavu. Rychlost flapů začíná výchozí hodnotou. Správa zůstává výhradně
+na `platformTableManage.html`.
 
 ## Audio
 
@@ -739,11 +746,11 @@ audio.getState(); // { available, unlocked, muted, volume }
 
 `setMuted(true)` zvuk flapů na dané tabuli úplně vypne: `play()` se nespustí.
 `setVolume(0–100)` nastaví hlasitost přehrávaných flapů, výchozí je `100`.
-Obojí se pamatuje v `sessionStorage` daného okna. Stejnou počáteční
-hlasitost lze vynutit parametrem `volume` v adrese odjezdové nebo
-nástupištní tabule. V manage seznamu připojených
-tabulí je u každé instance tlačítko pro ztlumení a posuvník hlasitosti.
-Stejné ovládání je i v dialogu nastavení tabule.
+Po načtení tabule je zvuk zapnutý a hlasitost je 100 %, pokud adresa
+neobsahuje platný parametr `volume`. Změna v manage platí do dalšího
+načtení. V manage seznamu připojených tabulí je u každé instance
+tlačítko pro ztlumení a posuvník hlasitosti. Stejné ovládání je i
+v dialogu nastavení tabule a ukazuje úroveň, kterou tabule přehrává.
 
 Pro vypnutí zvuku v testu lze předat vlastní audio objekt s prázdnou metodou:
 
@@ -1067,6 +1074,15 @@ PoC používá dvě stránky stejného originu:
 - `platformTableManage.html` obsahuje formulář a nastavení.
   Každý blok se sbalí a rozbalí kliknutím na jeho nadpis. Čtvereček
   na začátku nadpisu ukazuje plus u sbaleného a minus u rozbaleného bloku.
+  Blok Profil stanice je nad formulářem odjezdu. Upravují se v něm
+  nástupiště, koleje, pořadí sektorů, rozsahy sektorů, typy vlaků
+  a barvy číselných split-flapů včetně přiřazení barvy k typu.
+  Rozsah `A-C` znamená sektory od A do C v uvedeném pořadí, takže
+  tabule na sektoru A dostane i odjezd s rozsahem A-C. Prázdný
+  sektor je celá kolej. Profil se ukládá s nastavením manage a dá se
+  exportovat nebo načíst ze souboru JSON. Nová tabule ho dostane
+  při prvním připojení. Hodnota, kterou profil neobsahuje, se z
+  odjezdu zahodí, dokud ji do profilu nepřidáte.
 
 Propojení v jednom prohlížeči zajišťuje `BoardTransport` přes
 `BroadcastChannel`, při jeho nedostupnosti přes `storage` event. Taby na
@@ -1116,8 +1132,10 @@ odesílatele, příjemce a kanál. Objekt za ním je celé předané payload.
 Manage stránka stejný záznam vypisuje i do bloku Záznam komunikace.
 Drží posledních 250 zpráv a drží se u posledního řádku, dokud
 uživatel neposune výpis nahoru.
-Příkaz s prázdným sektorem se doručí všem sektorům dané
-koleje, zatímco vyplněný sektor se doručí pouze přesné shodě.
+Příkaz s prázdným sektorem se doručí všem sektorům dané koleje.
+Vyplněný sektor se doručí tabuli, jejíž sektor se s ním překrývá:
+tabule A tedy dostane odjezd A-C, pokud profil stanice řadí A, B a C
+za sebou. Tabule bez sektoru ukazuje celou kolej.
 Když na stejné nástupiště a kolej připadá víc odjezdů, nástupištní
 tabule ukazuje časově nejbližší. Jakmile ten odjezd skončí, přejde na
 další a prázdná zůstane až ve chvíli, kdy už žádný nezbývá.

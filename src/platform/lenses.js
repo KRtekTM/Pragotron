@@ -127,17 +127,21 @@ export const readLensColorOverride = (location = globalThis.location) => {
     }
 };
 
+const clearStoredLensColors = (storage) => {
+    try {
+        storage?.removeItem(LENS_COLOR_STORAGE_KEY);
+    } catch {
+        // The board still starts from the URL colors or the manage default.
+    }
+};
+
 export const readInitialLensColors = (
     location = globalThis.location,
     storage = globalThis.sessionStorage
 ) => {
     const override = readLensColorOverride(location);
-    if (override) {
-        writeStoredLensColors(override, storage);
-        return override;
-    }
-
-    return readStoredLensColors(storage);
+    clearStoredLensColors(storage);
+    return override;
 };
 
 const resolveColor = (setting, fallback) => {

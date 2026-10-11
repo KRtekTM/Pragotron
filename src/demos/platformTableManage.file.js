@@ -588,61 +588,19 @@
     ...createTrainNumberDigitCards("sp"),
     ...createTrainNumberDigitCards("red")
   ]);
-  var normalizeOperatorKey = (value) => String(value ?? "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, "");
-  var isRegioJetOperator = (operator) => {
-    const normalized = normalizeOperatorKey(operator);
-    return normalized.includes("regiojet") || normalized === "rjet" || normalized === "rj";
-  };
-  var isCDOperator = (operator) => {
-    const normalized = normalizeOperatorKey(operator);
-    return normalized === "\u010Dd" || normalized === "cd" || normalized.includes("\u010Desk\xE9dr\xE1hy") || normalized.includes("ceskedrahy");
-  };
-  var findKnownTrainTypeName = (value) => {
-    const sourceType = String(value ?? "").trim();
-    if (!sourceType) {
-      return "";
+  var getTrainNumberCardStyle = (train) => {
+    const name = String(train ?? "");
+    const normalized = name.toLocaleLowerCase("cs-CZ");
+    if (name === "Intercity" || name === "Eurocity" || name === "IC" || name === "EC" || name === "SuperCity" || normalized === "sc") {
+      return "intercity";
     }
-    const lower = sourceType.toLocaleLowerCase("cs-CZ");
-    return TRAIN_TYPES.find((candidate) => candidate.name === sourceType)?.name || TRAIN_TYPES.find(
-      (candidate) => candidate.name.toLocaleLowerCase("cs-CZ") === lower
-    )?.name || TRAIN_TYPES.find(
-      (candidate) => candidate.text && candidate.text.toLocaleLowerCase("cs-CZ") === lower
-    )?.name || "";
-  };
-  var resolveCanonicalTrainType = (sourceType, operator = "") => {
-    const original = String(sourceType ?? "").trim();
-    const lower = original.toLocaleLowerCase("cs-CZ");
-    if (lower === "ic" || lower === "intercity") {
-      return "Intercity";
+    if (name === "Sp" || normalized === "nj" || normalized === "nightjet") {
+      return "sp";
     }
-    if (lower === "ec" || lower === "eurocity") {
-      return "Eurocity";
+    if (name === "R" || name === "R miest." || name === "Mim. R" || name === "Ex" || name.startsWith("Ex ") || name === "\u010CEDOK" || name === "ROH" || normalized === "rj" || normalized === "railjet" || normalized === "regiojet") {
+      return "red";
     }
-    if (lower === "sc" || lower === "supercity") {
-      return "SuperCity";
-    }
-    if (lower === "en" || lower === "euronight") {
-      return "EuroNight";
-    }
-    if (lower === "nj" || lower === "nightjet") {
-      return "nj";
-    }
-    if (lower === "railjet") {
-      return "rj";
-    }
-    if (lower === "regiojet") {
-      return "RJ";
-    }
-    if (lower === "rj") {
-      if (isRegioJetOperator(operator)) {
-        return "RJ";
-      }
-      if (isCDOperator(operator)) {
-        return "rj";
-      }
-      return original === "RJ" ? "RJ" : "rj";
-    }
-    return findKnownTrainTypeName(original);
+    return "default";
   };
   var NIGHT_FADE_MODES = Object.freeze([
     { value: "none", label: "Bez pohas\xEDn\xE1n\xED (st\xE1l\xFD svit)" },
@@ -685,6 +643,295 @@
     16,
     Math.max(0.0625, FLAP_SOUND_DURATION_MS / STATION_FLIP_DURATION)
   );
+
+  // src/platform/station-profile.js
+  var STATION_PROFILE_STORAGE_KEY = "pragotron.stationProfile.v1";
+  var STATION_PROFILE_VERSION = 1;
+  var MAX_LIST = 80;
+  var MAX_TYPES = 40;
+  var MAX_STYLES = 12;
+  var MAX_TEXT = 32;
+  var DEFAULT_ALIASES = Object.freeze({
+    Intercity: ["IC", "ic", "intercity"],
+    Eurocity: ["EC", "ec", "eurocity"],
+    SuperCity: ["SC", "sc", "supercity"],
+    EuroNight: ["EN", "en", "euronight"],
+    nj: ["NJ", "NightJet", "Nightjet", "nightjet"],
+    rj: ["railjet", "Railjet"],
+    RJ: ["regiojet", "RegioJet"]
+  });
+  var clean = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
+  var cleanToken = (value) => clean(value).replace(/[–—−]/g, "-").replace(/\s*-\s*/g, "-").slice(0, MAX_TEXT);
+  var uniqueTokens = (values, limit = MAX_LIST) => {
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    (Array.isArray(values) ? values : []).forEach((value) => {
+      const token = cleanToken(value);
+      const key = token.toLocaleLowerCase("cs-CZ");
+      if (!token || seen.has(key) || result.length >= limit) {
+        return;
+      }
+      seen.add(key);
+      result.push(token);
+    });
+    return result;
+  };
+  var linesFrom = (value) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    return String(value ?? "").split(/\r?\n/);
+  };
+  var isCssColor = (value) => {
+    const text = clean(value);
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) || /^var\(--[a-z0-9-]+\)$/i.test(text) || /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(text);
+  };
+  var colorOr = (value, fallback) => isCssColor(value) ? clean(value) : fallback;
+  var slug = (value, fallback) => {
+    const text = clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
+    return text || fallback;
+  };
+  var normalizeOperatorKey = (value) => clean(value).toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, "");
+  var isRegioJetOperator = (operator) => {
+    const normalized = normalizeOperatorKey(operator);
+    return normalized.includes("regiojet") || normalized === "rjet" || normalized === "rj";
+  };
+  var isCDOperator = (operator) => {
+    const normalized = normalizeOperatorKey(operator);
+    return normalized === "\u010Dd" || normalized === "cd" || normalized.includes("\u010Desk\xE9dr\xE1hy") || normalized.includes("ceskedrahy");
+  };
+  var blankTrainType = () => ({
+    name: "",
+    text: "",
+    suffix: "",
+    source: "",
+    label: "",
+    background: "var(--flap-background)",
+    foreground: "var(--flap-foreground)",
+    numberStyle: "default",
+    aliases: []
+  });
+  var createDefaultStationProfile = () => {
+    const numberStyles = Object.entries(TRAIN_NUMBER_CARD_STYLES).map(
+      ([id, style]) => ({
+        id,
+        label: id,
+        background: style.background,
+        foreground: style.foreground
+      })
+    );
+    const knownStyles = new Set(numberStyles.map((style) => style.id));
+    const sectors = DEPARTURE_SECTOR_VALUES.filter(Boolean);
+    const atomic = sectors.filter((value) => !value.includes("-"));
+    return {
+      version: STATION_PROFILE_VERSION,
+      name: "Brno hlavn\xED n\xE1dra\u017E\xED",
+      platforms: DEPARTURE_PLATFORM_VALUES.filter(Boolean),
+      tracks: DEPARTURE_TRACK_VALUES.filter(Boolean),
+      sectors: atomic,
+      sectorRanges: sectors.filter((value) => value.includes("-")),
+      numberStyles,
+      trainTypes: [
+        blankTrainType(),
+        ...TRAIN_TYPES.filter((type) => type.name).map((type) => {
+          const numberStyle = getTrainNumberCardStyle(type.name);
+          return {
+            name: type.name,
+            text: type.text || "",
+            suffix: type.suffix || "",
+            source: type.source || "",
+            label: type.label || "",
+            background: type.background,
+            foreground: type.foreground,
+            numberStyle: knownStyles.has(numberStyle) ? numberStyle : "default",
+            aliases: [...DEFAULT_ALIASES[type.name] || []]
+          };
+        })
+      ]
+    };
+  };
+  var normalizeTrainType = (value, styles) => {
+    const source = value && typeof value === "object" ? value : {};
+    const name = cleanToken(source.name);
+    const styleIds = new Set(styles.map((style) => style.id));
+    const aliases = uniqueTokens(
+      Array.isArray(source.aliases) ? source.aliases : String(source.aliases || "").split(/[,;]/),
+      12
+    ).filter((alias) => alias.toLocaleLowerCase("cs-CZ") !== name.toLocaleLowerCase("cs-CZ"));
+    return {
+      name,
+      text: cleanToken(source.text).slice(0, 16),
+      suffix: cleanToken(source.suffix).slice(0, 12),
+      source: clean(source.source).slice(0, 180),
+      label: clean(source.label).slice(0, 40),
+      background: colorOr(source.background, "var(--flap-background)"),
+      foreground: colorOr(source.foreground, "var(--flap-foreground)"),
+      numberStyle: styleIds.has(clean(source.numberStyle)) ? clean(source.numberStyle) : "default",
+      aliases
+    };
+  };
+  var normalizeStationProfile = (value) => {
+    const source = value && typeof value === "object" ? value : null;
+    if (!source) {
+      return null;
+    }
+    const fallbackStyles = createDefaultStationProfile().numberStyles;
+    const numberStyles = [];
+    const seenStyles = /* @__PURE__ */ new Set();
+    (Array.isArray(source.numberStyles) ? source.numberStyles : fallbackStyles).forEach((style) => {
+      const id = slug(style?.id, "") || slug(style?.label, "");
+      if (!id || seenStyles.has(id) || numberStyles.length >= MAX_STYLES) {
+        return;
+      }
+      seenStyles.add(id);
+      numberStyles.push({
+        id,
+        label: id,
+        background: colorOr(
+          style.background,
+          id === "default" ? "var(--flap-background)" : "#111111"
+        ),
+        foreground: colorOr(style.foreground, "#ffffff")
+      });
+    });
+    if (!seenStyles.has("default")) {
+      numberStyles.unshift({
+        id: "default",
+        label: "default",
+        background: "var(--flap-background)",
+        foreground: "var(--flap-foreground)"
+      });
+    }
+    const trainTypes = [];
+    const seenTypes = /* @__PURE__ */ new Set();
+    (Array.isArray(source.trainTypes) ? source.trainTypes : []).forEach((type) => {
+      const normalized = normalizeTrainType(type, numberStyles);
+      const key = normalized.name;
+      if (!normalized.name || seenTypes.has(key) || trainTypes.length >= MAX_TYPES) {
+        return;
+      }
+      seenTypes.add(key);
+      trainTypes.push(normalized);
+    });
+    const platforms = uniqueTokens(linesFrom(source.platforms));
+    const tracks = uniqueTokens(linesFrom(source.tracks));
+    const sectors = uniqueTokens(linesFrom(source.sectors), 40);
+    if (platforms.length === 0 || tracks.length === 0 || trainTypes.length === 0) {
+      return null;
+    }
+    return {
+      version: STATION_PROFILE_VERSION,
+      name: clean(source.name).slice(0, 80) || "Profil stanice",
+      platforms,
+      tracks,
+      sectors,
+      sectorRanges: uniqueTokens(linesFrom(source.sectorRanges), 80).filter((value2) => !sectors.some(
+        (sector) => sector.toLocaleLowerCase("cs-CZ") === value2.toLocaleLowerCase("cs-CZ")
+      )),
+      numberStyles,
+      trainTypes: [blankTrainType(), ...trainTypes]
+    };
+  };
+  var activeProfile = null;
+  var storage = () => {
+    try {
+      return globalThis.localStorage || null;
+    } catch {
+      return null;
+    }
+  };
+  var readStoredStationProfile = () => {
+    try {
+      const raw = storage()?.getItem(STATION_PROFILE_STORAGE_KEY);
+      return raw ? normalizeStationProfile(JSON.parse(raw)) : null;
+    } catch {
+      return null;
+    }
+  };
+  var getActiveStationProfile = () => {
+    if (!activeProfile) {
+      activeProfile = readStoredStationProfile() || createDefaultStationProfile();
+    }
+    return activeProfile;
+  };
+  var setActiveStationProfile = (value, { persist = true } = {}) => {
+    const next = normalizeStationProfile(value);
+    if (!next) {
+      return null;
+    }
+    activeProfile = next;
+    if (persist) {
+      try {
+        storage()?.setItem(
+          STATION_PROFILE_STORAGE_KEY,
+          JSON.stringify(next)
+        );
+      } catch {
+      }
+    }
+    return activeProfile;
+  };
+  var profileSectorValues = (profile = getActiveStationProfile()) => [...profile.sectors, ...profile.sectorRanges];
+  var matchProfileValue = (values, value) => {
+    const normalized = cleanToken(value);
+    if (!normalized) {
+      return "";
+    }
+    return values.find((candidate) => candidate === normalized) || values.find(
+      (candidate) => candidate.toLocaleLowerCase("cs-CZ") === normalized.toLocaleLowerCase("cs-CZ")
+    ) || "";
+  };
+  var sectorAtoms = (label, profile = getActiveStationProfile()) => {
+    const value = cleanToken(label);
+    if (!value) {
+      return [];
+    }
+    const parts = value.split("-").filter(Boolean);
+    if (parts.length === 2) {
+      const from = profile.sectors.findIndex(
+        (sector) => sector.toLocaleLowerCase("cs-CZ") === parts[0].toLocaleLowerCase("cs-CZ")
+      );
+      const to = profile.sectors.findIndex(
+        (sector) => sector.toLocaleLowerCase("cs-CZ") === parts[1].toLocaleLowerCase("cs-CZ")
+      );
+      if (from !== -1 && to !== -1) {
+        const start = Math.min(from, to);
+        const end = Math.max(from, to);
+        return profile.sectors.slice(start, end + 1);
+      }
+    }
+    return [value];
+  };
+  var sectorsOverlap = (boardSector, departureSector, profile = getActiveStationProfile()) => {
+    const boardAtoms = sectorAtoms(boardSector, profile).map((sector) => sector.toLocaleLowerCase("cs-CZ"));
+    const departureAtoms = sectorAtoms(departureSector, profile).map((sector) => sector.toLocaleLowerCase("cs-CZ"));
+    return departureAtoms.some((sector) => boardAtoms.includes(sector));
+  };
+  var typeLabels = (type) => [
+    type.name,
+    type.text,
+    type.label,
+    ...type.aliases || []
+  ].map((value) => clean(value)).filter(Boolean);
+  var resolveProfileTrainType = (sourceType, operator = "", profile = getActiveStationProfile()) => {
+    const original = clean(sourceType);
+    if (!original) {
+      return "";
+    }
+    const types = profile.trainTypes.filter((type) => type.name);
+    const lower = original.toLocaleLowerCase("cs-CZ");
+    if (lower === "rj") {
+      const preferred = isRegioJetOperator(operator) ? "RJ" : isCDOperator(operator) ? "rj" : original === "RJ" ? "RJ" : "rj";
+      const operatorMatch = types.find((type) => type.name === preferred);
+      if (operatorMatch) {
+        return operatorMatch.name;
+      }
+    }
+    const match = types.find((type) => typeLabels(type).some(
+      (label) => label.toLocaleLowerCase("cs-CZ") === lower
+    ));
+    return match?.name || "";
+  };
 
   // src/platform/lenses.js
   var LENS_COLORS = Object.freeze({
@@ -1029,17 +1276,6 @@
     }
   };
 
-  // src/platform/departure-board.js
-  var createCatalogCards = (values) => values.map((value) => ({
-    key: value || "blank",
-    value,
-    background: "var(--flap-background)",
-    foreground: "var(--flap-foreground)"
-  }));
-  var TRACK_CARDS = createCatalogCards(DEPARTURE_TRACK_VALUES);
-  var PLATFORM_CARDS = createCatalogCards(DEPARTURE_PLATFORM_VALUES);
-  var SECTOR_CARDS = createCatalogCards(DEPARTURE_SECTOR_VALUES);
-
   // src/platform/analog-clock.js
   var DEFAULT_CLOCK_OPTIONS = Object.freeze({
     size: 512,
@@ -1185,10 +1421,10 @@
 
   // src/platform/storage.js
   var LocalStorageAdapter = class {
-    constructor(key, storage2) {
+    constructor(key, storage3) {
       this.key = key;
-      if (storage2 !== void 0) {
-        this.storage = storage2;
+      if (storage3 !== void 0) {
+        this.storage = storage3;
         return;
       }
       try {
@@ -1315,9 +1551,9 @@
     const random = globalThis.crypto?.randomUUID?.();
     return `${prefix}-${random || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
   };
-  var getStorage = (storage2) => {
-    if (storage2 !== void 0) {
-      return storage2;
+  var getStorage = (storage3) => {
+    if (storage3 !== void 0) {
+      return storage3;
     }
     try {
       return globalThis.window?.localStorage || null;
@@ -1329,7 +1565,7 @@
     constructor({
       channelName = BOARD_TRANSPORT_CHANNEL,
       storageKey = BOARD_TRANSPORT_STORAGE_KEY,
-      storage: storage2,
+      storage: storage3,
       windowRef = globalThis.window,
       boardId = "",
       onLog = null
@@ -1338,7 +1574,7 @@
       this.boardId = typeof boardId === "string" ? boardId : "";
       this.onLog = typeof onLog === "function" ? onLog : null;
       this.storageKey = storageKey;
-      this.storage = getStorage(storage2);
+      this.storage = getStorage(storage3);
       this.window = windowRef;
       this.listeners = /* @__PURE__ */ new Set();
       this.seenMessages = /* @__PURE__ */ new Set();
@@ -1633,13 +1869,19 @@
     const sector = normalized.sector || "cel\xE1 kolej";
     return `n\xE1stupi\u0161t\u011B ${normalized.platform || "\u2014"}, kolej ${normalized.track || "\u2014"}, sektor ${sector}`;
   };
-  var identitiesMatch = (boardIdentity, targetIdentity) => {
+  var identitiesMatch = (boardIdentity, targetIdentity, profile = getActiveStationProfile()) => {
     const board = normalizeBoardIdentity(boardIdentity);
     const target = normalizeBoardIdentity(targetIdentity);
     if (!target.platform || !target.track) {
       return false;
     }
-    return board.platform === target.platform && board.track === target.track && (!target.sector || board.sector === target.sector);
+    if (board.platform !== target.platform || board.track !== target.track) {
+      return false;
+    }
+    if (!target.sector || !board.sector) {
+      return true;
+    }
+    return sectorsOverlap(board.sector, target.sector, profile);
   };
 
   // node_modules/sunrise-sunset-js/dist/index.js
@@ -4444,42 +4686,642 @@
     throw new Error(describeLiveNetworkError(lastError));
   };
 
+  // src/demos/stationProfileEditor.js
+  var lines = (values) => values.join("\n");
+  var fieldValue = (row, name) => row.querySelector(`[data-field="${name}"]`)?.value || "";
+  var textInput = (documentRef2, value, label, name) => {
+    const input = documentRef2.createElement("input");
+    input.type = "text";
+    input.value = value || "";
+    input.dataset.field = name;
+    input.setAttribute("aria-label", label);
+    input.autocomplete = "off";
+    return input;
+  };
+  var labeledField = (documentRef2, label, control, hint = "", wide = false) => {
+    const wrapper = documentRef2.createElement("label");
+    wrapper.className = wide ? "board-form-field station-profile-wide" : "board-form-field";
+    wrapper.append(documentRef2.createTextNode(label), control);
+    if (hint) {
+      const note = documentRef2.createElement("small");
+      note.textContent = hint;
+      wrapper.append(note);
+    }
+    return wrapper;
+  };
+  var actionButton = (documentRef2, text) => {
+    const button = documentRef2.createElement("button");
+    button.type = "button";
+    button.className = "station-profile-button";
+    button.textContent = text;
+    return button;
+  };
+  var mountStationProfileEditor = ({
+    documentRef: documentRef2,
+    onApply,
+    onSectionExpanded
+  }) => {
+    const nameInput = documentRef2.querySelector("#stationProfileName");
+    const platformsInput = documentRef2.querySelector("#stationProfilePlatforms");
+    const tracksInput = documentRef2.querySelector("#stationProfileTracks");
+    const sectorsInput = documentRef2.querySelector("#stationProfileSectors");
+    const rangesInput = documentRef2.querySelector("#stationProfileSectorRanges");
+    const stylesRoot = documentRef2.querySelector("#stationProfileNumberStyles");
+    const typesRoot = documentRef2.querySelector("#stationProfileTrainTypes");
+    const searchInput = documentRef2.querySelector("#stationProfileTypeSearch");
+    const applyButton = documentRef2.querySelector("#stationProfileApply");
+    const exportButton = documentRef2.querySelector("#stationProfileExport");
+    const importButton = documentRef2.querySelector("#stationProfileImport");
+    const resetButton = documentRef2.querySelector("#stationProfileReset");
+    const fileInput = documentRef2.querySelector("#stationProfileFile");
+    if (!nameInput || !stylesRoot || !typesRoot) {
+      return;
+    }
+    const typePainters = /* @__PURE__ */ new Set();
+    const styleChoices = () => [...stylesRoot.querySelectorAll(".station-profile-style")].map((row) => fieldValue(row, "id").trim()).filter(Boolean);
+    const fillStyleSelect = (select, selected) => {
+      const current = selected || select.value || "default";
+      select.replaceChildren();
+      const choices = styleChoices();
+      if (!choices.includes("default")) {
+        choices.unshift("default");
+      }
+      choices.forEach((id) => {
+        const option = documentRef2.createElement("option");
+        option.value = id;
+        option.textContent = id;
+        select.appendChild(option);
+      });
+      select.value = choices.includes(current) ? current : "default";
+    };
+    const refreshOrder = (root) => {
+      const searchLocked = root === typesRoot && String(searchInput?.value || "").trim() !== "";
+      const rows = [...root.children];
+      rows.forEach((row, index) => {
+        const up = row.querySelector('[data-move="up"]');
+        const down = row.querySelector('[data-move="down"]');
+        if (!up || !down) {
+          return;
+        }
+        up.disabled = searchLocked || index === 0;
+        down.disabled = searchLocked || index === rows.length - 1;
+        const lockedTitle = "Nejd\u0159\xEDv zru\u0161te hled\xE1n\xED.";
+        up.title = searchLocked ? lockedTitle : "Posunout v\xFD\u0161";
+        down.title = searchLocked ? lockedTitle : "Posunout n\xED\u017E";
+      });
+    };
+    const moveRow = (row, direction) => {
+      const parent = row.parentElement;
+      const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
+      if (!parent || !sibling) {
+        return;
+      }
+      if (direction < 0) {
+        parent.insertBefore(row, sibling);
+      } else {
+        parent.insertBefore(sibling, row);
+      }
+      refreshOrder(parent);
+      if (parent === stylesRoot) {
+        refreshTypeStyles();
+      }
+    };
+    const iconButton = (label, src) => {
+      const control = actionButton(documentRef2, "");
+      control.classList.add("station-profile-icon-button");
+      control.setAttribute("aria-label", label);
+      control.title = label;
+      const image = documentRef2.createElement("img");
+      image.src = src;
+      image.alt = "";
+      image.width = 16;
+      image.height = 16;
+      control.append(image);
+      return control;
+    };
+    const orderButtons = (row) => {
+      const up = iconButton("Posunout v\xFD\u0161", "images/MoveItemUp.svg");
+      const down = iconButton("Posunout n\xED\u017E", "images/MoveItemDown.svg");
+      up.dataset.move = "up";
+      down.dataset.move = "down";
+      up.addEventListener("click", () => moveRow(row, -1));
+      down.addEventListener("click", () => moveRow(row, 1));
+      return [up, down];
+    };
+    const refreshTypeStyles = (renamed) => {
+      typesRoot.querySelectorAll("[data-number-style]").forEach((select) => {
+        const next = renamed && select.value === renamed.previous ? renamed.next : select.value;
+        fillStyleSelect(select, next);
+      });
+      typePainters.forEach((paint) => paint());
+    };
+    const addStyleRow = (style = {}) => {
+      const row = documentRef2.createElement("div");
+      row.className = "station-profile-style";
+      const id = textInput(documentRef2, style.id || "", "N\xE1zev barvy", "id");
+      const background = textInput(
+        documentRef2,
+        style.background || "#111111",
+        "Pozad\xED \u010D\xEDsla",
+        "background"
+      );
+      const foreground = textInput(
+        documentRef2,
+        style.foreground || "#ffffff",
+        "Barva \u010D\xEDslic",
+        "foreground"
+      );
+      const swatch = documentRef2.createElement("span");
+      swatch.className = "station-profile-swatch";
+      swatch.setAttribute("aria-hidden", "true");
+      swatch.textContent = "1234";
+      const paint = () => {
+        swatch.style.background = background.value;
+        swatch.style.color = foreground.value;
+      };
+      background.addEventListener("input", paint);
+      foreground.addEventListener("input", paint);
+      paint();
+      const remove = iconButton("Odebrat", "images/Delete.svg");
+      const syncDefault = () => {
+        const locked = id.value.trim().toLocaleLowerCase("cs-CZ") === "default";
+        id.readOnly = locked;
+        remove.disabled = locked;
+        remove.title = locked ? "V\xFDchoz\xED barva mus\xED z\u016Fstat." : "";
+      };
+      remove.addEventListener("click", () => {
+        row.remove();
+        refreshOrder(stylesRoot);
+        refreshTypeStyles();
+      });
+      let lastId = id.value.trim();
+      id.addEventListener("input", () => {
+        const next = id.value.trim();
+        refreshTypeStyles({ previous: lastId, next });
+        lastId = next;
+        syncDefault();
+      });
+      syncDefault();
+      const fields = documentRef2.createElement("div");
+      fields.className = "board-form-grid";
+      fields.append(
+        labeledField(documentRef2, "N\xE1zev", id, "", true),
+        labeledField(documentRef2, "Pozad\xED", background),
+        labeledField(documentRef2, "Barva \u010D\xEDslic", foreground)
+      );
+      const actions = documentRef2.createElement("div");
+      actions.className = "station-profile-row-actions";
+      actions.append(...orderButtons(row), remove);
+      const side = documentRef2.createElement("div");
+      side.className = "station-profile-style-side";
+      side.append(swatch, actions);
+      row.append(side, fields);
+      stylesRoot.appendChild(row);
+      refreshOrder(stylesRoot);
+      return row;
+    };
+    const addTypeRow = (type = {}, { open = false } = {}) => {
+      const row = documentRef2.createElement("article");
+      row.className = "station-profile-type";
+      const name = textInput(documentRef2, type.name || "", "N\xE1zev typu", "name");
+      const label = textInput(documentRef2, type.label || "", "Text v seznamu", "label");
+      const text = textInput(documentRef2, type.text || "", "Text na flapu", "text");
+      const suffix = textInput(documentRef2, type.suffix || "", "Dopln\u011Bk na flapu", "suffix");
+      const source = textInput(documentRef2, type.source || "", "Obr\xE1zek", "source");
+      const background = textInput(
+        documentRef2,
+        type.background || "var(--flap-background)",
+        "Pozad\xED flapu",
+        "background"
+      );
+      const foreground = textInput(
+        documentRef2,
+        type.foreground || "var(--flap-foreground)",
+        "Barva p\xEDsma",
+        "foreground"
+      );
+      const aliases = textInput(
+        documentRef2,
+        (type.aliases || []).join(", "),
+        "Zkratky",
+        "aliases"
+      );
+      const numberStyle = documentRef2.createElement("select");
+      numberStyle.dataset.numberStyle = "true";
+      numberStyle.setAttribute("aria-label", "Barva \u010D\xEDsla vlaku");
+      fillStyleSelect(numberStyle, type.numberStyle || "default");
+      const flap = documentRef2.createElement("span");
+      flap.className = "station-profile-flap";
+      flap.setAttribute("aria-hidden", "true");
+      const title = documentRef2.createElement("strong");
+      const meta = documentRef2.createElement("span");
+      const paint = () => {
+        flap.style.background = background.value;
+        flap.style.color = foreground.value;
+        flap.replaceChildren();
+        if (source.value.trim()) {
+          const image = documentRef2.createElement("img");
+          image.alt = "";
+          image.src = source.value.trim();
+          flap.append(image);
+        } else {
+          flap.append(documentRef2.createTextNode(text.value.trim() || "\u2014"));
+          if (suffix.value.trim()) {
+            const extra = documentRef2.createElement("small");
+            extra.textContent = suffix.value.trim();
+            flap.append(extra);
+          }
+        }
+        title.textContent = name.value.trim() || "Nov\xFD typ";
+        const styleLabel = numberStyle.selectedOptions[0]?.textContent || "V\xFDchoz\xED";
+        const aliasText = aliases.value.trim();
+        meta.textContent = [
+          source.value.trim() ? "obr\xE1zek" : text.value.trim() ? `flap ${text.value.trim()}` : "pr\xE1zdn\xFD flap",
+          `\u010D\xEDslo ${styleLabel}`,
+          aliasText ? `zkratky ${aliasText}` : ""
+        ].filter(Boolean).join(" \xB7 ");
+      };
+      typePainters.add(paint);
+      [name, label, text, suffix, source, background, foreground, aliases].forEach((input) => input.addEventListener("input", paint));
+      numberStyle.addEventListener("change", paint);
+      const body = documentRef2.createElement("div");
+      body.className = "station-profile-type-body board-form-grid";
+      body.append(
+        labeledField(documentRef2, "N\xE1zev", name, "Hodnota ulo\u017Een\xE1 u odjezdu."),
+        labeledField(
+          documentRef2,
+          "Text v seznamu",
+          label,
+          "Kdy\u017E je pr\xE1zdn\xFD, pou\u017Eije se n\xE1zev."
+        ),
+        labeledField(documentRef2, "Text na flapu", text),
+        labeledField(documentRef2, "Dopln\u011Bk na flapu", suffix, "T\u0159eba l\xF4\u017Ek. za Ex."),
+        labeledField(
+          documentRef2,
+          "Obr\xE1zek m\xEDsto textu",
+          source,
+          "Cesta, t\u0159eba images/railjet.svg. M\xE1 p\u0159ednost p\u0159ed textem.",
+          true
+        ),
+        labeledField(documentRef2, "Pozad\xED flapu", background),
+        labeledField(documentRef2, "Barva p\xEDsma", foreground),
+        labeledField(documentRef2, "Barva \u010D\xEDsla vlaku", numberStyle),
+        labeledField(
+          documentRef2,
+          "Zkratky z tabule S\u017D",
+          aliases,
+          "Odd\u011Blte \u010D\xE1rkou. T\u0159eba IC, ic.",
+          true
+        )
+      );
+      const toggle = iconButton(
+        open ? "Skr\xFDt" : "Upravit",
+        "images/Edit.svg"
+      );
+      const setOpen = (next) => {
+        row.classList.toggle("is-open", next);
+        const label2 = next ? "Skr\xFDt" : "Upravit";
+        toggle.setAttribute("aria-label", label2);
+        toggle.title = label2;
+        toggle.setAttribute("aria-expanded", String(next));
+      };
+      setOpen(open);
+      toggle.addEventListener("click", () => setOpen(!row.classList.contains("is-open")));
+      const remove = iconButton("Odebrat", "images/Delete.svg");
+      remove.addEventListener("click", () => {
+        typePainters.delete(paint);
+        row.remove();
+        filterTypes();
+      });
+      const identity = documentRef2.createElement("div");
+      identity.className = "station-profile-type-identity";
+      identity.append(title, meta);
+      const actions = documentRef2.createElement("div");
+      actions.className = "station-profile-row-actions";
+      actions.append(...orderButtons(row), toggle, remove);
+      const summary = documentRef2.createElement("div");
+      summary.className = "station-profile-type-summary";
+      summary.append(flap, identity, actions);
+      summary.addEventListener("click", (event) => {
+        if (event.target.closest("button")) {
+          return;
+        }
+        setOpen(!row.classList.contains("is-open"));
+      });
+      row.append(summary, body);
+      typesRoot.appendChild(row);
+      refreshOrder(typesRoot);
+      paint();
+      return row;
+    };
+    const filterTypes = () => {
+      const query = String(searchInput?.value || "").trim().toLocaleLowerCase("cs-CZ");
+      typesRoot.querySelectorAll(".station-profile-type").forEach((row) => {
+        const haystack = [...row.querySelectorAll("input, select")].map((control) => control.value).join(" ").toLocaleLowerCase("cs-CZ");
+        row.classList.toggle("is-filtered", Boolean(query) && !haystack.includes(query));
+      });
+      refreshOrder(typesRoot);
+    };
+    const readStyles = () => [...stylesRoot.querySelectorAll(".station-profile-style")].map((row) => ({
+      id: fieldValue(row, "id"),
+      background: fieldValue(row, "background"),
+      foreground: fieldValue(row, "foreground")
+    }));
+    const readTypes = () => [...typesRoot.querySelectorAll(".station-profile-type")].map((row) => ({
+      name: fieldValue(row, "name"),
+      label: fieldValue(row, "label"),
+      text: fieldValue(row, "text"),
+      suffix: fieldValue(row, "suffix"),
+      source: fieldValue(row, "source"),
+      background: fieldValue(row, "background"),
+      foreground: fieldValue(row, "foreground"),
+      numberStyle: row.querySelector("[data-number-style]")?.value || "default",
+      aliases: fieldValue(row, "aliases")
+    }));
+    const read = () => normalizeStationProfile({
+      name: nameInput.value,
+      platforms: platformsInput.value,
+      tracks: tracksInput.value,
+      sectors: sectorsInput.value,
+      sectorRanges: rangesInput.value,
+      numberStyles: readStyles(),
+      trainTypes: readTypes()
+    });
+    const fill = (profile) => {
+      const next = profile || getActiveStationProfile();
+      nameInput.value = next.name;
+      platformsInput.value = lines(next.platforms);
+      tracksInput.value = lines(next.tracks);
+      sectorsInput.value = lines(next.sectors);
+      rangesInput.value = lines(next.sectorRanges);
+      typePainters.clear();
+      stylesRoot.replaceChildren();
+      typesRoot.replaceChildren();
+      next.numberStyles.forEach((style) => addStyleRow(style));
+      next.trainTypes.filter((type) => type.name).forEach((type) => addTypeRow(type));
+      if (searchInput) {
+        searchInput.value = "";
+      }
+      filterTypes();
+    };
+    const apply = () => {
+      const profile = read();
+      if (!profile) {
+        onApply?.(null);
+        return null;
+      }
+      setActiveStationProfile(profile);
+      fill(getActiveStationProfile());
+      onApply?.(getActiveStationProfile());
+      return getActiveStationProfile();
+    };
+    const expandSection = (element) => {
+      const section = element?.closest(".station-profile-section");
+      if (!section) {
+        return;
+      }
+      section.classList.remove("is-collapsed");
+      section.querySelector(".manage-block-toggle")?.setAttribute("aria-expanded", "true");
+      onSectionExpanded?.(section);
+    };
+    documentRef2.querySelector("#stationProfileAddStyle")?.addEventListener("click", () => {
+      expandSection(stylesRoot);
+      const row = addStyleRow({
+        id: "",
+        background: "#111111",
+        foreground: "#ffffff"
+      });
+      row.querySelector('[data-field="id"]')?.focus();
+    });
+    documentRef2.querySelector("#stationProfileAddType")?.addEventListener("click", () => {
+      expandSection(typesRoot);
+      if (searchInput) {
+        searchInput.value = "";
+        filterTypes();
+      }
+      const row = addTypeRow({}, { open: true });
+      row.querySelector('[data-field="name"]')?.focus();
+      row.scrollIntoView({ block: "nearest" });
+    });
+    searchInput?.addEventListener("input", filterTypes);
+    applyButton?.addEventListener("click", apply);
+    exportButton?.addEventListener("click", () => {
+      const profile = apply();
+      if (!profile) {
+        return;
+      }
+      const blob = new Blob(
+        [JSON.stringify(profile, null, 2)],
+        { type: "application/json" }
+      );
+      const link = documentRef2.createElement("a");
+      const slug2 = profile.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "profil-stanice";
+      link.href = URL.createObjectURL(blob);
+      link.download = `${slug2}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1e3);
+    });
+    importButton?.addEventListener("click", () => fileInput?.click());
+    fileInput?.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      fileInput.value = "";
+      if (!file) {
+        return;
+      }
+      const reader = new FileReader();
+      reader.addEventListener("load", () => {
+        try {
+          const profile = normalizeStationProfile(JSON.parse(String(reader.result || "")));
+          if (!profile) {
+            onApply?.(null);
+            return;
+          }
+          fill(profile);
+          apply();
+        } catch {
+          onApply?.(null);
+        }
+      });
+      reader.readAsText(file);
+    });
+    resetButton?.addEventListener("click", () => {
+      if (!window.confirm(
+        "Obnovit v\xFDchoz\xED profil Brno hlavn\xED n\xE1dra\u017E\xED? Rozpracovan\xE9 \xFApravy se nahrad\xED."
+      )) {
+        return;
+      }
+      fill(createDefaultStationProfile());
+      apply();
+    });
+    fill(getActiveStationProfile());
+  };
+
   // src/demos/platformTableManage.js
   var STORAGE_KEY = "pragotron.platformTable.state.v2";
   var LEGACY_STORAGE_KEY = "pragotron.platformTable.state.v1";
   var documentRef = document;
-  var storage = new LocalStorageAdapter(STORAGE_KEY);
+  var storage2 = new LocalStorageAdapter(STORAGE_KEY);
   var legacyStorage = new LocalStorageAdapter(LEGACY_STORAGE_KEY);
-  var currentState = storage.load();
+  var currentState = storage2.load();
   var legacyState = currentState ? null : legacyStorage.load();
   var savedState = currentState || legacyState || {};
   if (!currentState && legacyState) {
-    storage.save({
+    storage2.save({
       ...legacyState,
       version: 2
     });
   }
   var savedSettings = savedState.settings || savedState;
+  if (savedState.stationProfile) {
+    setActiveStationProfile(savedState.stationProfile);
+  }
   var logOutput = documentRef.querySelector("#logOutput");
-  var manageLogEntries = [];
   var MANAGE_LOG_LIMIT = 250;
+  var stringifyLogValue = (value) => {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  };
+  var classifyManageLogLine = (line) => {
+    const match = String(line).match(
+      /^\[pragotron\]\s+(\d{1,2}:\d{2}:\d{2}\.\d{3})\s+([\s\S]+)$/
+    );
+    const time = match?.[1] || "";
+    const direction = (match?.[2] || String(line)).trim();
+    const kind = direction === "odesl\xE1no" ? "out" : direction === "p\u0159ijato" ? "in" : "system";
+    return { time, direction, kind };
+  };
+  var formatLogTooltip = (date, time) => {
+    const datePart = date.toLocaleDateString("cs-CZ");
+    const match = String(time).match(/^(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})$/);
+    if (!match) {
+      const ms = String(date.getMilliseconds()).padStart(3, "0");
+      const clock = [
+        String(date.getHours()).padStart(2, "0"),
+        String(date.getMinutes()).padStart(2, "0"),
+        String(date.getSeconds()).padStart(2, "0")
+      ].join(":");
+      return `${datePart} ${clock}.${ms}`;
+    }
+    const [, hours, minutes, seconds, milliseconds] = match;
+    return `${datePart} ${hours.padStart(2, "0")}:${minutes}:${seconds}.${milliseconds}`;
+  };
+  var senderColors = /* @__PURE__ */ new Map();
+  var senderHue = (clientId) => {
+    let hash = 2166136261;
+    const text = String(clientId || "");
+    for (let index = 0; index < text.length; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) % 360;
+  };
+  var senderColor = (clientId) => {
+    const key = String(clientId || "");
+    const known = senderColors.get(key);
+    if (known) {
+      return known;
+    }
+    const used = new Set(senderColors.values());
+    let hue = senderHue(key);
+    let color = `hsl(${hue} 70% 68%)`;
+    let guard = 0;
+    while (used.has(color) && guard < 360) {
+      hue = (hue + 37) % 360;
+      color = `hsl(${hue} 70% 68%)`;
+      guard += 1;
+    }
+    senderColors.set(key, color);
+    return color;
+  };
+  var createLogTime = (date, time) => {
+    const tooltip = formatLogTooltip(date, time);
+    const clock = document.createElement("time");
+    clock.className = "log-bubble-time";
+    clock.dateTime = date.toISOString();
+    clock.title = tooltip;
+    clock.textContent = time || tooltip.slice(tooltip.lastIndexOf(" ") + 1);
+    return clock;
+  };
   var appendManageLog = (line, details) => {
     if (!logOutput) {
       return;
     }
-    let body = "";
-    try {
-      body = JSON.stringify(details, null, 2);
-    } catch {
-      body = String(details);
-    }
-    manageLogEntries.push(body ? `${line}
-${body}` : line);
-    if (manageLogEntries.length > MANAGE_LOG_LIMIT) {
-      manageLogEntries.splice(0, manageLogEntries.length - MANAGE_LOG_LIMIT);
+    const sentAt = /* @__PURE__ */ new Date();
+    const { time, direction, kind } = classifyManageLogLine(line);
+    const record = details && typeof details === "object" ? details : null;
+    const bubble = document.createElement("article");
+    bubble.className = `log-bubble log-bubble-${kind}`;
+    bubble.setAttribute(
+      "aria-label",
+      record?.typ ? `${direction}: ${record.typ}` : direction
+    );
+    if (kind === "system") {
+      const label = document.createElement("p");
+      label.className = "log-bubble-system-line";
+      label.append(document.createTextNode(direction));
+      if (time) {
+        label.append(document.createTextNode(" \xB7 "));
+        label.append(createLogTime(sentAt, time));
+      }
+      bubble.append(label);
+      if (record) {
+        const note = document.createElement("p");
+        note.className = "log-bubble-system-note";
+        const bits = [];
+        if (record.url) {
+          bits.push(String(record.url));
+        }
+        if (record.dal\u0161\u00EDPokusZaMs != null) {
+          bits.push(`dal\u0161\xED pokus za ${record.dal\u0161\u00EDPokusZaMs} ms`);
+        }
+        note.textContent = bits.length ? bits.join(" \xB7 ") : stringifyLogValue(record);
+        bubble.append(note);
+      }
+    } else {
+      const senderId = String(record?.od || "").trim();
+      bubble.setAttribute(
+        "aria-label",
+        record?.typ ? `${direction}: ${senderId || "\u2014"}, ${record.typ}` : `${direction}: ${senderId || "\u2014"}`
+      );
+      const sender = document.createElement("p");
+      sender.className = "log-bubble-sender";
+      sender.textContent = senderId || "\u2014";
+      if (kind === "in" && senderId) {
+        sender.style.color = senderColor(senderId);
+      }
+      const message = document.createElement("p");
+      message.className = "log-bubble-text";
+      message.textContent = record?.typ || direction;
+      bubble.append(sender, message);
+      const payload = record && Object.hasOwn(record, "data") ? record.data : record;
+      const emptyObject = payload && typeof payload === "object" && !Array.isArray(payload) && Object.keys(payload).length === 0;
+      const hasPayload = payload != null && !emptyObject;
+      const foot = document.createElement("div");
+      foot.className = "log-bubble-foot";
+      if (hasPayload || record?.requestId) {
+        const disclosure = document.createElement("details");
+        disclosure.className = "log-bubble-data";
+        const summary = document.createElement("summary");
+        summary.textContent = "podrobnosti";
+        const body = document.createElement("pre");
+        body.className = "log-bubble-body";
+        body.textContent = stringifyLogValue(
+          record?.requestId ? { requestId: record.requestId, data: payload } : payload
+        );
+        disclosure.append(summary, body);
+        foot.append(disclosure);
+      }
+      foot.append(createLogTime(sentAt, time));
+      bubble.append(foot);
     }
     const pinnedToBottom = logOutput.scrollHeight - logOutput.scrollTop - logOutput.clientHeight < 48;
-    logOutput.textContent = manageLogEntries.join("\n\n");
+    logOutput.append(bubble);
+    while (logOutput.childElementCount > MANAGE_LOG_LIMIT) {
+      logOutput.firstElementChild?.remove();
+    }
     if (pinnedToBottom) {
       logOutput.scrollTop = logOutput.scrollHeight;
     }
@@ -4570,6 +5412,25 @@ ${body}` : line);
     savedSettings?.departureBoardLogo ?? DEPARTURE_BOARD_LOGO_DEFAULT
   );
   var departureBoardLogoSvg = String(savedSettings?.departureBoardLogoSvg || "").trim().slice(0, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH);
+  var settingsUpdatedAt = Number(savedSettings?.settingsUpdatedAt) || 0;
+  var readStoredSettings = () => {
+    const stored = storage2.load();
+    return stored?.settings && typeof stored.settings === "object" ? stored.settings : null;
+  };
+  var useNewerStoredLogo = () => {
+    const storedSettings = readStoredSettings();
+    const storedStamp = Number(storedSettings?.settingsUpdatedAt) || 0;
+    if (!storedSettings || storedStamp <= settingsUpdatedAt) {
+      return null;
+    }
+    return {
+      departureBoardLogo: normalizeDepartureBoardLogoId(
+        storedSettings.departureBoardLogo ?? DEPARTURE_BOARD_LOGO_DEFAULT
+      ),
+      departureBoardLogoSvg: String(storedSettings.departureBoardLogoSvg || "").trim().slice(0, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH),
+      settingsUpdatedAt: storedStamp
+    };
+  };
   var savedLiveSettings = savedState.liveDepartures && typeof savedState.liveDepartures === "object" ? savedState.liveDepartures : {};
   var liveDeparturesEnabled = savedLiveSettings.enabled === true;
   var liveApiUrl = normalizeLiveApiUrl(
@@ -4629,10 +5490,7 @@ ${body}` : line);
     return /^\d{1,4}$/.test(text) ? text : "";
   };
   var normalizeOperator = (value) => String(value ?? "").trim().replace(/\s+/g, " ").slice(0, 24);
-  var resolveTrainTypeValue = (train, operator) => {
-    const resolved = resolveCanonicalTrainType(train, operator);
-    return TRAIN_TYPES.some((type) => type.name === resolved) ? resolved : "";
-  };
+  var resolveTrainTypeValue = (train, operator) => resolveProfileTrainType(train, operator);
   var setBoardFormStatus = (message, isError = false) => {
     boardFormStatus.textContent = message;
     boardFormStatus.classList.toggle("is-error", isError);
@@ -4675,14 +5533,18 @@ ${body}` : line);
     departureTimeInput.value = departureTime;
     delayValueInput.value = delay;
   };
-  var getLightingSettingsState = () => ({
-    nightMode,
-    autoNightMode,
-    delayOffset,
-    departureBoardLogo,
-    departureBoardLogoSvg,
-    lenses: getManagedLensState()
-  });
+  var getLightingSettingsState = () => {
+    const newerLogo = useNewerStoredLogo();
+    return {
+      nightMode,
+      autoNightMode,
+      delayOffset,
+      departureBoardLogo: newerLogo?.departureBoardLogo ?? departureBoardLogo,
+      departureBoardLogoSvg: newerLogo?.departureBoardLogoSvg ?? departureBoardLogoSvg,
+      settingsUpdatedAt: newerLogo?.settingsUpdatedAt ?? settingsUpdatedAt,
+      lenses: getManagedLensState()
+    };
+  };
   var normalizeManagedLensState = (value) => {
     const fallback = createDefaultLensState();
     const source = value && typeof value === "object" ? value : fallback;
@@ -4737,18 +5599,9 @@ ${body}` : line);
     }
     return null;
   };
-  var normalizePlatformValue = (value) => {
-    const normalized = String(value ?? "").trim();
-    return DEPARTURE_PLATFORM_VALUES.includes(normalized) ? normalized : "";
-  };
-  var normalizeTrackValue = (value) => {
-    const normalized = String(value ?? "").trim();
-    return DEPARTURE_TRACK_VALUES.includes(normalized) ? normalized : "";
-  };
-  var normalizeSectorValue = (value) => {
-    const normalized = String(value ?? "").trim();
-    return DEPARTURE_SECTOR_VALUES.includes(normalized) ? normalized : "";
-  };
+  var normalizePlatformValue = (value) => matchProfileValue(getActiveStationProfile().platforms, value);
+  var normalizeTrackValue = (value) => matchProfileValue(getActiveStationProfile().tracks, value);
+  var normalizeSectorValue = (value) => matchProfileValue(profileSectorValues(), value);
   var normalizeDeparture = (value) => {
     const nestedState = value?.state && typeof value.state === "object" ? value.state : null;
     const source = nestedState ? {
@@ -4819,12 +5672,15 @@ ${body}` : line);
   };
   departures = departures.map(normalizeDeparture).filter((departure) => departure.departureTime);
   var persistState = () => {
+    const newerLogo = useNewerStoredLogo();
     const settings = {
       ...getSettingsState(),
       lamps: lighting.getLampSettings(),
-      clockLight: lighting.getClockSettings()
+      clockLight: lighting.getClockSettings(),
+      ...newerLogo || {},
+      settingsUpdatedAt: newerLogo?.settingsUpdatedAt ?? settingsUpdatedAt
     };
-    storage.save({
+    storage2.save({
       version: 2,
       form: getDraftFormState(),
       settings,
@@ -4841,7 +5697,13 @@ ${body}` : line);
       },
       revision: nextRevision,
       globalResetRevision,
-      sort: sortState
+      sort: sortState,
+      stationProfile: getActiveStationProfile()
+    });
+  };
+  var publishStationProfile = () => {
+    transport.publish("station-profile", {
+      stationProfile: getActiveStationProfile()
     });
   };
   var publishDepartureSnapshot = () => {
@@ -4861,6 +5723,15 @@ ${body}` : line);
     });
   };
   var publishSettings = ({ persist = true } = {}) => {
+    const newerLogo = useNewerStoredLogo();
+    if (newerLogo) {
+      departureBoardLogo = newerLogo.departureBoardLogo;
+      departureBoardLogoSvg = newerLogo.departureBoardLogoSvg;
+      settingsUpdatedAt = newerLogo.settingsUpdatedAt;
+      syncDepartureBoardLogoControls();
+    } else {
+      settingsUpdatedAt = Date.now();
+    }
     if (persist) {
       persistState();
     }
@@ -5245,7 +6116,16 @@ ${body}` : line);
       const details = documentRef.createElement("span");
       details.className = "active-board-details";
       const instanceLine = documentRef.createElement("span");
-      instanceLine.textContent = `${isDepartureBoard ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} \u0159\xE1dk\u016F` : "n\xE1stupi\u0161tn\xED tabule"} \xB7 instance ${boardPresence.instanceId || "\u2014"}`;
+      instanceLine.append(documentRef.createTextNode(
+        `${isDepartureBoard ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} \u0159\xE1dk\u016F` : "n\xE1stupi\u0161tn\xED tabule"} \xB7 instance `
+      ));
+      const clientId = documentRef.createElement("span");
+      clientId.className = "active-board-client";
+      clientId.textContent = boardPresence.instanceId || "\u2014";
+      if (boardPresence.instanceId) {
+        clientId.style.color = senderColor(boardPresence.instanceId);
+      }
+      instanceLine.append(clientId);
       const connectionLine = documentRef.createElement("span");
       connectionLine.className = "active-board-connection";
       connectionLine.classList.toggle(
@@ -5474,6 +6354,64 @@ ${body}` : line);
       "aria-label",
       muted ? "Zapnout zvuk flap\u016F na t\xE9to tabuli" : "Ztlumit zvuk flap\u016F na t\xE9to tabuli"
     );
+  };
+  var assignIfIdle = (control, value) => {
+    if (!control || documentRef.activeElement === control) {
+      return;
+    }
+    if (control.type === "checkbox") {
+      control.checked = Boolean(value);
+      return;
+    }
+    const nextValue = String(value);
+    if (control.value !== nextValue) {
+      control.value = nextValue;
+    }
+  };
+  var syncOpenBoardSettings = (boardPresence) => {
+    syncOpenBoardSettingsAudio(boardPresence);
+    if (!boardSettingsDialog?.open || boardSettingsInstanceId !== boardPresence?.instanceId) {
+      return;
+    }
+    const colors = currentLensColors(boardPresence);
+    const selects = boardSettingsDialog.querySelectorAll(
+      ".lens-control-select select"
+    );
+    assignIfIdle(selects[0], LENS_COLORS[colors[0]] ? colors[0] : "green");
+    assignIfIdle(
+      selects[1],
+      LENS_COLORS[colors[1]] ? colors[1] : selects[0]?.value || "green"
+    );
+    assignIfIdle(
+      boardSettingsDialog.querySelector(".board-sync-rows input"),
+      boardPresence.synchronizeRows !== false
+    );
+    assignIfIdle(
+      boardSettingsDialog.querySelector('.board-form-field input[type="number"]'),
+      normalizeDepartureBoardRowCount(
+        boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT
+      )
+    );
+    const timing = boardPresence.flapTiming ? normalizeFlapTiming(boardPresence.flapTiming) : null;
+    const ranges = boardSettingsDialog.querySelectorAll(
+      '.flap-timing-settings input[type="range"]'
+    );
+    if (timing) {
+      assignIfIdle(ranges[0], timing.duration);
+      assignIfIdle(ranges[1], timing.variation);
+      if (ranges[0] && documentRef.activeElement !== ranges[0]) {
+        const output = ranges[0].parentElement?.querySelector("output");
+        if (output) {
+          output.textContent = `${timing.duration} ms`;
+        }
+      }
+      if (ranges[1] && documentRef.activeElement !== ranges[1]) {
+        const output = ranges[1].parentElement?.querySelector("output");
+        if (output) {
+          output.textContent = `\xB1${timing.variation} ms`;
+        }
+      }
+    }
   };
   var publishBoardCommand = (presence, payload) => {
     transport.publish("board:command", payload, {
@@ -5983,30 +6921,46 @@ ${body}` : line);
       updatedAt: Date.now()
     };
   };
-  TRAIN_TYPES.forEach((type) => {
-    const option = documentRef.createElement("option");
-    option.value = type.name;
-    option.textContent = type.label || type.name || "Bez typu vlaku";
-    trainTypeInput.appendChild(option);
-  });
-  DEPARTURE_PLATFORM_VALUES.slice(1).forEach((platform) => {
-    const option = documentRef.createElement("option");
-    option.value = platform;
-    option.textContent = platform;
-    platformInput.appendChild(option);
-  });
-  DEPARTURE_TRACK_VALUES.slice(1).forEach((track) => {
-    const option = documentRef.createElement("option");
-    option.value = track;
-    option.textContent = track;
-    trackInput.appendChild(option);
-  });
-  DEPARTURE_SECTOR_VALUES.slice(1).forEach((sector) => {
-    const option = documentRef.createElement("option");
-    option.value = sector;
-    option.textContent = sector;
-    sectorInput.appendChild(option);
-  });
+  var fillCatalogSelects = () => {
+    const profile = getActiveStationProfile();
+    const refill = (select, values) => {
+      if (!select) {
+        return;
+      }
+      const current = select.value;
+      const placeholder = select.options[0];
+      select.replaceChildren();
+      if (placeholder) {
+        select.appendChild(placeholder);
+      }
+      values.forEach((value) => {
+        const option = documentRef.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+      if ([...select.options].some((option) => option.value === current)) {
+        select.value = current;
+      }
+    };
+    if (trainTypeInput) {
+      const current = trainTypeInput.value;
+      trainTypeInput.replaceChildren();
+      profile.trainTypes.forEach((type) => {
+        const option = documentRef.createElement("option");
+        option.value = type.name;
+        option.textContent = type.label || type.name || "Bez typu vlaku";
+        trainTypeInput.appendChild(option);
+      });
+      if ([...trainTypeInput.options].some((option) => option.value === current)) {
+        trainTypeInput.value = current;
+      }
+    }
+    refill(platformInput, profile.platforms);
+    refill(trackInput, profile.tracks);
+    refill(sectorInput, profileSectorValues(profile));
+  };
+  fillCatalogSelects();
   var lensControlElements = /* @__PURE__ */ new Map();
   var syncLensControls = () => {
     const lensState = lensDisplay.getValue();
@@ -6396,6 +7350,7 @@ ${body}` : line);
     if (listChanged) {
       renderActiveBoards();
     }
+    syncOpenBoardSettings(boardPresence);
     if (previousLensState !== JSON.stringify(boardPresence.lensState) || !previous) {
       renderDeparturesTable();
     }
@@ -6516,16 +7471,24 @@ ${body}` : line);
       const instanceId = message.payload?.instanceId || message.source;
       const sendSettings = Boolean(instanceId) && !settingsSentToInstances.has(instanceId);
       if (sendSettings) {
+        const newerLogo = useNewerStoredLogo();
+        if (newerLogo) {
+          departureBoardLogo = newerLogo.departureBoardLogo;
+          departureBoardLogoSvg = newerLogo.departureBoardLogoSvg;
+          settingsUpdatedAt = newerLogo.settingsUpdatedAt;
+          syncDepartureBoardLogoControls();
+        }
         settingsSentToInstances.add(instanceId);
-      }
-      updateBoardPresence(message);
-      if (sendSettings) {
-        transport.publish("board:settings", getLightingSettingsState(), {
+        transport.publish("board:settings", {
+          ...getLightingSettingsState(),
+          stationProfile: getActiveStationProfile()
+        }, {
           target: {
             source: instanceId
           }
         });
       }
+      updateBoardPresence(message);
       return;
     }
     if (message.type === "board:mode") {
@@ -6608,6 +7571,8 @@ ${body}` : line);
           );
         }
         boardPresence.lastSeen = Date.now();
+        boardPresence.listView = boardListView(boardPresence);
+        syncOpenBoardSettings(boardPresence);
         const desired = getDesiredStateForBoard(boardPresence.identity);
         if (desired && Number(desired.revision) <= boardPresence.appliedRevision) {
           boardPresence.lastSyncedRevision = desired.revision;
@@ -7265,14 +8230,14 @@ ${body}` : line);
   };
   clearAllDeparturesButton?.addEventListener("click", clearAllDepartures);
   departuresTable?.addEventListener("click", (event) => {
-    const actionButton = event.target.closest("[data-departure-action]");
-    if (!actionButton) {
+    const actionButton2 = event.target.closest("[data-departure-action]");
+    if (!actionButton2) {
       return;
     }
-    const departure = getDepartureById(actionButton.dataset.departureId);
-    if (actionButton.dataset.departureAction === "load") {
+    const departure = getDepartureById(actionButton2.dataset.departureId);
+    if (actionButton2.dataset.departureAction === "load") {
       loadDepartureIntoForm(departure);
-    } else if (actionButton.dataset.departureAction === "reset") {
+    } else if (actionButton2.dataset.departureAction === "reset") {
       resetDeparture(departure);
     }
   });
@@ -7405,7 +8370,7 @@ ${body}` : line);
     );
   });
   resetAllSettingsButton.addEventListener("click", () => {
-    storage.clear();
+    storage2.clear();
     legacyStorage.clear();
     stopLivePolling();
     liveDeparturesEnabled = false;
@@ -7575,7 +8540,46 @@ ${body}` : line);
       startLivePolling();
     }
   });
+  var MANAGE_BLOCK_STATE_KEY = "pragotron.manage.blockState.v1";
+  var readManageBlockState = () => {
+    try {
+      const parsed = JSON.parse(
+        window.localStorage.getItem(MANAGE_BLOCK_STATE_KEY) || "{}"
+      );
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return {};
+      }
+      return parsed;
+    } catch {
+      return {};
+    }
+  };
+  var rememberManageBlock = (element, collapsed) => {
+    const key = element?.id;
+    if (!key) {
+      return;
+    }
+    const state = readManageBlockState();
+    if (collapsed) {
+      state[key] = true;
+    } else {
+      delete state[key];
+    }
+    try {
+      window.localStorage.setItem(
+        MANAGE_BLOCK_STATE_KEY,
+        JSON.stringify(state)
+      );
+    } catch {
+    }
+  };
+  var applyStoredBlockState = (element, button, collapsedBlocks) => {
+    const collapsed = Boolean(element?.id && collapsedBlocks[element.id]);
+    element.classList.toggle("is-collapsed", collapsed);
+    button?.setAttribute("aria-expanded", String(!collapsed));
+  };
   var setupManageBlockToggles = () => {
+    const collapsedBlocks = readManageBlockState();
     documentRef.querySelectorAll("#manage fieldset").forEach((fieldset) => {
       const legend = fieldset.querySelector(":scope > div > legend");
       if (!legend || legend.querySelector(".manage-block-toggle")) {
@@ -7598,13 +8602,63 @@ ${body}` : line);
       label.textContent = legend.textContent.trim();
       button.append(mark, label);
       legend.replaceChildren(button);
+      applyStoredBlockState(fieldset, button, collapsedBlocks);
       button.addEventListener("click", () => {
         const collapsed = fieldset.classList.toggle("is-collapsed");
         button.setAttribute("aria-expanded", String(!collapsed));
+        rememberManageBlock(fieldset, collapsed);
+      });
+    });
+    documentRef.querySelectorAll(".station-profile-section").forEach((section) => {
+      const button = section.querySelector(
+        ":scope > .station-profile-section-heading .manage-block-toggle"
+      );
+      if (!button) {
+        return;
+      }
+      applyStoredBlockState(section, button, collapsedBlocks);
+      button.addEventListener("click", () => {
+        const collapsed = section.classList.toggle("is-collapsed");
+        button.setAttribute("aria-expanded", String(!collapsed));
+        rememberManageBlock(section, collapsed);
       });
     });
   };
+  mountStationProfileEditor({
+    documentRef,
+    onSectionExpanded: (section) => rememberManageBlock(section, false),
+    onApply: (profile) => {
+      if (!profile) {
+        setBoardFormStatus(
+          "Profil stanice nejde pou\u017E\xEDt. Dopl\u0148te n\xE1stupi\u0161t\u011B, koleje a aspo\u0148 jeden typ vlaku.",
+          true
+        );
+        return;
+      }
+      departures = departures.map(normalizeDeparture).filter((departure) => departure.departureTime);
+      fillCatalogSelects();
+      persistState();
+      publishStationProfile();
+      syncAllTargetBoards().forEach((command) => {
+        transport.publish("board:command", command);
+      });
+      publishDepartureSnapshot();
+      renderDeparturesTable();
+      setBoardFormStatus(
+        `Profil stanice \u201E${profile.name}\u201C je ulo\u017Een\xFD a odeslan\xFD tabul\xEDm.`
+      );
+    }
+  });
   setupManageBlockToggles();
+  window.addEventListener("beforeunload", (event) => {
+    event.preventDefault();
+    event.returnValue = "Manage str\xE1nka mus\xED z\u016Fstat otev\u0159en\xE1. Obnoven\xED nebo zav\u0159en\xED p\u0159esko\u010D\xED animaci odjezdov\xE9 tabule a tabule p\u0159estanou dost\xE1vat data.";
+  });
+  if (!settingsUpdatedAt) {
+    settingsUpdatedAt = Date.now();
+    persistState();
+  }
+  publishStationProfile();
   renderLiveControls();
   publishDiscovery();
   publishDepartureSnapshot();

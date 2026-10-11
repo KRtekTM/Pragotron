@@ -877,31 +877,11 @@
     }
     return Math.min(100, Math.max(0, Math.round(numeric)));
   };
-  var readStoredMute = () => {
+  var forgetStoredAudioLevel = () => {
     try {
-      return globalThis.sessionStorage?.getItem(AUDIO_MUTE_STORAGE_KEY) === "1";
+      globalThis.sessionStorage?.removeItem(AUDIO_MUTE_STORAGE_KEY);
+      globalThis.sessionStorage?.removeItem(AUDIO_VOLUME_STORAGE_KEY);
     } catch {
-      return false;
-    }
-  };
-  var writeStoredMute = (muted) => {
-    try {
-      globalThis.sessionStorage?.setItem(
-        AUDIO_MUTE_STORAGE_KEY,
-        muted ? "1" : "0"
-      );
-    } catch {
-    }
-  };
-  var readStoredVolume = () => {
-    try {
-      const stored = globalThis.sessionStorage?.getItem(AUDIO_VOLUME_STORAGE_KEY);
-      if (stored === null || stored === "") {
-        return 100;
-      }
-      return normalizeVolume(stored);
-    } catch {
-      return 100;
     }
   };
   var readVolumeOverride = () => {
@@ -923,26 +903,15 @@
       return null;
     }
   };
-  var writeStoredVolume = (volume) => {
-    try {
-      globalThis.sessionStorage?.setItem(
-        AUDIO_VOLUME_STORAGE_KEY,
-        String(volume)
-      );
-    } catch {
-    }
-  };
   var SplitFlapAudio = class {
     constructor(source = DEFAULT_SOUND_URL) {
       this.template = typeof Audio === "function" ? new Audio(source) : null;
       this.pitchedTemplate = typeof Audio === "function" ? new Audio(PITCHED_SOUND_URL) : null;
       this.unlocked = false;
-      this.muted = readStoredMute();
+      this.muted = false;
       const volumeOverride = readVolumeOverride();
-      this.volume = volumeOverride === null ? readStoredVolume() : volumeOverride;
-      if (volumeOverride !== null) {
-        writeStoredVolume(volumeOverride);
-      }
+      this.volume = volumeOverride === null ? 100 : volumeOverride;
+      forgetStoredAudioLevel();
       this.activationTarget = null;
       this.activationHandler = null;
       this.listeners = /* @__PURE__ */ new Set();
@@ -1027,7 +996,13 @@
         }
         this.holdPitch(sound);
       };
-      sound.addEventListener("loadedmetadata", keepPitch);
+      sound.addEventListener("loadedmetadata", () => {
+        keepPitch();
+        if (voice.sound !== sound) {
+          return;
+        }
+        sound.volume = this.volume / 100;
+      });
       sound.addEventListener("ended", () => {
         if (voice.sound !== sound) {
           return;
@@ -1078,19 +1053,17 @@
         return this.muted;
       }
       this.muted = nextValue;
-      writeStoredMute(nextValue);
       this.listeners.forEach((listener) => listener(this.getState()));
       return this.muted;
     }
     setVolume(value) {
       const nextValue = normalizeVolume(value);
-      if (nextValue === this.volume) {
-        return this.volume;
-      }
+      const changed = nextValue !== this.volume;
       this.volume = nextValue;
-      writeStoredVolume(nextValue);
       this.applyVolume();
-      this.listeners.forEach((listener) => listener(this.getState()));
+      if (changed) {
+        this.listeners.forEach((listener) => listener(this.getState()));
+      }
       return this.volume;
     }
     setUnlocked(value) {
@@ -1163,6 +1136,7 @@
         this.setUnlocked(true);
         this.removeActivationListeners();
         this.context?.resume?.();
+        this.applyVolume();
         cleanup();
       };
       try {
@@ -1181,6 +1155,7 @@
       if (this.muted) {
         return;
       }
+      this.applyVolume();
       this.pendingPlays.push({ variant, durationMs });
       if (this.flushingPlays) {
         return;
@@ -1566,14 +1541,15 @@
   };
   var SplitFlapDisplay = class {
     constructor(element, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
+      ownsAudio = null,
       maxLength = STATION_CHARACTER_COUNT,
       sequence = STATION_FLAP_SEQUENCE,
       timing = FLAP_TIMING_DEFAULTS
     } = {}) {
       this.element = element;
-      this.audio = audio2;
-      this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.maxLength = maxLength;
       this.sequence = sequence;
       this.timing = normalizeFlapTiming(timing);
@@ -1774,14 +1750,15 @@
   };
   var DelayFlapDisplay = class {
     constructor(element, values = DELAY_VALUES, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
+      ownsAudio = null,
       timing = FLAP_TIMING_DEFAULTS,
       applyDelayOffset = DELAY_OFFSET_DEFAULT
     } = {}) {
       this.element = element;
       this.values = values;
-      this.audio = audio2;
-      this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.timing = normalizeFlapTiming(timing);
       this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
       this.sourceValue = "";
@@ -1958,13 +1935,14 @@
   };
   var TrainFlapDisplay = class {
     constructor(element, types = TRAIN_TYPES, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
+      ownsAudio = null,
       timing = FLAP_TIMING_DEFAULTS
     } = {}) {
       this.element = element;
       this.types = types;
-      this.audio = audio2;
-      this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.timing = normalizeFlapTiming(timing);
       this.defaultValue = element.dataset.type || element.dataset.src || "";
       this.defaultSource = element.dataset.src || this.defaultValue;
@@ -1981,18 +1959,30 @@
       this.timing = normalizeFlapTiming(timing);
       return { ...this.timing };
     }
+    setTypes(types) {
+      if (!Array.isArray(types) || types.length === 0) {
+        return this.types;
+      }
+      const current = this.types[this.currentIndex];
+      this.types = types;
+      const nextIndex = current ? this.types.findIndex((type) => type.name === current.name) : 0;
+      const index = nextIndex === -1 ? 0 : nextIndex;
+      this.sequence += 1;
+      clearTimer(this, "timer");
+      this.currentIndex = index;
+      this.targetIndex = index;
+      clearFlapAnimation(this.element);
+      this.render(this.types[index], this.types[index]);
+      this.updateLabel();
+      return this.types;
+    }
     indexFor(value) {
       if (value === "" || value === null || value === void 0) {
         return 0;
       }
       const match = findTrainType(value, this.types);
       const index = match ? this.types.indexOf(match) : -1;
-      if (index === -1) {
-        throw new RangeError(
-          `Nepodporovan\xFD typ vlaku "${value}". Povolen\xE9 typy: ${this.types.map((type) => type.name || "(pr\xE1zdn\xE9)").join(", ")}`
-        );
-      }
-      return index;
+      return index === -1 ? 0 : index;
     }
     ensureFaces() {
       if (this.faces) {
@@ -2179,7 +2169,8 @@
   };
   var SequentialNumericFlap = class {
     constructor(element, minimum, maximum, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
+      ownsAudio = null,
       timing = FLAP_TIMING_DEFAULTS,
       includeBlank = true
     } = {}) {
@@ -2187,8 +2178,8 @@
       this.minimum = minimum;
       this.maximum = maximum;
       this.includeBlank = includeBlank !== false;
-      this.audio = audio2;
-      this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.timing = normalizeFlapTiming(timing);
       this.currentValue = "";
       this.targetValue = "";
@@ -2489,6 +2480,312 @@
     }
   };
 
+  // src/platform/station-profile.js
+  var STATION_PROFILE_STORAGE_KEY = "pragotron.stationProfile.v1";
+  var STATION_PROFILE_VERSION = 1;
+  var MAX_LIST = 80;
+  var MAX_TYPES = 40;
+  var MAX_STYLES = 12;
+  var MAX_TEXT = 32;
+  var DEFAULT_ALIASES = Object.freeze({
+    Intercity: ["IC", "ic", "intercity"],
+    Eurocity: ["EC", "ec", "eurocity"],
+    SuperCity: ["SC", "sc", "supercity"],
+    EuroNight: ["EN", "en", "euronight"],
+    nj: ["NJ", "NightJet", "Nightjet", "nightjet"],
+    rj: ["railjet", "Railjet"],
+    RJ: ["regiojet", "RegioJet"]
+  });
+  var clean = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
+  var cleanToken = (value) => clean(value).replace(/[–—−]/g, "-").replace(/\s*-\s*/g, "-").slice(0, MAX_TEXT);
+  var uniqueTokens = (values, limit = MAX_LIST) => {
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    (Array.isArray(values) ? values : []).forEach((value) => {
+      const token = cleanToken(value);
+      const key = token.toLocaleLowerCase("cs-CZ");
+      if (!token || seen.has(key) || result.length >= limit) {
+        return;
+      }
+      seen.add(key);
+      result.push(token);
+    });
+    return result;
+  };
+  var linesFrom = (value) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    return String(value ?? "").split(/\r?\n/);
+  };
+  var isCssColor = (value) => {
+    const text = clean(value);
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) || /^var\(--[a-z0-9-]+\)$/i.test(text) || /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(text);
+  };
+  var colorOr = (value, fallback) => isCssColor(value) ? clean(value) : fallback;
+  var slug = (value, fallback) => {
+    const text = clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
+    return text || fallback;
+  };
+  var normalizeOperatorKey2 = (value) => clean(value).toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, "");
+  var isRegioJetOperator2 = (operator) => {
+    const normalized = normalizeOperatorKey2(operator);
+    return normalized.includes("regiojet") || normalized === "rjet" || normalized === "rj";
+  };
+  var isCDOperator2 = (operator) => {
+    const normalized = normalizeOperatorKey2(operator);
+    return normalized === "\u010Dd" || normalized === "cd" || normalized.includes("\u010Desk\xE9dr\xE1hy") || normalized.includes("ceskedrahy");
+  };
+  var blankTrainType = () => ({
+    name: "",
+    text: "",
+    suffix: "",
+    source: "",
+    label: "",
+    background: "var(--flap-background)",
+    foreground: "var(--flap-foreground)",
+    numberStyle: "default",
+    aliases: []
+  });
+  var createDefaultStationProfile = () => {
+    const numberStyles = Object.entries(TRAIN_NUMBER_CARD_STYLES).map(
+      ([id, style]) => ({
+        id,
+        label: id,
+        background: style.background,
+        foreground: style.foreground
+      })
+    );
+    const knownStyles = new Set(numberStyles.map((style) => style.id));
+    const sectors = DEPARTURE_SECTOR_VALUES.filter(Boolean);
+    const atomic = sectors.filter((value) => !value.includes("-"));
+    return {
+      version: STATION_PROFILE_VERSION,
+      name: "Brno hlavn\xED n\xE1dra\u017E\xED",
+      platforms: DEPARTURE_PLATFORM_VALUES.filter(Boolean),
+      tracks: DEPARTURE_TRACK_VALUES.filter(Boolean),
+      sectors: atomic,
+      sectorRanges: sectors.filter((value) => value.includes("-")),
+      numberStyles,
+      trainTypes: [
+        blankTrainType(),
+        ...TRAIN_TYPES.filter((type) => type.name).map((type) => {
+          const numberStyle = getTrainNumberCardStyle(type.name);
+          return {
+            name: type.name,
+            text: type.text || "",
+            suffix: type.suffix || "",
+            source: type.source || "",
+            label: type.label || "",
+            background: type.background,
+            foreground: type.foreground,
+            numberStyle: knownStyles.has(numberStyle) ? numberStyle : "default",
+            aliases: [...DEFAULT_ALIASES[type.name] || []]
+          };
+        })
+      ]
+    };
+  };
+  var normalizeTrainType = (value, styles) => {
+    const source = value && typeof value === "object" ? value : {};
+    const name = cleanToken(source.name);
+    const styleIds = new Set(styles.map((style) => style.id));
+    const aliases = uniqueTokens(
+      Array.isArray(source.aliases) ? source.aliases : String(source.aliases || "").split(/[,;]/),
+      12
+    ).filter((alias) => alias.toLocaleLowerCase("cs-CZ") !== name.toLocaleLowerCase("cs-CZ"));
+    return {
+      name,
+      text: cleanToken(source.text).slice(0, 16),
+      suffix: cleanToken(source.suffix).slice(0, 12),
+      source: clean(source.source).slice(0, 180),
+      label: clean(source.label).slice(0, 40),
+      background: colorOr(source.background, "var(--flap-background)"),
+      foreground: colorOr(source.foreground, "var(--flap-foreground)"),
+      numberStyle: styleIds.has(clean(source.numberStyle)) ? clean(source.numberStyle) : "default",
+      aliases
+    };
+  };
+  var normalizeStationProfile = (value) => {
+    const source = value && typeof value === "object" ? value : null;
+    if (!source) {
+      return null;
+    }
+    const fallbackStyles = createDefaultStationProfile().numberStyles;
+    const numberStyles = [];
+    const seenStyles = /* @__PURE__ */ new Set();
+    (Array.isArray(source.numberStyles) ? source.numberStyles : fallbackStyles).forEach((style) => {
+      const id = slug(style?.id, "") || slug(style?.label, "");
+      if (!id || seenStyles.has(id) || numberStyles.length >= MAX_STYLES) {
+        return;
+      }
+      seenStyles.add(id);
+      numberStyles.push({
+        id,
+        label: id,
+        background: colorOr(
+          style.background,
+          id === "default" ? "var(--flap-background)" : "#111111"
+        ),
+        foreground: colorOr(style.foreground, "#ffffff")
+      });
+    });
+    if (!seenStyles.has("default")) {
+      numberStyles.unshift({
+        id: "default",
+        label: "default",
+        background: "var(--flap-background)",
+        foreground: "var(--flap-foreground)"
+      });
+    }
+    const trainTypes = [];
+    const seenTypes = /* @__PURE__ */ new Set();
+    (Array.isArray(source.trainTypes) ? source.trainTypes : []).forEach((type) => {
+      const normalized = normalizeTrainType(type, numberStyles);
+      const key = normalized.name;
+      if (!normalized.name || seenTypes.has(key) || trainTypes.length >= MAX_TYPES) {
+        return;
+      }
+      seenTypes.add(key);
+      trainTypes.push(normalized);
+    });
+    const platforms = uniqueTokens(linesFrom(source.platforms));
+    const tracks = uniqueTokens(linesFrom(source.tracks));
+    const sectors = uniqueTokens(linesFrom(source.sectors), 40);
+    if (platforms.length === 0 || tracks.length === 0 || trainTypes.length === 0) {
+      return null;
+    }
+    return {
+      version: STATION_PROFILE_VERSION,
+      name: clean(source.name).slice(0, 80) || "Profil stanice",
+      platforms,
+      tracks,
+      sectors,
+      sectorRanges: uniqueTokens(linesFrom(source.sectorRanges), 80).filter((value2) => !sectors.some(
+        (sector) => sector.toLocaleLowerCase("cs-CZ") === value2.toLocaleLowerCase("cs-CZ")
+      )),
+      numberStyles,
+      trainTypes: [blankTrainType(), ...trainTypes]
+    };
+  };
+  var activeProfile = null;
+  var storage = () => {
+    try {
+      return globalThis.localStorage || null;
+    } catch {
+      return null;
+    }
+  };
+  var readStoredStationProfile = () => {
+    try {
+      const raw = storage()?.getItem(STATION_PROFILE_STORAGE_KEY);
+      return raw ? normalizeStationProfile(JSON.parse(raw)) : null;
+    } catch {
+      return null;
+    }
+  };
+  var getActiveStationProfile = () => {
+    if (!activeProfile) {
+      activeProfile = readStoredStationProfile() || createDefaultStationProfile();
+    }
+    return activeProfile;
+  };
+  var setActiveStationProfile = (value, { persist = true } = {}) => {
+    const next = normalizeStationProfile(value);
+    if (!next) {
+      return null;
+    }
+    activeProfile = next;
+    if (persist) {
+      try {
+        storage()?.setItem(
+          STATION_PROFILE_STORAGE_KEY,
+          JSON.stringify(next)
+        );
+      } catch {
+      }
+    }
+    return activeProfile;
+  };
+  var profileSectorValues = (profile = getActiveStationProfile()) => [...profile.sectors, ...profile.sectorRanges];
+  var matchProfileValue = (values, value) => {
+    const normalized = cleanToken(value);
+    if (!normalized) {
+      return "";
+    }
+    return values.find((candidate) => candidate === normalized) || values.find(
+      (candidate) => candidate.toLocaleLowerCase("cs-CZ") === normalized.toLocaleLowerCase("cs-CZ")
+    ) || "";
+  };
+  var typeLabels = (type) => [
+    type.name,
+    type.text,
+    type.label,
+    ...type.aliases || []
+  ].map((value) => clean(value)).filter(Boolean);
+  var resolveProfileTrainType = (sourceType, operator = "", profile = getActiveStationProfile()) => {
+    const original = clean(sourceType);
+    if (!original) {
+      return "";
+    }
+    const types = profile.trainTypes.filter((type) => type.name);
+    const lower = original.toLocaleLowerCase("cs-CZ");
+    if (lower === "rj") {
+      const preferred = isRegioJetOperator2(operator) ? "RJ" : isCDOperator2(operator) ? "rj" : original === "RJ" ? "RJ" : "rj";
+      const operatorMatch = types.find((type) => type.name === preferred);
+      if (operatorMatch) {
+        return operatorMatch.name;
+      }
+    }
+    const match = types.find((type) => typeLabels(type).some(
+      (label) => label.toLocaleLowerCase("cs-CZ") === lower
+    ));
+    return match?.name || "";
+  };
+  var trainNumberStyleId = (train, profile = getActiveStationProfile()) => {
+    const name = resolveProfileTrainType(train, "", profile) || clean(train);
+    const type = profile.trainTypes.find((item) => item.name === name);
+    const style = type?.numberStyle || "default";
+    return profile.numberStyles.some((item) => item.id === style) ? style : "default";
+  };
+  var createTrainNumberCards = (profile = getActiveStationProfile()) => {
+    const styles = profile.numberStyles;
+    const fallback = styles.find((style) => style.id === "default") || styles[0];
+    const cards = [{
+      key: "blank",
+      value: "",
+      background: fallback.background,
+      foreground: fallback.foreground,
+      style: fallback.id
+    }];
+    styles.forEach((style) => {
+      for (let digit = 0; digit <= 9; digit += 1) {
+        cards.push({
+          key: `${style.id}-${digit}`,
+          value: String(digit),
+          background: style.background,
+          foreground: style.foreground,
+          style: style.id
+        });
+      }
+    });
+    return cards;
+  };
+  var createCatalogCards = (values) => [
+    {
+      key: "blank",
+      value: "",
+      background: "var(--flap-background)",
+      foreground: "var(--flap-foreground)"
+    },
+    ...values.map((value) => ({
+      key: value,
+      value,
+      background: "var(--flap-background)",
+      foreground: "var(--flap-foreground)"
+    }))
+  ];
+
   // src/platform/lenses.js
   var LENS_COLORS = Object.freeze({
     green: Object.freeze({
@@ -2560,28 +2857,6 @@
     return [colors[0], colors[1] || colors[0]];
   };
   var LENS_COLOR_STORAGE_KEY = "pragotron.board.lensColors.v1";
-  var readStoredLensColors = (storage2 = globalThis.sessionStorage) => {
-    try {
-      const raw = storage2?.getItem(LENS_COLOR_STORAGE_KEY);
-      if (!raw) {
-        return null;
-      }
-      return parseLensColors(JSON.parse(raw));
-    } catch {
-      return null;
-    }
-  };
-  var writeStoredLensColors = (colors, storage2 = globalThis.sessionStorage) => {
-    const parsed = parseLensColors(colors);
-    if (!parsed) {
-      return null;
-    }
-    try {
-      storage2?.setItem(LENS_COLOR_STORAGE_KEY, JSON.stringify(parsed));
-    } catch {
-    }
-    return parsed;
-  };
   var readLensColorOverride = (location = globalThis.location) => {
     try {
       const params = new URLSearchParams(location?.search || "");
@@ -2593,13 +2868,16 @@
       return null;
     }
   };
-  var readInitialLensColors = (location = globalThis.location, storage2 = globalThis.sessionStorage) => {
-    const override = readLensColorOverride(location);
-    if (override) {
-      writeStoredLensColors(override, storage2);
-      return override;
+  var clearStoredLensColors = (storage3) => {
+    try {
+      storage3?.removeItem(LENS_COLOR_STORAGE_KEY);
+    } catch {
     }
-    return readStoredLensColors(storage2);
+  };
+  var readInitialLensColors = (location = globalThis.location, storage3 = globalThis.sessionStorage) => {
+    const override = readLensColorOverride(location);
+    clearStoredLensColors(storage3);
+    return override;
   };
   var resolveColor = (setting, fallback) => {
     const candidates = [
@@ -2933,15 +3211,6 @@
     }
     owner[property] = null;
   };
-  var createCatalogCards = (values) => values.map((value) => ({
-    key: value || "blank",
-    value,
-    background: "var(--flap-background)",
-    foreground: "var(--flap-foreground)"
-  }));
-  var TRACK_CARDS = createCatalogCards(DEPARTURE_TRACK_VALUES);
-  var PLATFORM_CARDS = createCatalogCards(DEPARTURE_PLATFORM_VALUES);
-  var SECTOR_CARDS = createCatalogCards(DEPARTURE_SECTOR_VALUES);
   var findCard = (cards, key) => cards.find((card) => card.key === key) || cards[0];
   var cloneLensState = (value) => {
     const fallback = createDefaultLensState();
@@ -2975,15 +3244,6 @@
       }
     };
   };
-  var findCatalogValue = (values, value) => {
-    const raw = String(value ?? "").trim();
-    if (!raw) {
-      return "";
-    }
-    return values.find((candidate) => candidate === raw) || values.find(
-      (candidate) => candidate.toLocaleLowerCase("cs-CZ") === raw.toLocaleLowerCase("cs-CZ")
-    ) || "";
-  };
   var normalizeDepartureTime = (value) => {
     if (value && typeof value === "object") {
       const hours = Number(value.hours);
@@ -3013,16 +3273,11 @@
       track: source.target?.track || source.track,
       sector: source.target?.sector || source.sector
     };
-    const track = findCatalogValue(
-      DEPARTURE_TRACK_VALUES,
-      target.track
-    );
-    target.platform = findCatalogValue(
-      DEPARTURE_PLATFORM_VALUES,
-      target.platform
-    );
-    const sector = findCatalogValue(
-      DEPARTURE_SECTOR_VALUES,
+    const profile = getActiveStationProfile();
+    const track = matchProfileValue(profile.tracks, target.track);
+    target.platform = matchProfileValue(profile.platforms, target.platform);
+    const sector = matchProfileValue(
+      profileSectorValues(profile),
       target.sector
     );
     const departureTime = normalizeDepartureTime(source.departureTime);
@@ -3041,13 +3296,7 @@
           source.stations?.[1] || source.stationTwo || ""
         )
       ],
-      train: (() => {
-        const resolved = resolveCanonicalTrainType(
-          source.train,
-          source.operator
-        );
-        return TRAIN_TYPES.some((type) => type.name === resolved) ? resolved : "";
-      })(),
+      train: resolveProfileTrainType(source.train, source.operator),
       trainNumber: /^\d{1,4}$/.test(String(source.trainNumber || "")) ? String(source.trainNumber) : "",
       delay: parsedDelay === null ? "" : parsedDelay,
       departureTime,
@@ -3111,17 +3360,17 @@
   };
   var CatalogFlapDisplay = class {
     constructor(element, cards, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
       timing = FLAP_TIMING_DEFAULTS,
-      ownsAudio = audio2 instanceof SplitFlapAudio
+      ownsAudio = null
     } = {}) {
       if (!element || !Array.isArray(cards) || cards.length === 0) {
         throw new TypeError("CatalogFlapDisplay vy\u017Eaduje element a katalog.");
       }
       this.element = element;
       this.cards = cards;
-      this.audio = audio2;
-      this.ownsAudio = ownsAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.timing = normalizeFlapTiming(timing);
       this.currentIndex = 0;
       this.targetIndex = 0;
@@ -3135,13 +3384,29 @@
       this.timing = normalizeFlapTiming(timing);
       return { ...this.timing };
     }
+    setCards(cards) {
+      if (!Array.isArray(cards) || cards.length === 0) {
+        return this.cards;
+      }
+      const current = this.cards[this.currentIndex];
+      this.cards = cards;
+      const byKey = this.cards.findIndex((card) => card.key === current?.key);
+      const nextIndex = byKey !== -1 ? byKey : this.cards.findIndex(
+        (card) => card.value !== "" && card.value === current?.value
+      );
+      const index = nextIndex === -1 ? 0 : nextIndex;
+      this.sequence += 1;
+      clearTimer2(this, "timer");
+      clearFlapAnimation(this.element);
+      this.currentIndex = index;
+      this.targetIndex = index;
+      this.render(this.cards[index], this.cards[index]);
+      return this.cards;
+    }
     indexFor(value) {
       const key = value && typeof value === "object" ? value.key : String(value ?? "") || "blank";
       const index = this.cards.findIndex((card) => card.key === key);
-      if (index === -1) {
-        throw new RangeError(`Hodnota "${value}" nen\xED v katalogu klapky.`);
-      }
-      return index;
+      return index === -1 ? 0 : index;
     }
     ensureFaces() {
       if (this.faces) {
@@ -3269,13 +3534,14 @@
       this.timing = normalizeFlapTiming(timing);
       this.element.classList.add("train-number-display");
       this.element.replaceChildren();
+      this.cards = createTrainNumberCards();
       for (let index = 0; index < 4; index += 1) {
         const slotElement = document.createElement("span");
         slotElement.className = "train-number-slot";
         this.element.appendChild(slotElement);
         this.slots.push(new CatalogFlapDisplay(
           slotElement,
-          TRAIN_NUMBER_FLAP_CARDS,
+          this.cards,
           {
             audio: audio2,
             timing: this.timing,
@@ -3289,13 +3555,19 @@
       this.slots.forEach((slot) => slot.setTiming(this.timing));
       return { ...this.timing };
     }
+    setProfile(profile = getActiveStationProfile()) {
+      this.cards = createTrainNumberCards(profile);
+      this.slots.forEach((slot) => slot.setCards(this.cards));
+      return this.cards;
+    }
     targetCards(value = {}) {
       const number = String(value.number ?? value.trainNumber ?? "").replace(/\D/g, "").slice(-4).padStart(4, " ");
-      const style = getTrainNumberCardStyle(value.train);
-      return Array.from(number, (digit) => digit === " " ? findCard(TRAIN_NUMBER_FLAP_CARDS, "blank") : findCard(
-        TRAIN_NUMBER_FLAP_CARDS,
-        `${style}-${digit}`
-      ));
+      const style = trainNumberStyleId(value.train);
+      const cards = this.cards || createTrainNumberCards();
+      return Array.from(
+        number,
+        (digit) => digit === " " ? findCard(cards, "blank") : findCard(cards, `${style}-${digit}`)
+      );
     }
     set(value) {
       this.targetCards(value).forEach(
@@ -3370,19 +3642,20 @@
           applyDelayOffset
         }
       );
+      const profile = getActiveStationProfile();
       this.platform = new CatalogFlapDisplay(
         element.querySelector('[data-departure-slot="platform"]'),
-        PLATFORM_CARDS,
+        createCatalogCards(profile.platforms),
         { audio: audio2, timing: this.timing, ownsAudio: false }
       );
       this.track = new CatalogFlapDisplay(
         element.querySelector('[data-departure-slot="track"]'),
-        TRACK_CARDS,
+        createCatalogCards(profile.tracks),
         { audio: audio2, timing: this.timing, ownsAudio: false }
       );
       this.sector = new CatalogFlapDisplay(
         element.querySelector('[data-departure-slot="sector"]'),
-        SECTOR_CARDS,
+        createCatalogCards(profileSectorValues(profile)),
         { audio: audio2, timing: this.timing, ownsAudio: false }
       );
       this.lenses = new LensDisplay(
@@ -3413,6 +3686,13 @@
       this.timing = normalizeFlapTiming(timing);
       this.components.forEach((component) => component.setTiming?.(this.timing));
       return { ...this.timing };
+    }
+    applyStationProfile(profile = getActiveStationProfile()) {
+      this.train.setTypes(profile.trainTypes);
+      this.trainNumber.setProfile(profile);
+      this.platform.setCards(createCatalogCards(profile.platforms));
+      this.track.setCards(createCatalogCards(profile.tracks));
+      this.sector.setCards(createCatalogCards(profileSectorValues(profile)));
     }
     setDelayOffset(enabled) {
       return this.delay.setDelayOffset(enabled);
@@ -3585,6 +3865,10 @@
       this.identificationActive = false;
       this.root.setAttribute("aria-busy", "false");
       this.setRowCount(rowCount);
+      this.applyStationProfile(getActiveStationProfile());
+    }
+    applyStationProfile(profile = getActiveStationProfile()) {
+      this.rows.forEach((row) => row.applyStationProfile(profile));
     }
     setTiming(timing) {
       this.timing = normalizeFlapTiming(timing);
@@ -3644,14 +3928,16 @@
         const index = this.rows.length;
         const element = createDepartureRowElement(index);
         container.appendChild(element);
-        this.rows.push(new DepartureBoardRow(element, {
+        const row = new DepartureBoardRow(element, {
           audio: this.audio,
           timing: this.timing,
           rowIndex: index,
           applyDelayOffset: this.applyDelayOffset,
           lensColorTemplate: this.lensSettings,
           synchronizeRows: this.synchronizeRows
-        }));
+        });
+        row.applyStationProfile(getActiveStationProfile());
+        this.rows.push(row);
         this.displayedRows.push(null);
         this.targetRows.push(null);
       }
@@ -3870,10 +4156,10 @@
 
   // src/platform/storage.js
   var LocalStorageAdapter = class {
-    constructor(key, storage2) {
+    constructor(key, storage3) {
       this.key = key;
-      if (storage2 !== void 0) {
-        this.storage = storage2;
+      if (storage3 !== void 0) {
+        this.storage = storage3;
         return;
       }
       try {
@@ -4000,9 +4286,9 @@
     const random = globalThis.crypto?.randomUUID?.();
     return `${prefix}-${random || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
   };
-  var getStorage = (storage2) => {
-    if (storage2 !== void 0) {
-      return storage2;
+  var getStorage = (storage3) => {
+    if (storage3 !== void 0) {
+      return storage3;
     }
     try {
       return globalThis.window?.localStorage || null;
@@ -4014,7 +4300,7 @@
     constructor({
       channelName = BOARD_TRANSPORT_CHANNEL,
       storageKey = BOARD_TRANSPORT_STORAGE_KEY,
-      storage: storage2,
+      storage: storage3,
       windowRef = globalThis.window,
       boardId = "",
       onLog = null
@@ -4023,7 +4309,7 @@
       this.boardId = typeof boardId === "string" ? boardId : "";
       this.onLog = typeof onLog === "function" ? onLog : null;
       this.storageKey = storageKey;
-      this.storage = getStorage(storage2);
+      this.storage = getStorage(storage3);
       this.window = windowRef;
       this.listeners = /* @__PURE__ */ new Set();
       this.seenMessages = /* @__PURE__ */ new Set();
@@ -4382,8 +4668,8 @@
   // src/demos/departureBoard.js
   var STORAGE_KEY = "pragotron.platformTable.state.v2";
   var documentRef = document;
-  var storage = new LocalStorageAdapter(STORAGE_KEY);
-  var savedState = storage.load() || {};
+  var storage2 = new LocalStorageAdapter(STORAGE_KEY);
+  var savedState = storage2.load() || {};
   var savedSettings = savedState.settings || savedState;
   var savedDesiredStates = savedState.desired && typeof savedState.desired === "object" ? savedState.desired : {};
   var root = documentRef.querySelector("#tabule.departure-board");
@@ -4393,38 +4679,19 @@
   }
   var audio = new SplitFlapAudio();
   audio.bindUserActivation(screen || documentRef);
-  var BOARD_FLAP_TIMING_STORAGE_KEY = "pragotron.board.flapTiming.v1";
-  var readStoredFlapTiming = () => {
+  var forgetSessionKey = (key) => {
     try {
-      const raw = window.sessionStorage.getItem(BOARD_FLAP_TIMING_STORAGE_KEY);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") {
-        return null;
-      }
-      return normalizeFlapTiming(parsed);
-    } catch {
-      return null;
-    }
-  };
-  var writeStoredFlapTiming = (timing) => {
-    try {
-      window.sessionStorage.setItem(
-        BOARD_FLAP_TIMING_STORAGE_KEY,
-        JSON.stringify(normalizeFlapTiming(timing))
-      );
+      window.sessionStorage.removeItem(key);
     } catch {
     }
   };
-  var storedFlapTiming = readStoredFlapTiming();
-  var boardFlapTimingCustom = storedFlapTiming !== null;
-  var initialTiming = storedFlapTiming || resolveBoardFlapTiming(
-    savedSettings.flapTiming,
+  forgetSessionKey("pragotron.board.flapTiming.v1");
+  var boardFlapTimingCustom = false;
+  var initialTiming = resolveBoardFlapTiming(
+    null,
     DEPARTURE_FLAP_TIMING_DEFAULTS
   );
-  var BOARD_ROW_COUNT_STORAGE_KEY = "pragotron.board.rowCount.v1";
+  forgetSessionKey("pragotron.board.rowCount.v1");
   var readRowCountParam = () => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -4444,67 +4711,58 @@
       return null;
     }
   };
-  var readStoredRowCount = () => {
-    try {
-      const stored = window.sessionStorage.getItem(BOARD_ROW_COUNT_STORAGE_KEY);
-      if (stored === null || stored === "") {
-        return null;
-      }
-      const numeric = Number(stored);
-      if (!Number.isInteger(numeric) || numeric < DEPARTURE_BOARD_ROW_COUNT_MIN || numeric > DEPARTURE_BOARD_ROW_COUNT_MAX) {
-        return null;
-      }
-      return numeric;
-    } catch {
-      return null;
-    }
-  };
-  var writeStoredRowCount = (value) => {
-    try {
-      window.sessionStorage.setItem(BOARD_ROW_COUNT_STORAGE_KEY, String(value));
-    } catch {
-    }
-  };
   var urlRowCount = readRowCountParam();
-  var initialRowCount = urlRowCount ?? readStoredRowCount() ?? normalizeDepartureBoardRowCount(
-    savedSettings.departureBoardRows ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT
-  );
-  if (urlRowCount !== null) {
-    writeStoredRowCount(urlRowCount);
-  }
+  var initialRowCount = urlRowCount ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT;
   var lensTemplate = (colors) => ({
     lenses: colors.map((color) => ({ color }))
   });
   var boardLensColors = readInitialLensColors();
-  var SYNCHRONIZE_ROWS_STORAGE_KEY = "pragotron.board.synchronizeRows.v1";
-  var readStoredSynchronizeRows = () => {
-    try {
-      const stored = window.sessionStorage.getItem(SYNCHRONIZE_ROWS_STORAGE_KEY);
-      if (stored === "0") {
-        return false;
-      }
-      if (stored === "1") {
-        return true;
-      }
-    } catch {
-    }
-    return true;
-  };
-  var writeStoredSynchronizeRows = (enabled) => {
-    try {
-      window.sessionStorage.setItem(
-        SYNCHRONIZE_ROWS_STORAGE_KEY,
-        enabled ? "1" : "0"
-      );
-    } catch {
-    }
-  };
-  var boardSynchronizeRows = readStoredSynchronizeRows();
+  forgetSessionKey("pragotron.board.synchronizeRows.v1");
+  var boardSynchronizeRows = true;
   var delayOffset = normalizeDelayOffset(
     savedSettings.delayOffset ?? DELAY_OFFSET_DEFAULT
   );
   var boardLogoImage = documentRef.querySelector("#departureBoardLogo");
-  var applyBoardLogo = (settings = savedSettings) => {
+  var BOARD_LOGO_MEMORY_KEY = "pragotron.departureBoard.logo.v1";
+  var readRememberedLogo = () => {
+    try {
+      const raw = window.sessionStorage.getItem(BOARD_LOGO_MEMORY_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+  var logoChoice = (source) => ({
+    departureBoardLogo: source?.departureBoardLogo,
+    departureBoardLogoSvg: source?.departureBoardLogoSvg || "",
+    settingsUpdatedAt: Number(source?.settingsUpdatedAt) || 0
+  });
+  var storedLogo = logoChoice(
+    savedSettings?.departureBoardLogo != null || savedSettings?.settingsUpdatedAt ? savedSettings : savedState
+  );
+  var rememberedLogo = readRememberedLogo();
+  var currentLogo = (rememberedLogo?.settingsUpdatedAt || 0) > storedLogo.settingsUpdatedAt ? logoChoice(rememberedLogo) : storedLogo;
+  var appliedSettingsAt = currentLogo.settingsUpdatedAt;
+  var rememberLogo = (settings) => {
+    currentLogo = logoChoice(settings);
+    appliedSettingsAt = Math.max(
+      appliedSettingsAt,
+      currentLogo.settingsUpdatedAt
+    );
+    currentLogo.settingsUpdatedAt = appliedSettingsAt;
+    try {
+      window.sessionStorage.setItem(
+        BOARD_LOGO_MEMORY_KEY,
+        JSON.stringify(currentLogo)
+      );
+    } catch {
+    }
+  };
+  var applyBoardLogo = (settings = currentLogo) => {
     if (!boardLogoImage) {
       return;
     }
@@ -4526,7 +4784,11 @@
     boardLogoImage.src = src;
     boardLogoImage.alt = label;
   };
-  applyBoardLogo();
+  applyBoardLogo(currentLogo);
+  rememberLogo(currentLogo);
+  window.addEventListener("pageshow", () => {
+    applyBoardLogo(currentLogo);
+  });
   var clockRoot = documentRef.querySelector("#departureBoardClock");
   var boardClock = clockRoot ? new DepartureTimeDisplay(clockRoot, {
     audio,
@@ -4568,6 +4830,10 @@
       tickBoardClock(true);
     }
   });
+  var storedStationProfile = readStoredStationProfile();
+  if (storedStationProfile) {
+    setActiveStationProfile(storedStationProfile, { persist: false });
+  }
   var display = new DepartureBoardDisplay(root, {
     audio,
     timing: initialTiming,
@@ -4644,7 +4910,7 @@
     return recovered;
   };
   var getCurrentDesiredStates = () => {
-    const currentState = storage.load();
+    const currentState = storage2.load();
     return currentState?.desired && typeof currentState.desired === "object" ? currentState.desired : savedDesiredStates;
   };
   var persistedDepartures = recoverDepartures(savedState.departures);
@@ -4735,16 +5001,22 @@
     publishHeartbeat();
     return nextCount;
   };
+  var applyStationProfile = (value) => {
+    const profile = setActiveStationProfile(value);
+    if (profile) {
+      display.applyStationProfile(profile);
+      updateDisplay({ immediate: true });
+    }
+    return profile;
+  };
   var applyBoardSettings = (settings = {}) => {
     const source = settings && typeof settings === "object" ? settings : {};
-    if (source.flapTiming && !boardFlapTimingCustom) {
-      boardTiming = resolveBoardFlapTiming(
-        source.flapTiming,
-        DEPARTURE_FLAP_TIMING_DEFAULTS
-      );
-      display.setTiming(boardTiming);
-      boardClock?.setTiming(boardTiming);
-      snapshotSignature = getSnapshotSignature(departures, boardTiming);
+    const stamp = Number(source.settingsUpdatedAt) || 0;
+    if (appliedSettingsAt && stamp < appliedSettingsAt) {
+      return;
+    }
+    if (source.stationProfile) {
+      applyStationProfile(source.stationProfile);
     }
     if (typeof source.delayOffset === "boolean") {
       const nextOffset = normalizeDelayOffset(source.delayOffset);
@@ -4755,7 +5027,14 @@
       }
     }
     if (source.departureBoardLogo != null || source.departureBoardLogoSvg != null) {
-      applyBoardLogo(source);
+      rememberLogo({
+        ...currentLogo,
+        ...source,
+        settingsUpdatedAt: stamp || appliedSettingsAt
+      });
+      applyBoardLogo(currentLogo);
+    } else if (stamp) {
+      appliedSettingsAt = Math.max(appliedSettingsAt, stamp);
     }
     if (source.lenses && !boardLensColors) {
       display.setLensSettings(source.lenses);
@@ -4834,7 +5113,7 @@
     return identificationActive;
   };
   var applyBoardLensColors = (colors) => {
-    const parsed = writeStoredLensColors(colors) || parseLensColors(colors);
+    const parsed = parseLensColors(colors);
     if (!parsed) {
       return null;
     }
@@ -4865,7 +5144,6 @@
         });
         return;
       }
-      writeStoredRowCount(numeric);
       applyRowCount(numeric);
       acknowledge(message, {
         ok: true,
@@ -4877,7 +5155,6 @@
     if (action === "set-flap-timing") {
       const nextTiming = normalizeFlapTiming(flapTiming);
       boardFlapTimingCustom = true;
-      writeStoredFlapTiming(nextTiming);
       boardTiming = nextTiming;
       display.setTiming(boardTiming);
       boardClock?.setTiming(boardTiming);
@@ -4891,7 +5168,6 @@
     }
     if (action === "set-synchronize-rows") {
       boardSynchronizeRows = synchronizeRows !== false;
-      writeStoredSynchronizeRows(boardSynchronizeRows);
       display.setSynchronizeRows(boardSynchronizeRows);
       acknowledge(message, {
         ok: true,
@@ -4958,6 +5234,12 @@
     transport.publish("board:heartbeat", getPresencePayload());
   };
   transport.subscribe((message) => {
+    if (message.type === "station-profile") {
+      applyStationProfile(
+        message.payload?.stationProfile || message.payload
+      );
+      return;
+    }
     if (message.type === "manage:departures") {
       liveSnapshotReceived = true;
       manageSnapshotReceived = true;
@@ -4974,6 +5256,7 @@
     }
     if (message.type === "board:settings") {
       applyBoardSettings(message.payload);
+      publishHeartbeat();
       return;
     }
     if (message.type === "manage:discover") {
@@ -5000,10 +5283,7 @@
           nextState.departures,
           nextState.desired || savedDesiredStates
         ),
-        nextState.revision,
-        {
-          timing: (nextState.settings || nextState).flapTiming
-        }
+        nextState.revision
       );
     } catch {
     }
@@ -5011,7 +5291,7 @@
   window.addEventListener("storage", storageHandler);
   removeStorageListener = () => window.removeEventListener("storage", storageHandler);
   var pollPersistedState = () => {
-    const nextState = storage.load();
+    const nextState = storage2.load();
     if (!nextState || typeof nextState !== "object") {
       return;
     }
@@ -5022,10 +5302,7 @@
         nextState.departures,
         nextState.desired || savedDesiredStates
       ),
-      nextState.revision,
-      {
-        timing: (nextState.settings || nextState).flapTiming
-      }
+      nextState.revision
     );
   };
   if (!transport.channel || window.location.protocol === "file:") {

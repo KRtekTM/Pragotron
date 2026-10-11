@@ -118,6 +118,9 @@ const memoryStorage = () => {
         getItem: (key) => (store.has(key) ? store.get(key) : null),
         setItem: (key, value) => {
             store.set(key, String(value));
+        },
+        removeItem: (key) => {
+            store.delete(key);
         }
     };
 };
@@ -126,22 +129,28 @@ const assertVolume = (label, search, stored, expected) => {
     globalThis.sessionStorage = memoryStorage();
     if (stored != null) {
         globalThis.sessionStorage.setItem('pragotron.board.audioVolume.v1', stored);
+        globalThis.sessionStorage.setItem('pragotron.board.audioMuted.v1', '1');
     }
     globalThis.location = { search };
     const audio = new SplitFlapAudio();
     const actual = audio.getState().volume;
+    const muted = audio.getState().muted;
+    const kept = globalThis.sessionStorage.getItem('pragotron.board.audioVolume.v1');
     audio.destroy();
-    if (actual !== expected) {
-        throw new Error(`${label}: expected ${expected}, got ${actual}`);
+    if (actual !== expected || muted !== false || kept !== null) {
+        throw new Error(
+            `${label}: expected volume ${expected}, unmuted, storage cleared; `
+            + `got ${actual}, muted ${muted}, stored ${kept}`
+        );
     }
 };
 
 assertVolume('url forces volume', '?volume=40', '80', 40);
 assertVolume('url zero is silence', '?volume=0', '80', 0);
 assertVolume('url hundred', '?platform=1&volume=100', '15', 100);
-assertVolume('out of range keeps stored', '?volume=150', '80', 80);
-assertVolume('blank keeps stored', '?volume=', '80', 80);
-assertVolume('missing keeps stored', '?rows=12', '25', 25);
+assertVolume('out of range uses default', '?volume=150', '80', 100);
+assertVolume('blank uses default', '?volume=', '80', 100);
+assertVolume('missing uses default', '?rows=12', '25', 100);
 assertVolume('missing defaults to 100', '', null, 100);
 
 console.log(JSON.stringify({

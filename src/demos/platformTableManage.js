@@ -12,8 +12,7 @@ import {
     DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
     DEPARTURE_BOARD_ROW_COUNT_MAX,
     DEPARTURE_BOARD_ROW_COUNT_MIN,
-    DEPARTURE_SECTOR_VALUES,
-    DEPARTURE_TRACK_VALUES,
+    getActiveStationProfile,
     FLAP_TIMING_DEFAULTS,
     DEPARTURE_FLAP_TIMING_DEFAULTS,
     PLATFORM_FLAP_TIMING_DEFAULTS,
@@ -29,10 +28,11 @@ import {
     compareDeparturesByTime,
     getDepartureSortTimestamp,
     getEffectiveDepartureDate,
-    DEPARTURE_PLATFORM_VALUES,
-    TRAIN_TYPES,
     formatStationName,
-    resolveCanonicalTrainType,
+    matchProfileValue,
+    profileSectorValues,
+    resolveProfileTrainType,
+    setActiveStationProfile,
     BoardTransport,
     formatBoardIdentity,
     getBoardIdentityKey,
@@ -61,6 +61,7 @@ import {
     normalizeLiveSourceUrl,
     parseLiveSourceUrl
 } from '../platform/index.js';
+import { mountStationProfileEditor } from './stationProfileEditor.js';
 
 const STORAGE_KEY = 'pragotron.platformTable.state.v2';
 const LEGACY_STORAGE_KEY = 'pragotron.platformTable.state.v1';
@@ -77,31 +78,187 @@ if (!currentState && legacyState) {
     });
 }
 const savedSettings = savedState.settings || savedState;
+if (savedState.stationProfile) {
+    setActiveStationProfile(savedState.stationProfile);
+}
 const logOutput = documentRef.querySelector('#logOutput');
-const manageLogEntries = [];
 const MANAGE_LOG_LIMIT = 250;
+
+const stringifyLogValue = (value) => {
+    try {
+        return JSON.stringify(value, null, 2);
+    } catch {
+        return String(value);
+    }
+};
+
+const classifyManageLogLine = (line) => {
+    const match = String(line).match(
+        /^\[pragotron\]\s+(\d{1,2}:\d{2}:\d{2}\.\d{3})\s+([\s\S]+)$/
+    );
+    const time = match?.[1] || '';
+    const direction = (match?.[2] || String(line)).trim();
+    const kind = direction === 'odesláno'
+        ? 'out'
+        : direction === 'přijato'
+            ? 'in'
+            : 'system';
+    return { time, direction, kind };
+};
+
+const formatLogTooltip = (date, time) => {
+    const datePart = date.toLocaleDateString('cs-CZ');
+    const match = String(time).match(/^(\d{1,2}):(\d{2}):(\d{2})\.(\d{3})$/);
+    if (!match) {
+        const ms = String(date.getMilliseconds()).padStart(3, '0');
+        const clock = [
+            String(date.getHours()).padStart(2, '0'),
+            String(date.getMinutes()).padStart(2, '0'),
+            String(date.getSeconds()).padStart(2, '0')
+        ].join(':');
+        return `${datePart} ${clock}.${ms}`;
+    }
+    const [, hours, minutes, seconds, milliseconds] = match;
+    return `${datePart} ${hours.padStart(2, '0')}:${minutes}:${seconds}.${milliseconds}`;
+};
+
+const senderColors = new Map();
+
+const senderHue = (clientId) => {
+    let hash = 2166136261;
+    const text = String(clientId || '');
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) % 360;
+};
+
+const senderColor = (clientId) => {
+    const key = String(clientId || '');
+    const known = senderColors.get(key);
+    if (known) {
+        return known;
+    }
+
+    const used = new Set(senderColors.values());
+    let hue = senderHue(key);
+    let color = `hsl(${hue} 70% 68%)`;
+    let guard = 0;
+    while (used.has(color) && guard < 360) {
+        hue = (hue + 37) % 360;
+        color = `hsl(${hue} 70% 68%)`;
+        guard += 1;
+    }
+    senderColors.set(key, color);
+    return color;
+};
+
+const createLogTime = (date, time) => {
+    const tooltip = formatLogTooltip(date, time);
+    const clock = document.createElement('time');
+    clock.className = 'log-bubble-time';
+    clock.dateTime = date.toISOString();
+    clock.title = tooltip;
+    clock.textContent = time || tooltip.slice(tooltip.lastIndexOf(' ') + 1);
+    return clock;
+};
 
 const appendManageLog = (line, details) => {
     if (!logOutput) {
         return;
     }
 
-    let body = '';
-    try {
-        body = JSON.stringify(details, null, 2);
-    } catch {
-        body = String(details);
-    }
+    const sentAt = new Date();
+    const { time, direction, kind } = classifyManageLogLine(line);
+    const record = details && typeof details === 'object' ? details : null;
+    const bubble = document.createElement('article');
+    bubble.className = `log-bubble log-bubble-${kind}`;
+    bubble.setAttribute(
+        'aria-label',
+        record?.typ ? `${direction}: ${record.typ}` : direction
+    );
 
-    manageLogEntries.push(body ? `${line}\n${body}` : line);
-    if (manageLogEntries.length > MANAGE_LOG_LIMIT) {
-        manageLogEntries.splice(0, manageLogEntries.length - MANAGE_LOG_LIMIT);
+    if (kind === 'system') {
+        const label = document.createElement('p');
+        label.className = 'log-bubble-system-line';
+        label.append(document.createTextNode(direction));
+        if (time) {
+            label.append(document.createTextNode(' · '));
+            label.append(createLogTime(sentAt, time));
+        }
+        bubble.append(label);
+
+        if (record) {
+            const note = document.createElement('p');
+            note.className = 'log-bubble-system-note';
+            const bits = [];
+            if (record.url) {
+                bits.push(String(record.url));
+            }
+            if (record.dalšíPokusZaMs != null) {
+                bits.push(`další pokus za ${record.dalšíPokusZaMs} ms`);
+            }
+            note.textContent = bits.length
+                ? bits.join(' · ')
+                : stringifyLogValue(record);
+            bubble.append(note);
+        }
+    } else {
+        const senderId = String(record?.od || '').trim();
+        bubble.setAttribute(
+            'aria-label',
+            record?.typ
+                ? `${direction}: ${senderId || '—'}, ${record.typ}`
+                : `${direction}: ${senderId || '—'}`
+        );
+        const sender = document.createElement('p');
+        sender.className = 'log-bubble-sender';
+        sender.textContent = senderId || '—';
+        if (kind === 'in' && senderId) {
+            sender.style.color = senderColor(senderId);
+        }
+        const message = document.createElement('p');
+        message.className = 'log-bubble-text';
+        message.textContent = record?.typ || direction;
+        bubble.append(sender, message);
+
+        const payload = record && Object.hasOwn(record, 'data')
+            ? record.data
+            : record;
+        const emptyObject = payload
+            && typeof payload === 'object'
+            && !Array.isArray(payload)
+            && Object.keys(payload).length === 0;
+        const hasPayload = payload != null && !emptyObject;
+        const foot = document.createElement('div');
+        foot.className = 'log-bubble-foot';
+        if (hasPayload || record?.requestId) {
+            const disclosure = document.createElement('details');
+            disclosure.className = 'log-bubble-data';
+            const summary = document.createElement('summary');
+            summary.textContent = 'podrobnosti';
+            const body = document.createElement('pre');
+            body.className = 'log-bubble-body';
+            body.textContent = stringifyLogValue(
+                record?.requestId
+                    ? { requestId: record.requestId, data: payload }
+                    : payload
+            );
+            disclosure.append(summary, body);
+            foot.append(disclosure);
+        }
+        foot.append(createLogTime(sentAt, time));
+        bubble.append(foot);
     }
 
     const pinnedToBottom = logOutput.scrollHeight
         - logOutput.scrollTop
         - logOutput.clientHeight < 48;
-    logOutput.textContent = manageLogEntries.join('\n\n');
+    logOutput.append(bubble);
+    while (logOutput.childElementCount > MANAGE_LOG_LIMIT) {
+        logOutput.firstElementChild?.remove();
+    }
     if (pinnedToBottom) {
         logOutput.scrollTop = logOutput.scrollHeight;
     }
@@ -198,6 +355,32 @@ let departureBoardLogo = normalizeDepartureBoardLogoId(
 let departureBoardLogoSvg = String(savedSettings?.departureBoardLogoSvg || '')
     .trim()
     .slice(0, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH);
+let settingsUpdatedAt = Number(savedSettings?.settingsUpdatedAt) || 0;
+
+const readStoredSettings = () => {
+    const stored = storage.load();
+    return stored?.settings && typeof stored.settings === 'object'
+        ? stored.settings
+        : null;
+};
+
+const useNewerStoredLogo = () => {
+    const storedSettings = readStoredSettings();
+    const storedStamp = Number(storedSettings?.settingsUpdatedAt) || 0;
+    if (!storedSettings || storedStamp <= settingsUpdatedAt) {
+        return null;
+    }
+
+    return {
+        departureBoardLogo: normalizeDepartureBoardLogoId(
+            storedSettings.departureBoardLogo ?? DEPARTURE_BOARD_LOGO_DEFAULT
+        ),
+        departureBoardLogoSvg: String(storedSettings.departureBoardLogoSvg || '')
+            .trim()
+            .slice(0, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH),
+        settingsUpdatedAt: storedStamp
+    };
+};
 const savedLiveSettings = savedState.liveDepartures
     && typeof savedState.liveDepartures === 'object'
     ? savedState.liveDepartures
@@ -284,12 +467,8 @@ const normalizeTrainNumber = (value) => {
 const normalizeOperator = (value) =>
     String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 24);
 
-const resolveTrainTypeValue = (train, operator) => {
-    const resolved = resolveCanonicalTrainType(train, operator);
-    return TRAIN_TYPES.some((type) => type.name === resolved)
-        ? resolved
-        : '';
-};
+const resolveTrainTypeValue = (train, operator) =>
+    resolveProfileTrainType(train, operator);
 
 const setBoardFormStatus = (message, isError = false) => {
     boardFormStatus.textContent = message;
@@ -363,14 +542,19 @@ const setSavedFormValues = (formState) => {
     delayValueInput.value = delay;
 };
 
-const getLightingSettingsState = () => ({
-    nightMode,
-    autoNightMode,
-    delayOffset,
-    departureBoardLogo,
-    departureBoardLogoSvg,
-    lenses: getManagedLensState()
-});
+const getLightingSettingsState = () => {
+    const newerLogo = useNewerStoredLogo();
+    return {
+        nightMode,
+        autoNightMode,
+        delayOffset,
+        departureBoardLogo: newerLogo?.departureBoardLogo ?? departureBoardLogo,
+        departureBoardLogoSvg: newerLogo?.departureBoardLogoSvg
+            ?? departureBoardLogoSvg,
+        settingsUpdatedAt: newerLogo?.settingsUpdatedAt ?? settingsUpdatedAt,
+        lenses: getManagedLensState()
+    };
+};
 
 const normalizeManagedLensState = (value) => {
     const fallback = createDefaultLensState();
@@ -438,26 +622,14 @@ const normalizeDepartureTime = (value) => {
     return null;
 };
 
-const normalizePlatformValue = (value) => {
-    const normalized = String(value ?? '').trim();
-    return DEPARTURE_PLATFORM_VALUES.includes(normalized)
-        ? normalized
-        : '';
-};
+const normalizePlatformValue = (value) =>
+    matchProfileValue(getActiveStationProfile().platforms, value);
 
-const normalizeTrackValue = (value) => {
-    const normalized = String(value ?? '').trim();
-    return DEPARTURE_TRACK_VALUES.includes(normalized)
-        ? normalized
-        : '';
-};
+const normalizeTrackValue = (value) =>
+    matchProfileValue(getActiveStationProfile().tracks, value);
 
-const normalizeSectorValue = (value) => {
-    const normalized = String(value ?? '').trim();
-    return DEPARTURE_SECTOR_VALUES.includes(normalized)
-        ? normalized
-        : '';
-};
+const normalizeSectorValue = (value) =>
+    matchProfileValue(profileSectorValues(), value);
 
 const normalizeDeparture = (value) => {
     const nestedState = value?.state && typeof value.state === 'object'
@@ -577,10 +749,13 @@ departures = departures
     .filter((departure) => departure.departureTime);
 
 const persistState = () => {
+    const newerLogo = useNewerStoredLogo();
     const settings = {
         ...getSettingsState(),
         lamps: lighting.getLampSettings(),
-        clockLight: lighting.getClockSettings()
+        clockLight: lighting.getClockSettings(),
+        ...(newerLogo || {}),
+        settingsUpdatedAt: newerLogo?.settingsUpdatedAt ?? settingsUpdatedAt
     };
     storage.save({
         version: 2,
@@ -599,7 +774,14 @@ const persistState = () => {
         },
         revision: nextRevision,
         globalResetRevision,
-        sort: sortState
+        sort: sortState,
+        stationProfile: getActiveStationProfile()
+    });
+};
+
+const publishStationProfile = () => {
+    transport.publish('station-profile', {
+        stationProfile: getActiveStationProfile()
     });
 };
 
@@ -625,6 +807,15 @@ const publishDepartureSnapshot = () => {
 };
 
 const publishSettings = ({ persist = true } = {}) => {
+    const newerLogo = useNewerStoredLogo();
+    if (newerLogo) {
+        departureBoardLogo = newerLogo.departureBoardLogo;
+        departureBoardLogoSvg = newerLogo.departureBoardLogoSvg;
+        settingsUpdatedAt = newerLogo.settingsUpdatedAt;
+        syncDepartureBoardLogoControls();
+    } else {
+        settingsUpdatedAt = Date.now();
+    }
     if (persist) {
         persistState();
     }
@@ -1090,11 +1281,18 @@ const renderActiveBoards = () => {
         const details = documentRef.createElement('span');
         details.className = 'active-board-details';
         const instanceLine = documentRef.createElement('span');
-        instanceLine.textContent = `${isDepartureBoard
-            ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} řádků`
-            : 'nástupištní tabule'} · instance ${
-            boardPresence.instanceId || '—'
-        }`;
+        instanceLine.append(documentRef.createTextNode(
+            `${isDepartureBoard
+                ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} řádků`
+                : 'nástupištní tabule'} · instance `
+        ));
+        const clientId = documentRef.createElement('span');
+        clientId.className = 'active-board-client';
+        clientId.textContent = boardPresence.instanceId || '—';
+        if (boardPresence.instanceId) {
+            clientId.style.color = senderColor(boardPresence.instanceId);
+        }
+        instanceLine.append(clientId);
         const connectionLine = documentRef.createElement('span');
         connectionLine.className = 'active-board-connection';
         connectionLine.classList.toggle(
@@ -1360,6 +1558,72 @@ const syncOpenBoardSettingsAudio = (boardPresence) => {
             ? 'Zapnout zvuk flapů na této tabuli'
             : 'Ztlumit zvuk flapů na této tabuli'
     );
+};
+
+const assignIfIdle = (control, value) => {
+    if (!control || documentRef.activeElement === control) {
+        return;
+    }
+    if (control.type === 'checkbox') {
+        control.checked = Boolean(value);
+        return;
+    }
+    const nextValue = String(value);
+    if (control.value !== nextValue) {
+        control.value = nextValue;
+    }
+};
+
+const syncOpenBoardSettings = (boardPresence) => {
+    syncOpenBoardSettingsAudio(boardPresence);
+    if (!boardSettingsDialog?.open
+        || boardSettingsInstanceId !== boardPresence?.instanceId) {
+        return;
+    }
+
+    const colors = currentLensColors(boardPresence);
+    const selects = boardSettingsDialog.querySelectorAll(
+        '.lens-control-select select'
+    );
+    assignIfIdle(selects[0], LENS_COLORS[colors[0]] ? colors[0] : 'green');
+    assignIfIdle(
+        selects[1],
+        LENS_COLORS[colors[1]] ? colors[1] : selects[0]?.value || 'green'
+    );
+
+    assignIfIdle(
+        boardSettingsDialog.querySelector('.board-sync-rows input'),
+        boardPresence.synchronizeRows !== false
+    );
+    assignIfIdle(
+        boardSettingsDialog.querySelector('.board-form-field input[type="number"]'),
+        normalizeDepartureBoardRowCount(
+            boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT
+        )
+    );
+
+    const timing = boardPresence.flapTiming
+        ? normalizeFlapTiming(boardPresence.flapTiming)
+        : null;
+    const ranges = boardSettingsDialog.querySelectorAll(
+        '.flap-timing-settings input[type="range"]'
+    );
+    if (timing) {
+        assignIfIdle(ranges[0], timing.duration);
+        assignIfIdle(ranges[1], timing.variation);
+        if (ranges[0] && documentRef.activeElement !== ranges[0]) {
+            const output = ranges[0].parentElement?.querySelector('output');
+            if (output) {
+                output.textContent = `${timing.duration} ms`;
+            }
+        }
+        if (ranges[1] && documentRef.activeElement !== ranges[1]) {
+            const output = ranges[1].parentElement?.querySelector('output');
+            if (output) {
+                output.textContent = `±${timing.variation} ms`;
+            }
+        }
+    }
 };
 
 const publishBoardCommand = (presence, payload) => {
@@ -1920,33 +2184,48 @@ const setDesiredState = (target, action, state, revision) => {
     };
 };
 
-TRAIN_TYPES.forEach((type) => {
-    const option = documentRef.createElement('option');
-    option.value = type.name;
-    option.textContent = type.label || type.name || 'Bez typu vlaku';
-    trainTypeInput.appendChild(option);
-});
+const fillCatalogSelects = () => {
+    const profile = getActiveStationProfile();
+    const refill = (select, values) => {
+        if (!select) {
+            return;
+        }
+        const current = select.value;
+        const placeholder = select.options[0];
+        select.replaceChildren();
+        if (placeholder) {
+            select.appendChild(placeholder);
+        }
+        values.forEach((value) => {
+            const option = documentRef.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            select.appendChild(option);
+        });
+        if ([...select.options].some((option) => option.value === current)) {
+            select.value = current;
+        }
+    };
 
-DEPARTURE_PLATFORM_VALUES.slice(1).forEach((platform) => {
-    const option = documentRef.createElement('option');
-    option.value = platform;
-    option.textContent = platform;
-    platformInput.appendChild(option);
-});
+    if (trainTypeInput) {
+        const current = trainTypeInput.value;
+        trainTypeInput.replaceChildren();
+        profile.trainTypes.forEach((type) => {
+            const option = documentRef.createElement('option');
+            option.value = type.name;
+            option.textContent = type.label || type.name || 'Bez typu vlaku';
+            trainTypeInput.appendChild(option);
+        });
+        if ([...trainTypeInput.options].some((option) => option.value === current)) {
+            trainTypeInput.value = current;
+        }
+    }
+    refill(platformInput, profile.platforms);
+    refill(trackInput, profile.tracks);
+    refill(sectorInput, profileSectorValues(profile));
+};
 
-DEPARTURE_TRACK_VALUES.slice(1).forEach((track) => {
-    const option = documentRef.createElement('option');
-    option.value = track;
-    option.textContent = track;
-    trackInput.appendChild(option);
-});
-
-DEPARTURE_SECTOR_VALUES.slice(1).forEach((sector) => {
-    const option = documentRef.createElement('option');
-    option.value = sector;
-    option.textContent = sector;
-    sectorInput.appendChild(option);
-});
+fillCatalogSelects();
 
 const lensControlElements = new Map();
 
@@ -2428,6 +2707,7 @@ const updateBoardPresence = (message) => {
     if (listChanged) {
         renderActiveBoards();
     }
+    syncOpenBoardSettings(boardPresence);
     if (previousLensState !== JSON.stringify(boardPresence.lensState)
         || !previous) {
         renderDeparturesTable();
@@ -2573,16 +2853,24 @@ transport.subscribe((message) => {
         const sendSettings = Boolean(instanceId)
             && !settingsSentToInstances.has(instanceId);
         if (sendSettings) {
+            const newerLogo = useNewerStoredLogo();
+            if (newerLogo) {
+                departureBoardLogo = newerLogo.departureBoardLogo;
+                departureBoardLogoSvg = newerLogo.departureBoardLogoSvg;
+                settingsUpdatedAt = newerLogo.settingsUpdatedAt;
+                syncDepartureBoardLogoControls();
+            }
             settingsSentToInstances.add(instanceId);
-        }
-        updateBoardPresence(message);
-        if (sendSettings) {
-            transport.publish('board:settings', getLightingSettingsState(), {
+            transport.publish('board:settings', {
+                ...getLightingSettingsState(),
+                stationProfile: getActiveStationProfile()
+            }, {
                 target: {
                     source: instanceId
                 }
             });
         }
+        updateBoardPresence(message);
         return;
     }
 
@@ -2682,6 +2970,8 @@ transport.subscribe((message) => {
                 );
             }
             boardPresence.lastSeen = Date.now();
+            boardPresence.listView = boardListView(boardPresence);
+            syncOpenBoardSettings(boardPresence);
             const desired = getDesiredStateForBoard(boardPresence.identity);
             if (desired
                 && Number(desired.revision) <= boardPresence.appliedRevision) {
@@ -3856,7 +4146,53 @@ liveToggleButton?.addEventListener('click', () => {
     }
 });
 
+const MANAGE_BLOCK_STATE_KEY = 'pragotron.manage.blockState.v1';
+
+const readManageBlockState = () => {
+    try {
+        const parsed = JSON.parse(
+            window.localStorage.getItem(MANAGE_BLOCK_STATE_KEY) || '{}'
+        );
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return {};
+        }
+        return parsed;
+    } catch {
+        return {};
+    }
+};
+
+const rememberManageBlock = (element, collapsed) => {
+    const key = element?.id;
+    if (!key) {
+        return;
+    }
+
+    const state = readManageBlockState();
+    if (collapsed) {
+        state[key] = true;
+    } else {
+        delete state[key];
+    }
+
+    try {
+        window.localStorage.setItem(
+            MANAGE_BLOCK_STATE_KEY,
+            JSON.stringify(state)
+        );
+    } catch {
+        // The block still keeps the choice for this page view.
+    }
+};
+
+const applyStoredBlockState = (element, button, collapsedBlocks) => {
+    const collapsed = Boolean(element?.id && collapsedBlocks[element.id]);
+    element.classList.toggle('is-collapsed', collapsed);
+    button?.setAttribute('aria-expanded', String(!collapsed));
+};
+
 const setupManageBlockToggles = () => {
+    const collapsedBlocks = readManageBlockState();
     documentRef.querySelectorAll('#manage fieldset').forEach((fieldset) => {
         const legend = fieldset.querySelector(':scope > div > legend');
         if (!legend || legend.querySelector('.manage-block-toggle')) {
@@ -3881,14 +4217,67 @@ const setupManageBlockToggles = () => {
         label.textContent = legend.textContent.trim();
         button.append(mark, label);
         legend.replaceChildren(button);
+        applyStoredBlockState(fieldset, button, collapsedBlocks);
         button.addEventListener('click', () => {
             const collapsed = fieldset.classList.toggle('is-collapsed');
             button.setAttribute('aria-expanded', String(!collapsed));
+            rememberManageBlock(fieldset, collapsed);
+        });
+    });
+
+    documentRef.querySelectorAll('.station-profile-section').forEach((section) => {
+        const button = section.querySelector(
+            ':scope > .station-profile-section-heading .manage-block-toggle'
+        );
+        if (!button) {
+            return;
+        }
+        applyStoredBlockState(section, button, collapsedBlocks);
+        button.addEventListener('click', () => {
+            const collapsed = section.classList.toggle('is-collapsed');
+            button.setAttribute('aria-expanded', String(!collapsed));
+            rememberManageBlock(section, collapsed);
         });
     });
 };
 
+mountStationProfileEditor({
+    documentRef,
+    onSectionExpanded: (section) => rememberManageBlock(section, false),
+    onApply: (profile) => {
+        if (!profile) {
+            setBoardFormStatus(
+                'Profil stanice nejde použít. Doplňte nástupiště, koleje a aspoň jeden typ vlaku.',
+                true
+            );
+            return;
+        }
+        departures = departures
+            .map(normalizeDeparture)
+            .filter((departure) => departure.departureTime);
+        fillCatalogSelects();
+        persistState();
+        publishStationProfile();
+        syncAllTargetBoards().forEach((command) => {
+            transport.publish('board:command', command);
+        });
+        publishDepartureSnapshot();
+        renderDeparturesTable();
+        setBoardFormStatus(
+            `Profil stanice „${profile.name}“ je uložený a odeslaný tabulím.`
+        );
+    }
+});
 setupManageBlockToggles();
+window.addEventListener('beforeunload', (event) => {
+    event.preventDefault();
+    event.returnValue = 'Manage stránka musí zůstat otevřená. Obnovení nebo zavření přeskočí animaci odjezdové tabule a tabule přestanou dostávat data.';
+});
+if (!settingsUpdatedAt) {
+    settingsUpdatedAt = Date.now();
+    persistState();
+}
+publishStationProfile();
 renderLiveControls();
 publishDiscovery();
 publishDepartureSnapshot();

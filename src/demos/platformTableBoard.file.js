@@ -611,6 +611,20 @@
     const canonicalName = resolveCanonicalTrainType(requested);
     return types.find((type) => type.name === canonicalName) || null;
   };
+  var getTrainNumberCardStyle = (train) => {
+    const name = String(train ?? "");
+    const normalized = name.toLocaleLowerCase("cs-CZ");
+    if (name === "Intercity" || name === "Eurocity" || name === "IC" || name === "EC" || name === "SuperCity" || normalized === "sc") {
+      return "intercity";
+    }
+    if (name === "Sp" || normalized === "nj" || normalized === "nightjet") {
+      return "sp";
+    }
+    if (name === "R" || name === "R miest." || name === "Mim. R" || name === "Ex" || name.startsWith("Ex ") || name === "\u010CEDOK" || name === "ROH" || normalized === "rj" || normalized === "railjet" || normalized === "regiojet") {
+      return "red";
+    }
+    return "default";
+  };
   var NIGHT_FADE_MODES = Object.freeze([
     { value: "none", label: "Bez pohas\xEDn\xE1n\xED (st\xE1l\xFD svit)" },
     { value: "soft", label: "Jemn\xE9 kol\xEDs\xE1n\xED" },
@@ -804,31 +818,11 @@
     }
     return Math.min(100, Math.max(0, Math.round(numeric)));
   };
-  var readStoredMute = () => {
+  var forgetStoredAudioLevel = () => {
     try {
-      return globalThis.sessionStorage?.getItem(AUDIO_MUTE_STORAGE_KEY) === "1";
+      globalThis.sessionStorage?.removeItem(AUDIO_MUTE_STORAGE_KEY);
+      globalThis.sessionStorage?.removeItem(AUDIO_VOLUME_STORAGE_KEY);
     } catch {
-      return false;
-    }
-  };
-  var writeStoredMute = (muted) => {
-    try {
-      globalThis.sessionStorage?.setItem(
-        AUDIO_MUTE_STORAGE_KEY,
-        muted ? "1" : "0"
-      );
-    } catch {
-    }
-  };
-  var readStoredVolume = () => {
-    try {
-      const stored = globalThis.sessionStorage?.getItem(AUDIO_VOLUME_STORAGE_KEY);
-      if (stored === null || stored === "") {
-        return 100;
-      }
-      return normalizeVolume(stored);
-    } catch {
-      return 100;
     }
   };
   var readVolumeOverride = () => {
@@ -850,26 +844,15 @@
       return null;
     }
   };
-  var writeStoredVolume = (volume) => {
-    try {
-      globalThis.sessionStorage?.setItem(
-        AUDIO_VOLUME_STORAGE_KEY,
-        String(volume)
-      );
-    } catch {
-    }
-  };
   var SplitFlapAudio = class {
     constructor(source = DEFAULT_SOUND_URL) {
       this.template = typeof Audio === "function" ? new Audio(source) : null;
       this.pitchedTemplate = typeof Audio === "function" ? new Audio(PITCHED_SOUND_URL) : null;
       this.unlocked = false;
-      this.muted = readStoredMute();
+      this.muted = false;
       const volumeOverride = readVolumeOverride();
-      this.volume = volumeOverride === null ? readStoredVolume() : volumeOverride;
-      if (volumeOverride !== null) {
-        writeStoredVolume(volumeOverride);
-      }
+      this.volume = volumeOverride === null ? 100 : volumeOverride;
+      forgetStoredAudioLevel();
       this.activationTarget = null;
       this.activationHandler = null;
       this.listeners = /* @__PURE__ */ new Set();
@@ -954,7 +937,13 @@
         }
         this.holdPitch(sound);
       };
-      sound.addEventListener("loadedmetadata", keepPitch);
+      sound.addEventListener("loadedmetadata", () => {
+        keepPitch();
+        if (voice.sound !== sound) {
+          return;
+        }
+        sound.volume = this.volume / 100;
+      });
       sound.addEventListener("ended", () => {
         if (voice.sound !== sound) {
           return;
@@ -1005,19 +994,17 @@
         return this.muted;
       }
       this.muted = nextValue;
-      writeStoredMute(nextValue);
       this.listeners.forEach((listener) => listener(this.getState()));
       return this.muted;
     }
     setVolume(value) {
       const nextValue = normalizeVolume(value);
-      if (nextValue === this.volume) {
-        return this.volume;
-      }
+      const changed = nextValue !== this.volume;
       this.volume = nextValue;
-      writeStoredVolume(nextValue);
       this.applyVolume();
-      this.listeners.forEach((listener) => listener(this.getState()));
+      if (changed) {
+        this.listeners.forEach((listener) => listener(this.getState()));
+      }
       return this.volume;
     }
     setUnlocked(value) {
@@ -1090,6 +1077,7 @@
         this.setUnlocked(true);
         this.removeActivationListeners();
         this.context?.resume?.();
+        this.applyVolume();
         cleanup();
       };
       try {
@@ -1108,6 +1096,7 @@
       if (this.muted) {
         return;
       }
+      this.applyVolume();
       this.pendingPlays.push({ variant, durationMs });
       if (this.flushingPlays) {
         return;
@@ -1493,14 +1482,15 @@
   };
   var SplitFlapDisplay = class {
     constructor(element, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
+      ownsAudio = null,
       maxLength = STATION_CHARACTER_COUNT,
       sequence = STATION_FLAP_SEQUENCE,
       timing = FLAP_TIMING_DEFAULTS
     } = {}) {
       this.element = element;
-      this.audio = audio2;
-      this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.maxLength = maxLength;
       this.sequence = sequence;
       this.timing = normalizeFlapTiming(timing);
@@ -1701,14 +1691,15 @@
   };
   var DelayFlapDisplay = class {
     constructor(element, values = DELAY_VALUES, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
+      ownsAudio = null,
       timing = FLAP_TIMING_DEFAULTS,
       applyDelayOffset = DELAY_OFFSET_DEFAULT
     } = {}) {
       this.element = element;
       this.values = values;
-      this.audio = audio2;
-      this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.timing = normalizeFlapTiming(timing);
       this.applyDelayOffset = normalizeDelayOffset(applyDelayOffset);
       this.sourceValue = "";
@@ -1885,13 +1876,14 @@
   };
   var TrainFlapDisplay = class {
     constructor(element, types = TRAIN_TYPES, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
+      ownsAudio = null,
       timing = FLAP_TIMING_DEFAULTS
     } = {}) {
       this.element = element;
       this.types = types;
-      this.audio = audio2;
-      this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.timing = normalizeFlapTiming(timing);
       this.defaultValue = element.dataset.type || element.dataset.src || "";
       this.defaultSource = element.dataset.src || this.defaultValue;
@@ -1908,18 +1900,30 @@
       this.timing = normalizeFlapTiming(timing);
       return { ...this.timing };
     }
+    setTypes(types) {
+      if (!Array.isArray(types) || types.length === 0) {
+        return this.types;
+      }
+      const current = this.types[this.currentIndex];
+      this.types = types;
+      const nextIndex = current ? this.types.findIndex((type) => type.name === current.name) : 0;
+      const index = nextIndex === -1 ? 0 : nextIndex;
+      this.sequence += 1;
+      clearTimer(this, "timer");
+      this.currentIndex = index;
+      this.targetIndex = index;
+      clearFlapAnimation(this.element);
+      this.render(this.types[index], this.types[index]);
+      this.updateLabel();
+      return this.types;
+    }
     indexFor(value) {
       if (value === "" || value === null || value === void 0) {
         return 0;
       }
       const match = findTrainType(value, this.types);
       const index = match ? this.types.indexOf(match) : -1;
-      if (index === -1) {
-        throw new RangeError(
-          `Nepodporovan\xFD typ vlaku "${value}". Povolen\xE9 typy: ${this.types.map((type) => type.name || "(pr\xE1zdn\xE9)").join(", ")}`
-        );
-      }
-      return index;
+      return index === -1 ? 0 : index;
     }
     ensureFaces() {
       if (this.faces) {
@@ -2106,7 +2110,8 @@
   };
   var SequentialNumericFlap = class {
     constructor(element, minimum, maximum, {
-      audio: audio2 = new SplitFlapAudio(),
+      audio: audio2 = null,
+      ownsAudio = null,
       timing = FLAP_TIMING_DEFAULTS,
       includeBlank = true
     } = {}) {
@@ -2114,8 +2119,8 @@
       this.minimum = minimum;
       this.maximum = maximum;
       this.includeBlank = includeBlank !== false;
-      this.audio = audio2;
-      this.ownsAudio = audio2 instanceof SplitFlapAudio;
+      this.audio = audio2 || new SplitFlapAudio();
+      this.ownsAudio = ownsAudio ?? !audio2;
       this.timing = normalizeFlapTiming(timing);
       this.currentValue = "";
       this.targetValue = "";
@@ -2416,6 +2421,251 @@
     }
   };
 
+  // src/platform/station-profile.js
+  var STATION_PROFILE_STORAGE_KEY = "pragotron.stationProfile.v1";
+  var STATION_PROFILE_VERSION = 1;
+  var MAX_LIST = 80;
+  var MAX_TYPES = 40;
+  var MAX_STYLES = 12;
+  var MAX_TEXT = 32;
+  var DEFAULT_ALIASES = Object.freeze({
+    Intercity: ["IC", "ic", "intercity"],
+    Eurocity: ["EC", "ec", "eurocity"],
+    SuperCity: ["SC", "sc", "supercity"],
+    EuroNight: ["EN", "en", "euronight"],
+    nj: ["NJ", "NightJet", "Nightjet", "nightjet"],
+    rj: ["railjet", "Railjet"],
+    RJ: ["regiojet", "RegioJet"]
+  });
+  var clean = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
+  var cleanToken = (value) => clean(value).replace(/[–—−]/g, "-").replace(/\s*-\s*/g, "-").slice(0, MAX_TEXT);
+  var uniqueTokens = (values, limit = MAX_LIST) => {
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    (Array.isArray(values) ? values : []).forEach((value) => {
+      const token = cleanToken(value);
+      const key = token.toLocaleLowerCase("cs-CZ");
+      if (!token || seen.has(key) || result.length >= limit) {
+        return;
+      }
+      seen.add(key);
+      result.push(token);
+    });
+    return result;
+  };
+  var linesFrom = (value) => {
+    if (Array.isArray(value)) {
+      return value;
+    }
+    return String(value ?? "").split(/\r?\n/);
+  };
+  var isCssColor = (value) => {
+    const text = clean(value);
+    return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) || /^var\(--[a-z0-9-]+\)$/i.test(text) || /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(text);
+  };
+  var colorOr = (value, fallback) => isCssColor(value) ? clean(value) : fallback;
+  var slug = (value, fallback) => {
+    const text = clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
+    return text || fallback;
+  };
+  var blankTrainType = () => ({
+    name: "",
+    text: "",
+    suffix: "",
+    source: "",
+    label: "",
+    background: "var(--flap-background)",
+    foreground: "var(--flap-foreground)",
+    numberStyle: "default",
+    aliases: []
+  });
+  var createDefaultStationProfile = () => {
+    const numberStyles = Object.entries(TRAIN_NUMBER_CARD_STYLES).map(
+      ([id, style]) => ({
+        id,
+        label: id,
+        background: style.background,
+        foreground: style.foreground
+      })
+    );
+    const knownStyles = new Set(numberStyles.map((style) => style.id));
+    const sectors = DEPARTURE_SECTOR_VALUES.filter(Boolean);
+    const atomic = sectors.filter((value) => !value.includes("-"));
+    return {
+      version: STATION_PROFILE_VERSION,
+      name: "Brno hlavn\xED n\xE1dra\u017E\xED",
+      platforms: DEPARTURE_PLATFORM_VALUES.filter(Boolean),
+      tracks: DEPARTURE_TRACK_VALUES.filter(Boolean),
+      sectors: atomic,
+      sectorRanges: sectors.filter((value) => value.includes("-")),
+      numberStyles,
+      trainTypes: [
+        blankTrainType(),
+        ...TRAIN_TYPES.filter((type) => type.name).map((type) => {
+          const numberStyle = getTrainNumberCardStyle(type.name);
+          return {
+            name: type.name,
+            text: type.text || "",
+            suffix: type.suffix || "",
+            source: type.source || "",
+            label: type.label || "",
+            background: type.background,
+            foreground: type.foreground,
+            numberStyle: knownStyles.has(numberStyle) ? numberStyle : "default",
+            aliases: [...DEFAULT_ALIASES[type.name] || []]
+          };
+        })
+      ]
+    };
+  };
+  var normalizeTrainType = (value, styles) => {
+    const source = value && typeof value === "object" ? value : {};
+    const name = cleanToken(source.name);
+    const styleIds = new Set(styles.map((style) => style.id));
+    const aliases = uniqueTokens(
+      Array.isArray(source.aliases) ? source.aliases : String(source.aliases || "").split(/[,;]/),
+      12
+    ).filter((alias) => alias.toLocaleLowerCase("cs-CZ") !== name.toLocaleLowerCase("cs-CZ"));
+    return {
+      name,
+      text: cleanToken(source.text).slice(0, 16),
+      suffix: cleanToken(source.suffix).slice(0, 12),
+      source: clean(source.source).slice(0, 180),
+      label: clean(source.label).slice(0, 40),
+      background: colorOr(source.background, "var(--flap-background)"),
+      foreground: colorOr(source.foreground, "var(--flap-foreground)"),
+      numberStyle: styleIds.has(clean(source.numberStyle)) ? clean(source.numberStyle) : "default",
+      aliases
+    };
+  };
+  var normalizeStationProfile = (value) => {
+    const source = value && typeof value === "object" ? value : null;
+    if (!source) {
+      return null;
+    }
+    const fallbackStyles = createDefaultStationProfile().numberStyles;
+    const numberStyles = [];
+    const seenStyles = /* @__PURE__ */ new Set();
+    (Array.isArray(source.numberStyles) ? source.numberStyles : fallbackStyles).forEach((style) => {
+      const id = slug(style?.id, "") || slug(style?.label, "");
+      if (!id || seenStyles.has(id) || numberStyles.length >= MAX_STYLES) {
+        return;
+      }
+      seenStyles.add(id);
+      numberStyles.push({
+        id,
+        label: id,
+        background: colorOr(
+          style.background,
+          id === "default" ? "var(--flap-background)" : "#111111"
+        ),
+        foreground: colorOr(style.foreground, "#ffffff")
+      });
+    });
+    if (!seenStyles.has("default")) {
+      numberStyles.unshift({
+        id: "default",
+        label: "default",
+        background: "var(--flap-background)",
+        foreground: "var(--flap-foreground)"
+      });
+    }
+    const trainTypes = [];
+    const seenTypes = /* @__PURE__ */ new Set();
+    (Array.isArray(source.trainTypes) ? source.trainTypes : []).forEach((type) => {
+      const normalized = normalizeTrainType(type, numberStyles);
+      const key = normalized.name;
+      if (!normalized.name || seenTypes.has(key) || trainTypes.length >= MAX_TYPES) {
+        return;
+      }
+      seenTypes.add(key);
+      trainTypes.push(normalized);
+    });
+    const platforms = uniqueTokens(linesFrom(source.platforms));
+    const tracks = uniqueTokens(linesFrom(source.tracks));
+    const sectors = uniqueTokens(linesFrom(source.sectors), 40);
+    if (platforms.length === 0 || tracks.length === 0 || trainTypes.length === 0) {
+      return null;
+    }
+    return {
+      version: STATION_PROFILE_VERSION,
+      name: clean(source.name).slice(0, 80) || "Profil stanice",
+      platforms,
+      tracks,
+      sectors,
+      sectorRanges: uniqueTokens(linesFrom(source.sectorRanges), 80).filter((value2) => !sectors.some(
+        (sector) => sector.toLocaleLowerCase("cs-CZ") === value2.toLocaleLowerCase("cs-CZ")
+      )),
+      numberStyles,
+      trainTypes: [blankTrainType(), ...trainTypes]
+    };
+  };
+  var activeProfile = null;
+  var storage = () => {
+    try {
+      return globalThis.localStorage || null;
+    } catch {
+      return null;
+    }
+  };
+  var readStoredStationProfile = () => {
+    try {
+      const raw = storage()?.getItem(STATION_PROFILE_STORAGE_KEY);
+      return raw ? normalizeStationProfile(JSON.parse(raw)) : null;
+    } catch {
+      return null;
+    }
+  };
+  var getActiveStationProfile = () => {
+    if (!activeProfile) {
+      activeProfile = readStoredStationProfile() || createDefaultStationProfile();
+    }
+    return activeProfile;
+  };
+  var setActiveStationProfile = (value, { persist = true } = {}) => {
+    const next = normalizeStationProfile(value);
+    if (!next) {
+      return null;
+    }
+    activeProfile = next;
+    if (persist) {
+      try {
+        storage()?.setItem(
+          STATION_PROFILE_STORAGE_KEY,
+          JSON.stringify(next)
+        );
+      } catch {
+      }
+    }
+    return activeProfile;
+  };
+  var sectorAtoms = (label, profile = getActiveStationProfile()) => {
+    const value = cleanToken(label);
+    if (!value) {
+      return [];
+    }
+    const parts = value.split("-").filter(Boolean);
+    if (parts.length === 2) {
+      const from = profile.sectors.findIndex(
+        (sector) => sector.toLocaleLowerCase("cs-CZ") === parts[0].toLocaleLowerCase("cs-CZ")
+      );
+      const to = profile.sectors.findIndex(
+        (sector) => sector.toLocaleLowerCase("cs-CZ") === parts[1].toLocaleLowerCase("cs-CZ")
+      );
+      if (from !== -1 && to !== -1) {
+        const start = Math.min(from, to);
+        const end = Math.max(from, to);
+        return profile.sectors.slice(start, end + 1);
+      }
+    }
+    return [value];
+  };
+  var sectorsOverlap = (boardSector, departureSector, profile = getActiveStationProfile()) => {
+    const boardAtoms = sectorAtoms(boardSector, profile).map((sector) => sector.toLocaleLowerCase("cs-CZ"));
+    const departureAtoms = sectorAtoms(departureSector, profile).map((sector) => sector.toLocaleLowerCase("cs-CZ"));
+    return departureAtoms.some((sector) => boardAtoms.includes(sector));
+  };
+
   // src/platform/lenses.js
   var LENS_COLORS = Object.freeze({
     green: Object.freeze({
@@ -2487,28 +2737,6 @@
     return [colors[0], colors[1] || colors[0]];
   };
   var LENS_COLOR_STORAGE_KEY = "pragotron.board.lensColors.v1";
-  var readStoredLensColors = (storage2 = globalThis.sessionStorage) => {
-    try {
-      const raw = storage2?.getItem(LENS_COLOR_STORAGE_KEY);
-      if (!raw) {
-        return null;
-      }
-      return parseLensColors(JSON.parse(raw));
-    } catch {
-      return null;
-    }
-  };
-  var writeStoredLensColors = (colors, storage2 = globalThis.sessionStorage) => {
-    const parsed = parseLensColors(colors);
-    if (!parsed) {
-      return null;
-    }
-    try {
-      storage2?.setItem(LENS_COLOR_STORAGE_KEY, JSON.stringify(parsed));
-    } catch {
-    }
-    return parsed;
-  };
   var readLensColorOverride = (location = globalThis.location) => {
     try {
       const params = new URLSearchParams(location?.search || "");
@@ -2520,13 +2748,16 @@
       return null;
     }
   };
-  var readInitialLensColors = (location = globalThis.location, storage2 = globalThis.sessionStorage) => {
-    const override = readLensColorOverride(location);
-    if (override) {
-      writeStoredLensColors(override, storage2);
-      return override;
+  var clearStoredLensColors = (storage3) => {
+    try {
+      storage3?.removeItem(LENS_COLOR_STORAGE_KEY);
+    } catch {
     }
-    return readStoredLensColors(storage2);
+  };
+  var readInitialLensColors = (location = globalThis.location, storage3 = globalThis.sessionStorage) => {
+    const override = readLensColorOverride(location);
+    clearStoredLensColors(storage3);
+    return override;
   };
   var resolveColor = (setting, fallback) => {
     const candidates = [
@@ -2814,17 +3045,6 @@
       this.element.removeAttribute("aria-label");
     }
   };
-
-  // src/platform/departure-board.js
-  var createCatalogCards = (values) => values.map((value) => ({
-    key: value || "blank",
-    value,
-    background: "var(--flap-background)",
-    foreground: "var(--flap-foreground)"
-  }));
-  var TRACK_CARDS = createCatalogCards(DEPARTURE_TRACK_VALUES);
-  var PLATFORM_CARDS = createCatalogCards(DEPARTURE_PLATFORM_VALUES);
-  var SECTOR_CARDS = createCatalogCards(DEPARTURE_SECTOR_VALUES);
 
   // src/platform/runtime.js
   var readPath = (state, path) => {
@@ -3364,10 +3584,10 @@
 
   // src/platform/storage.js
   var LocalStorageAdapter = class {
-    constructor(key, storage2) {
+    constructor(key, storage3) {
       this.key = key;
-      if (storage2 !== void 0) {
-        this.storage = storage2;
+      if (storage3 !== void 0) {
+        this.storage = storage3;
         return;
       }
       try {
@@ -3494,9 +3714,9 @@
     const random = globalThis.crypto?.randomUUID?.();
     return `${prefix}-${random || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
   };
-  var getStorage = (storage2) => {
-    if (storage2 !== void 0) {
-      return storage2;
+  var getStorage = (storage3) => {
+    if (storage3 !== void 0) {
+      return storage3;
     }
     try {
       return globalThis.window?.localStorage || null;
@@ -3508,7 +3728,7 @@
     constructor({
       channelName = BOARD_TRANSPORT_CHANNEL,
       storageKey = BOARD_TRANSPORT_STORAGE_KEY,
-      storage: storage2,
+      storage: storage3,
       windowRef = globalThis.window,
       boardId = "",
       onLog = null
@@ -3517,7 +3737,7 @@
       this.boardId = typeof boardId === "string" ? boardId : "";
       this.onLog = typeof onLog === "function" ? onLog : null;
       this.storageKey = storageKey;
-      this.storage = getStorage(storage2);
+      this.storage = getStorage(storage3);
       this.window = windowRef;
       this.listeners = /* @__PURE__ */ new Set();
       this.seenMessages = /* @__PURE__ */ new Set();
@@ -3794,9 +4014,9 @@
     "track",
     "sector"
   ]);
-  var getSessionStorage = (storage2) => {
-    if (storage2 !== void 0) {
-      return storage2;
+  var getSessionStorage = (storage3) => {
+    if (storage3 !== void 0) {
+      return storage3;
     }
     try {
       return globalThis.window?.sessionStorage || null;
@@ -3818,23 +4038,29 @@
       normalized.sector
     ]);
   };
-  var identitiesMatch = (boardIdentity2, targetIdentity) => {
+  var identitiesMatch = (boardIdentity2, targetIdentity, profile = getActiveStationProfile()) => {
     const board2 = normalizeBoardIdentity(boardIdentity2);
     const target = normalizeBoardIdentity(targetIdentity);
     if (!target.platform || !target.track) {
       return false;
     }
-    return board2.platform === target.platform && board2.track === target.track && (!target.sector || board2.sector === target.sector);
+    if (board2.platform !== target.platform || board2.track !== target.track) {
+      return false;
+    }
+    if (!target.sector || !board2.sector) {
+      return true;
+    }
+    return sectorsOverlap(board2.sector, target.sector, profile);
   };
   var loadBoardIdentity = ({
     location = globalThis.window?.location,
     storage: storageOption,
     fallback = {}
   } = {}) => {
-    const storage2 = getSessionStorage(storageOption);
+    const storage3 = getSessionStorage(storageOption);
     let saved = {};
     try {
-      const raw = storage2?.getItem(BOARD_IDENTITY_STORAGE_KEY);
+      const raw = storage3?.getItem(BOARD_IDENTITY_STORAGE_KEY);
       saved = raw ? JSON.parse(raw) : {};
     } catch {
       saved = {};
@@ -3851,15 +4077,15 @@
       urlIdentity || saved || fallback
     );
     if (urlIdentity) {
-      saveBoardIdentity(identity, storage2);
+      saveBoardIdentity(identity, storage3);
     }
     return identity;
   };
   var saveBoardIdentity = (identity, storageOption) => {
-    const storage2 = getSessionStorage(storageOption);
+    const storage3 = getSessionStorage(storageOption);
     const normalized = normalizeBoardIdentity(identity);
     try {
-      storage2?.setItem(
+      storage3?.setItem(
         BOARD_IDENTITY_STORAGE_KEY,
         JSON.stringify(normalized)
       );
@@ -6549,13 +6775,13 @@
   var STORAGE_KEY = "pragotron.platformTable.state.v2";
   var LEGACY_STORAGE_KEY = "pragotron.platformTable.state.v1";
   var documentRef = document;
-  var storage = new LocalStorageAdapter(STORAGE_KEY);
+  var storage2 = new LocalStorageAdapter(STORAGE_KEY);
   var legacyStorage = new LocalStorageAdapter(LEGACY_STORAGE_KEY);
-  var currentState = storage.load();
+  var currentState = storage2.load();
   var legacyState = currentState ? null : legacyStorage.load();
   var savedState = currentState || legacyState || {};
   if (!currentState && legacyState) {
-    storage.save({
+    storage2.save({
       ...legacyState,
       version: 2
     });
@@ -6573,36 +6799,14 @@
   var heartbeatTimer = null;
   var commandQueue = Promise.resolve();
   var boardLensColors = readInitialLensColors();
-  var BOARD_LIGHTING_STORAGE_KEY = "pragotron.board.lighting.v1";
-  var readStoredLighting = () => {
+  var forgetSessionKey = (key) => {
     try {
-      const raw = window.sessionStorage.getItem(BOARD_LIGHTING_STORAGE_KEY);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") {
-        return null;
-      }
-      return {
-        lamps: parsed.lamps && typeof parsed.lamps === "object" ? parsed.lamps : null,
-        clockLight: parsed.clockLight && typeof parsed.clockLight === "object" ? parsed.clockLight : null
-      };
-    } catch {
-      return null;
-    }
-  };
-  var writeStoredLighting = (lightingState) => {
-    try {
-      window.sessionStorage.setItem(
-        BOARD_LIGHTING_STORAGE_KEY,
-        JSON.stringify(lightingState)
-      );
+      window.sessionStorage.removeItem(key);
     } catch {
     }
   };
-  var storedLighting = readStoredLighting();
-  var boardLightingCustom = Boolean(storedLighting);
+  forgetSessionKey("pragotron.board.lighting.v1");
+  var boardLightingCustom = false;
   var withBoardLensColors = (state) => {
     if (!boardLensColors || !state?.lenses?.lenses) {
       return state;
@@ -6650,46 +6854,30 @@
     const validStations = Array.isArray(state?.stations) && state.stations.length >= 2 && state.stations.slice(0, 2).every(
       (station) => typeof station === "string" && station.length <= 14
     );
-    return validStations && TRAIN_TYPES.some((type) => type.name === state.train) && parseDelayMinutes(state.delay) !== null && validTime;
+    return validStations && getActiveStationProfile().trainTypes.some(
+      (type) => type.name === state.train
+    ) && parseDelayMinutes(state.delay) !== null && validTime;
   };
   var audio = new SplitFlapAudio();
-  var BOARD_FLAP_TIMING_STORAGE_KEY = "pragotron.board.flapTiming.v1";
-  var readStoredFlapTiming = () => {
-    try {
-      const raw = window.sessionStorage.getItem(BOARD_FLAP_TIMING_STORAGE_KEY);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") {
-        return null;
-      }
-      return normalizeFlapTiming(parsed);
-    } catch {
-      return null;
-    }
-  };
-  var writeStoredFlapTiming = (timing) => {
-    try {
-      window.sessionStorage.setItem(
-        BOARD_FLAP_TIMING_STORAGE_KEY,
-        JSON.stringify(normalizeFlapTiming(timing))
-      );
-    } catch {
-    }
-  };
-  var storedFlapTiming = readStoredFlapTiming();
-  var boardFlapTimingCustom = storedFlapTiming !== null;
+  forgetSessionKey("pragotron.board.flapTiming.v1");
+  var boardFlapTimingCustom = false;
+  var storedStationProfile = readStoredStationProfile();
+  if (storedStationProfile) {
+    setActiveStationProfile(storedStationProfile, { persist: false });
+  }
   var board = createBoard({
     root: documentRef.querySelector(PLATFORM_TABLE_TEMPLATE.rootSelector),
     slots: PLATFORM_TABLE_TEMPLATE.slots,
     registry: createDefaultRegistry({ audio }),
     initialState: createEmptyDisplayState(),
-    flapTiming: storedFlapTiming || resolveBoardFlapTiming(
-      savedSettings?.flapTiming,
+    flapTiming: resolveBoardFlapTiming(
+      null,
       PLATFORM_FLAP_TIMING_DEFAULTS
     )
   });
+  if (storedStationProfile) {
+    board.getComponent("train")?.setTypes?.(storedStationProfile.trainTypes);
+  }
   var lensDisplay = board.getComponent("lenses");
   var lensActivationTimer = null;
   var lensActivationToken = 0;
@@ -6826,9 +7014,7 @@
   audio.bindUserActivation(screenElement || documentRef);
   var nightLighting = new NightLighting({
     root: screenElement,
-    clockBlock: documentRef.querySelector("#clockBlock"),
-    initialLamps: storedLighting?.lamps || savedSettings?.lamps || {},
-    initialClock: storedLighting?.clockLight || savedSettings?.clockLight || NIGHT_CLOCK_DEFAULTS
+    clockBlock: documentRef.querySelector("#clockBlock")
   }).mount();
   var analogClock = new AnalogClock(
     documentRef.querySelector("#pragotronAnalogClock")
@@ -6843,12 +7029,12 @@
     analogClock.transitionNightMode();
   };
   var persistNightModeState = () => {
-    const currentState2 = storage.load() || {};
+    const currentState2 = storage2.load() || {};
     const modeState = {
       nightMode: nightLighting.isNightMode(),
       autoNightMode: automaticNightMode
     };
-    storage.save({
+    storage2.save({
       ...currentState2,
       ...modeState,
       settings: {
@@ -6890,14 +7076,25 @@
     }
   };
   documentRef.addEventListener("visibilitychange", handleVisibilityChange);
+  var applyStationProfile = (value) => {
+    const profile = setActiveStationProfile(value);
+    if (profile) {
+      board.getComponent("train")?.setTypes?.(profile.trainTypes);
+    }
+    return profile;
+  };
   var applySettings = ({
     lamps,
     clockLight,
     nightMode,
     autoNightMode,
     flapTiming,
-    delayOffset: nextDelayOffset
+    delayOffset: nextDelayOffset,
+    stationProfile
   } = {}) => {
+    if (stationProfile) {
+      applyStationProfile(stationProfile);
+    }
     if (flapTiming && !boardFlapTimingCustom) {
       board.setFlapTiming(resolveBoardFlapTiming(
         flapTiming,
@@ -7074,7 +7271,6 @@
       if (isFlapTimingAction) {
         const nextTiming = board.setFlapTiming(flapTiming);
         boardFlapTimingCustom = true;
-        writeStoredFlapTiming(nextTiming);
         acknowledge(message, {
           ok: true,
           flapTiming: nextTiming
@@ -7090,10 +7286,6 @@
           nightLighting.setClockLight(clockLight);
         }
         boardLightingCustom = true;
-        writeStoredLighting({
-          lamps: nightLighting.getLampSettings(),
-          clockLight: nightLighting.getClockSettings()
-        });
         acknowledge(message, {
           ok: true,
           lamps: nightLighting.getLampSettings(),
@@ -7103,7 +7295,7 @@
         return;
       }
       if (isLensColorAction) {
-        const parsed = writeStoredLensColors(colors) || parseLensColors(colors);
+        const parsed = parseLensColors(colors);
         if (!parsed) {
           throw new Error("Neplatn\xE1 barva \u010Do\u010Dek.");
         }
@@ -7158,6 +7350,12 @@
     }
   };
   transport.subscribe((message) => {
+    if (message.type === "station-profile") {
+      applyStationProfile(
+        message.payload?.stationProfile || message.payload
+      );
+      return;
+    }
     if (message.type === "manage:hello" || message.type === "manage:discover") {
       publishReady();
       return;
@@ -7172,15 +7370,12 @@
     }
     if (message.type === "board:settings") {
       applySettings(message.payload);
+      publishHeartbeat();
     }
   });
   applySettings({
     nightMode: savedSettings?.nightMode === true,
     autoNightMode: automaticNightMode,
-    flapTiming: resolveBoardFlapTiming(
-      savedSettings?.flapTiming,
-      PLATFORM_FLAP_TIMING_DEFAULTS
-    ),
     delayOffset
   });
   publishReady();

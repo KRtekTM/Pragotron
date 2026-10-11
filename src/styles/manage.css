@@ -115,6 +115,260 @@
     margin: 0;
 }
 
+#stationProfilePanel {
+    margin: 0 0 1rem;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 1rem;
+    background: #222;
+}
+
+#stationProfilePanel .board-form-field input,
+#stationProfilePanel .board-form-field select,
+#stationProfilePanel .board-form-field textarea {
+    width: 100%;
+    min-height: 2.4rem;
+    padding: 0.45rem 0.6rem;
+    box-sizing: border-box;
+    border: 1px solid #999;
+    border-radius: var(--control-radius);
+    background: #fff;
+    color: #111;
+    font: inherit;
+}
+
+#stationProfilePanel .board-form-field textarea {
+    min-height: 7.5rem;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+#stationProfilePanel .board-form-field small,
+#stationProfilePanel .station-profile-help {
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.82rem;
+}
+
+#stationProfilePanel .station-profile-help {
+    margin: 0 0 0.8rem;
+}
+
+#stationProfilePanel .station-profile-button {
+    padding: 0.55rem 0.9rem;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+#stationProfilePanel .station-profile-button:hover {
+    background: #fff;
+}
+
+#stationProfilePanel button:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+}
+
+#stationProfilePanel button:focus-visible,
+#stationProfilePanel input:focus,
+#stationProfilePanel select:focus,
+#stationProfilePanel textarea:focus {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 2px;
+}
+
+.station-profile-section {
+    margin-top: 1rem;
+    padding: 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 1rem;
+    background: #181818;
+}
+
+.station-profile-section h3 {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.station-profile-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+}
+
+.station-profile-section.is-collapsed > :not(.station-profile-section-heading) {
+    display: none;
+}
+
+.station-profile-section.is-collapsed > .station-profile-section-heading {
+    margin-bottom: 0;
+}
+
+#manage .station-profile-section.is-collapsed > .station-profile-section-heading .manage-block-mark::after {
+    content: '';
+}
+
+.station-profile-lists {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+}
+
+.station-profile-style,
+.station-profile-type {
+    margin-top: 0.65rem;
+    padding: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: var(--control-radius);
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.station-profile-style {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.station-profile-style-side {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.station-profile-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    margin-left: auto;
+}
+
+#stationProfilePanel .station-profile-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    padding: 0;
+}
+
+#stationProfilePanel .station-profile-icon-button img {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+.station-profile-style .board-form-grid {
+    grid-template-columns: 1fr 1fr;
+}
+
+.station-profile-type-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem;
+    cursor: pointer;
+}
+
+.station-profile-type-identity {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.station-profile-type-identity strong,
+.station-profile-type-identity span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.station-profile-type-identity span {
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.82rem;
+}
+
+.station-profile-type-summary button {
+    flex: 0 0 auto;
+}
+
+#stationProfilePanel .station-profile-type-body {
+    display: none;
+    margin-top: 0.75rem;
+}
+
+#stationProfilePanel .station-profile-type.is-open .station-profile-type-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+
+.station-profile-wide {
+    grid-column: 1 / -1;
+}
+
+.station-profile-swatch,
+.station-profile-flap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: var(--control-radius);
+    font-weight: 700;
+    line-height: 1;
+    overflow: hidden;
+}
+
+.station-profile-swatch {
+    width: 4.6rem;
+    min-width: 4.6rem;
+    height: 2.4rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.station-profile-type.is-filtered {
+    display: none;
+}
+
+.station-profile-flap {
+    flex: 0 0 auto;
+    min-width: 3.4rem;
+    max-width: 6.5rem;
+    height: 2.4rem;
+    padding: 0 0.4rem;
+}
+
+.station-profile-flap img {
+    display: block;
+    max-width: 4.8rem;
+    max-height: 1.5rem;
+    object-fit: contain;
+}
+
+.station-profile-flap small {
+    font-size: 0.62rem;
+    font-weight: 700;
+}
+
+.station-profile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 1rem;
+}
+
 #liveDeparturesPanel {
     margin-top: 1rem;
     padding: 1rem;
@@ -622,17 +876,126 @@
 }
 
 .log-output {
-    max-height: 18rem;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+    max-height: 22rem;
     margin: 0;
-    padding: 0.7rem 0.8rem;
+    padding: 0.75rem;
     overflow: auto;
     border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 0.5rem;
-    background: #181818;
+    border-radius: 0.85rem;
+    background: #141414;
     color: #e6e6e6;
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+.log-bubble {
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+}
+
+.log-bubble-in,
+.log-bubble-out {
+    width: fit-content;
+    max-width: 92%;
+    padding: 0.45rem 0.7rem 0.4rem;
+}
+
+.log-bubble-in {
+    align-self: flex-start;
+    border-radius: 0.95rem 0.95rem 0.95rem 0.28rem;
+    background: #33383e;
+    color: #f3f4f6;
+}
+
+.log-bubble-out {
+    align-self: flex-end;
+    border-radius: 0.95rem 0.95rem 0.28rem 0.95rem;
+    background: #1f6feb;
+    color: #fff;
+}
+
+.log-bubble-system {
+    align-self: center;
+    max-width: 100%;
+    padding: 0.15rem 0.35rem;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 0.72rem;
+    text-align: center;
+}
+
+.log-bubble-system-line,
+.log-bubble-system-note,
+.log-bubble-sender,
+.log-bubble-text {
+    margin: 0;
+}
+
+.log-bubble-system-note {
+    color: rgba(255, 255, 255, 0.42);
+}
+
+.log-bubble-sender {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.log-bubble-text {
+    margin-top: 0.12rem;
+}
+
+.log-bubble-foot {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.28rem;
+}
+
+.log-bubble-time {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.68rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: help;
+    opacity: 0.72;
+}
+
+.log-bubble-system .log-bubble-time {
+    margin-left: 0;
+    font-size: inherit;
+    cursor: help;
+    opacity: 1;
+}
+
+.log-bubble-data {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-top: 0;
+}
+
+.log-bubble-data summary {
+    cursor: pointer;
+    font-size: 0.72rem;
+    opacity: 0.78;
+}
+
+.log-bubble-data summary:hover {
+    opacity: 1;
+}
+
+.log-bubble-body {
+    max-height: 12rem;
+    margin: 0.35rem 0 0;
+    overflow: auto;
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-    font-size: 0.75rem;
-    line-height: 1.4;
+    font-size: 0.68rem;
+    line-height: 1.35;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
@@ -716,6 +1079,11 @@
     flex-direction: column;
     gap: 0.12rem;
     min-width: 0;
+}
+
+.active-board-client {
+    font-weight: 700;
+    overflow-wrap: anywhere;
 }
 
 .active-board-connection {
@@ -1224,6 +1592,7 @@ body.manage-night-mode .board-settings-dialog .board-form-field small {
     background: #dedede;
     color: #111;
     font-size: 0.8rem !important;
+    border-radius: var(--control-radius);
 }
 
 .departure-row-actions button:hover {
@@ -1365,6 +1734,8 @@ body.manage-night-mode #manage #boardForm > fieldset,
 body.manage-night-mode #manage #boardForm .lamp-settings,
 #skrin.night-mode ~ #manage #liveDeparturesPanel,
 body.manage-night-mode #liveDeparturesPanel,
+#skrin.night-mode ~ #manage #stationProfilePanel,
+body.manage-night-mode #stationProfilePanel,
 #skrin.night-mode ~ #manage .manage-side-column > .manage-panel,
 body.manage-night-mode #manage .manage-side-column > .manage-panel {
     border-color: #3f464d;
@@ -1374,8 +1745,13 @@ body.manage-night-mode #manage .manage-side-column > .manage-panel {
 #skrin.night-mode ~ #manage .log-output,
 body.manage-night-mode #manage .log-output {
     border-color: #3f464d;
-    background: #111417;
+    background: #0e1216;
     color: #f0f2f4;
+}
+
+#skrin.night-mode ~ #manage .log-bubble-in,
+body.manage-night-mode #manage .log-bubble-in {
+    background: #2a3138;
 }
 
 #skrin.night-mode ~ #manage #boardForm .lamp-control,
@@ -1394,6 +1770,16 @@ body.manage-night-mode #departureDelayOffsetPanel,
 body.manage-night-mode #departureBoardLogoPanel {
     border-color: #3f464d;
     background: #171a1e;
+}
+
+#skrin.night-mode ~ #manage #stationProfilePanel .station-profile-section,
+body.manage-night-mode #stationProfilePanel .station-profile-section,
+#skrin.night-mode ~ #manage #stationProfilePanel .station-profile-style,
+body.manage-night-mode #stationProfilePanel .station-profile-style,
+#skrin.night-mode ~ #manage #stationProfilePanel .station-profile-type,
+body.manage-night-mode #stationProfilePanel .station-profile-type {
+    border-color: #3f464d;
+    background: #111417;
 }
 
 #skrin.night-mode ~ #manage #boardForm .board-logo-option,
@@ -1417,7 +1803,13 @@ body.manage-night-mode #manage #boardForm .lens-settings select,
 #skrin.night-mode ~ #manage #liveDeparturesPanel input,
 body.manage-night-mode #liveDeparturesPanel input,
 #skrin.night-mode ~ #manage #departureBoardLogoSvg,
-body.manage-night-mode #departureBoardLogoSvg {
+body.manage-night-mode #departureBoardLogoSvg,
+#skrin.night-mode ~ #manage #stationProfilePanel input,
+#skrin.night-mode ~ #manage #stationProfilePanel textarea,
+#skrin.night-mode ~ #manage #stationProfilePanel select,
+body.manage-night-mode #stationProfilePanel input,
+body.manage-night-mode #stationProfilePanel textarea,
+body.manage-night-mode #stationProfilePanel select {
     border-color: #59636d;
     background: #272d33;
     color: #f0f2f4;
@@ -1429,10 +1821,19 @@ body.manage-night-mode #departureBoardLogoSvg {
 body.manage-night-mode #manage #boardForm button,
 body.manage-night-mode #manage #boardForm .auto-night-toggle,
 #skrin.night-mode ~ #manage #liveDeparturesPanel button,
-body.manage-night-mode #liveDeparturesPanel button {
+body.manage-night-mode #liveDeparturesPanel button,
+#skrin.night-mode ~ #manage #stationProfilePanel button,
+body.manage-night-mode #stationProfilePanel button {
     border-color: #626d77;
     background: #30363d;
     color: #f0f2f4;
+}
+
+#skrin.night-mode ~ #manage #stationProfilePanel .station-profile-icon-button,
+body.manage-night-mode #stationProfilePanel .station-profile-icon-button {
+    width: 2.4rem;
+    height: 2.4rem;
+    padding: 0;
 }
 
 #skrin.night-mode ~ #manage #boardForm button:hover,
@@ -1440,7 +1841,9 @@ body.manage-night-mode #liveDeparturesPanel button {
 body.manage-night-mode #manage #boardForm button:hover,
 body.manage-night-mode #manage #boardForm .auto-night-toggle:hover,
 #skrin.night-mode ~ #manage #liveDeparturesPanel button:hover,
-body.manage-night-mode #liveDeparturesPanel button:hover {
+body.manage-night-mode #liveDeparturesPanel button:hover,
+#skrin.night-mode ~ #manage #stationProfilePanel button:hover,
+body.manage-night-mode #stationProfilePanel button:hover {
     background: #424b54;
 }
 
@@ -1451,7 +1854,11 @@ body.manage-night-mode #manage #boardForm .manage-block-toggle:hover,
 #skrin.night-mode ~ #manage #liveDeparturesPanel .manage-block-toggle,
 #skrin.night-mode ~ #manage #liveDeparturesPanel .manage-block-toggle:hover,
 body.manage-night-mode #liveDeparturesPanel .manage-block-toggle,
-body.manage-night-mode #liveDeparturesPanel .manage-block-toggle:hover {
+body.manage-night-mode #liveDeparturesPanel .manage-block-toggle:hover,
+#skrin.night-mode ~ #manage #stationProfilePanel .manage-block-toggle,
+#skrin.night-mode ~ #manage #stationProfilePanel .manage-block-toggle:hover,
+body.manage-night-mode #stationProfilePanel .manage-block-toggle,
+body.manage-night-mode #stationProfilePanel .manage-block-toggle:hover {
     padding: 0;
     border: 0;
     background: transparent;
@@ -1466,7 +1873,13 @@ body.manage-night-mode #manage #boardForm .flap-timing-help,
 #skrin.night-mode ~ #manage #departureDelayOffsetPanel .flap-timing-help,
 body.manage-night-mode #departureDelayOffsetPanel .flap-timing-help,
 #skrin.night-mode ~ #manage #departureBoardLogoPanel .flap-timing-help,
-body.manage-night-mode #departureBoardLogoPanel .flap-timing-help {
+body.manage-night-mode #departureBoardLogoPanel .flap-timing-help,
+#skrin.night-mode ~ #manage #stationProfilePanel .station-profile-help,
+body.manage-night-mode #stationProfilePanel .station-profile-help,
+#skrin.night-mode ~ #manage #stationProfilePanel .board-form-field small,
+body.manage-night-mode #stationProfilePanel .board-form-field small,
+#skrin.night-mode ~ #manage #stationProfilePanel .station-profile-type-identity span,
+body.manage-night-mode #stationProfilePanel .station-profile-type-identity span {
     color: #aeb5bc;
 }
 
@@ -1592,7 +2005,10 @@ body.manage-night-mode #manage #departuresTable th {
     .lamp-controls,
     .lens-component-controls,
     .board-timing-panels,
-    .board-settings-dialog .flap-timing-controls {
+    .board-settings-dialog .flap-timing-controls,
+    .station-profile-lists,
+    .station-profile-style .board-form-grid,
+    #stationProfilePanel .station-profile-type.is-open .station-profile-type-body {
         grid-template-columns: 1fr;
     }
 

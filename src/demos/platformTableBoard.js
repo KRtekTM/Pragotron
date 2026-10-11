@@ -1,5 +1,4 @@
 import {
-    NIGHT_CLOCK_DEFAULTS,
     AnalogClock,
     BoardTransport,
     getBoardIdentityKey,
@@ -18,14 +17,14 @@ import {
     getEffectiveDepartureDate,
     DELAY_OFFSET_DEFAULT,
     normalizeDelayOffset,
-    normalizeFlapTiming,
     PLATFORM_FLAP_TIMING_DEFAULTS,
     resolveBoardFlapTiming,
     parseDelayMinutes,
     parseLensColors,
     readInitialLensColors,
-    writeStoredLensColors,
-    TRAIN_TYPES
+    getActiveStationProfile,
+    readStoredStationProfile,
+    setActiveStationProfile
 } from '../platform/index.js';
 import { PLATFORM_TABLE_TEMPLATE } from '../templates/platformTable.js';
 
@@ -56,44 +55,17 @@ let delayOffset = normalizeDelayOffset(
 let heartbeatTimer = null;
 let commandQueue = Promise.resolve();
 let boardLensColors = readInitialLensColors();
-const BOARD_LIGHTING_STORAGE_KEY = 'pragotron.board.lighting.v1';
 
-const readStoredLighting = () => {
+const forgetSessionKey = (key) => {
     try {
-        const raw = window.sessionStorage.getItem(BOARD_LIGHTING_STORAGE_KEY);
-        if (!raw) {
-            return null;
-        }
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') {
-            return null;
-        }
-        return {
-            lamps: parsed.lamps && typeof parsed.lamps === 'object'
-                ? parsed.lamps
-                : null,
-            clockLight: parsed.clockLight && typeof parsed.clockLight === 'object'
-                ? parsed.clockLight
-                : null
-        };
+        window.sessionStorage.removeItem(key);
     } catch {
-        return null;
+        // A missing store still starts from the default for this page view.
     }
 };
 
-const writeStoredLighting = (lightingState) => {
-    try {
-        window.sessionStorage.setItem(
-            BOARD_LIGHTING_STORAGE_KEY,
-            JSON.stringify(lightingState)
-        );
-    } catch {
-        // The board can still keep the lights for this page view.
-    }
-};
-
-const storedLighting = readStoredLighting();
-let boardLightingCustom = Boolean(storedLighting);
+forgetSessionKey('pragotron.board.lighting.v1');
+let boardLightingCustom = false;
 
 const withBoardLensColors = (state) => {
     if (!boardLensColors || !state?.lenses?.lenses) {
@@ -163,53 +135,34 @@ const isValidBoardState = (state) => {
             (station) => typeof station === 'string' && station.length <= 14
         );
     return validStations
-        && TRAIN_TYPES.some((type) => type.name === state.train)
+        && getActiveStationProfile().trainTypes.some((type) =>
+            type.name === state.train
+        )
         && parseDelayMinutes(state.delay) !== null
         && validTime;
 };
 
 const audio = new SplitFlapAudio();
-const BOARD_FLAP_TIMING_STORAGE_KEY = 'pragotron.board.flapTiming.v1';
+forgetSessionKey('pragotron.board.flapTiming.v1');
+let boardFlapTimingCustom = false;
+const storedStationProfile = readStoredStationProfile();
+if (storedStationProfile) {
+    setActiveStationProfile(storedStationProfile, { persist: false });
+}
 
-const readStoredFlapTiming = () => {
-    try {
-        const raw = window.sessionStorage.getItem(BOARD_FLAP_TIMING_STORAGE_KEY);
-        if (!raw) {
-            return null;
-        }
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') {
-            return null;
-        }
-        return normalizeFlapTiming(parsed);
-    } catch {
-        return null;
-    }
-};
-
-const writeStoredFlapTiming = (timing) => {
-    try {
-        window.sessionStorage.setItem(
-            BOARD_FLAP_TIMING_STORAGE_KEY,
-            JSON.stringify(normalizeFlapTiming(timing))
-        );
-    } catch {
-        // The board can still keep the timing for this page view.
-    }
-};
-
-const storedFlapTiming = readStoredFlapTiming();
-let boardFlapTimingCustom = storedFlapTiming !== null;
 const board = createBoard({
     root: documentRef.querySelector(PLATFORM_TABLE_TEMPLATE.rootSelector),
     slots: PLATFORM_TABLE_TEMPLATE.slots,
     registry: createDefaultRegistry({ audio }),
     initialState: createEmptyDisplayState(),
-    flapTiming: storedFlapTiming || resolveBoardFlapTiming(
-        savedSettings?.flapTiming,
+    flapTiming: resolveBoardFlapTiming(
+        null,
         PLATFORM_FLAP_TIMING_DEFAULTS
     )
 });
+if (storedStationProfile) {
+    board.getComponent('train')?.setTypes?.(storedStationProfile.trainTypes);
+}
 
 const lensDisplay = board.getComponent('lenses');
 let lensActivationTimer = null;
@@ -374,11 +327,7 @@ const screenElement = documentRef.querySelector('#skrin');
 audio.bindUserActivation(screenElement || documentRef);
 const nightLighting = new NightLighting({
     root: screenElement,
-    clockBlock: documentRef.querySelector('#clockBlock'),
-    initialLamps: storedLighting?.lamps || savedSettings?.lamps || {},
-    initialClock: storedLighting?.clockLight
-        || savedSettings?.clockLight
-        || NIGHT_CLOCK_DEFAULTS
+    clockBlock: documentRef.querySelector('#clockBlock')
 }).mount();
 
 const analogClock = new AnalogClock(
@@ -452,14 +401,26 @@ const handleVisibilityChange = () => {
 };
 documentRef.addEventListener('visibilitychange', handleVisibilityChange);
 
+const applyStationProfile = (value) => {
+    const profile = setActiveStationProfile(value);
+    if (profile) {
+        board.getComponent('train')?.setTypes?.(profile.trainTypes);
+    }
+    return profile;
+};
+
 const applySettings = ({
     lamps,
     clockLight,
     nightMode,
     autoNightMode,
     flapTiming,
-    delayOffset: nextDelayOffset
+    delayOffset: nextDelayOffset,
+    stationProfile
 } = {}) => {
+    if (stationProfile) {
+        applyStationProfile(stationProfile);
+    }
     if (flapTiming && !boardFlapTimingCustom) {
         board.setFlapTiming(resolveBoardFlapTiming(
             flapTiming,
@@ -666,7 +627,6 @@ const handleCommand = async (message) => {
         if (isFlapTimingAction) {
             const nextTiming = board.setFlapTiming(flapTiming);
             boardFlapTimingCustom = true;
-            writeStoredFlapTiming(nextTiming);
             acknowledge(message, {
                 ok: true,
                 flapTiming: nextTiming
@@ -683,10 +643,6 @@ const handleCommand = async (message) => {
                 nightLighting.setClockLight(clockLight);
             }
             boardLightingCustom = true;
-            writeStoredLighting({
-                lamps: nightLighting.getLampSettings(),
-                clockLight: nightLighting.getClockSettings()
-            });
             acknowledge(message, {
                 ok: true,
                 lamps: nightLighting.getLampSettings(),
@@ -697,7 +653,7 @@ const handleCommand = async (message) => {
         }
 
         if (isLensColorAction) {
-            const parsed = writeStoredLensColors(colors) || parseLensColors(colors);
+            const parsed = parseLensColors(colors);
             if (!parsed) {
                 throw new Error('Neplatná barva čoček.');
             }
@@ -762,6 +718,13 @@ const handleCommand = async (message) => {
 };
 
 transport.subscribe((message) => {
+    if (message.type === 'station-profile') {
+        applyStationProfile(
+            message.payload?.stationProfile || message.payload
+        );
+        return;
+    }
+
     if (message.type === 'manage:hello'
         || message.type === 'manage:discover') {
         publishReady();
@@ -785,16 +748,13 @@ transport.subscribe((message) => {
 
     if (message.type === 'board:settings') {
         applySettings(message.payload);
+        publishHeartbeat();
     }
 });
 
 applySettings({
     nightMode: savedSettings?.nightMode === true,
     autoNightMode: automaticNightMode,
-    flapTiming: resolveBoardFlapTiming(
-        savedSettings?.flapTiming,
-        PLATFORM_FLAP_TIMING_DEFAULTS
-    ),
     delayOffset
 });
 publishReady();

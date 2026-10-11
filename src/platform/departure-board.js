@@ -1,22 +1,24 @@
 import {
     DEPARTURE_BOARD_ROW_COUNT_DEFAULT,
-    DEPARTURE_PLATFORM_VALUES,
-    DEPARTURE_SECTOR_VALUES,
-    DEPARTURE_TRACK_VALUES,
     DELAY_OFFSET_DEFAULT,
     FLAP_TIMING_DEFAULTS,
-    TRAIN_NUMBER_FLAP_CARDS,
-    TRAIN_TYPES,
     compareDeparturesByTime,
     formatStationName,
-    resolveCanonicalTrainType,
-    getTrainNumberCardStyle,
     normalizeDelayOffset,
     normalizeDepartureBoardRowCount,
     normalizeFlapTiming,
     parseDelayMinutes
 } from './data.js';
 import { SplitFlapAudio } from './audio.js';
+import {
+    createCatalogCards,
+    createTrainNumberCards,
+    getActiveStationProfile,
+    matchProfileValue,
+    profileSectorValues,
+    resolveProfileTrainType,
+    trainNumberStyleId
+} from './station-profile.js';
 import { nextFlapDeadline, scheduleFlapStepAt } from './flap-clock.js';
 import {
     DelayFlapDisplay,
@@ -87,17 +89,6 @@ const clearTimer = (owner, property) => {
 };
 
 
-const createCatalogCards = (values) => values.map((value) => ({
-    key: value || 'blank',
-    value,
-    background: 'var(--flap-background)',
-    foreground: 'var(--flap-foreground)'
-}));
-
-const TRACK_CARDS = createCatalogCards(DEPARTURE_TRACK_VALUES);
-const PLATFORM_CARDS = createCatalogCards(DEPARTURE_PLATFORM_VALUES);
-const SECTOR_CARDS = createCatalogCards(DEPARTURE_SECTOR_VALUES);
-
 const findCard = (cards, key) =>
     cards.find((card) => card.key === key) || cards[0];
 
@@ -138,20 +129,6 @@ const toIdentificationLensState = (value) => {
     };
 };
 
-const findCatalogValue = (values, value) => {
-    const raw = String(value ?? '').trim();
-    if (!raw) {
-        return '';
-    }
-
-    return values.find((candidate) => candidate === raw)
-        || values.find((candidate) =>
-            candidate.toLocaleLowerCase('cs-CZ')
-            === raw.toLocaleLowerCase('cs-CZ')
-        )
-        || '';
-};
-
 const normalizeDepartureTime = (value) => {
     if (value && typeof value === 'object') {
         const hours = Number(value.hours);
@@ -188,16 +165,11 @@ const normalizeDeparture = (value) => {
         track: source.target?.track || source.track,
         sector: source.target?.sector || source.sector
     };
-    const track = findCatalogValue(
-        DEPARTURE_TRACK_VALUES,
-        target.track
-    );
-    target.platform = findCatalogValue(
-        DEPARTURE_PLATFORM_VALUES,
-        target.platform
-    );
-    const sector = findCatalogValue(
-        DEPARTURE_SECTOR_VALUES,
+    const profile = getActiveStationProfile();
+    const track = matchProfileValue(profile.tracks, target.track);
+    target.platform = matchProfileValue(profile.platforms, target.platform);
+    const sector = matchProfileValue(
+        profileSectorValues(profile),
         target.sector
     );
     const departureTime = normalizeDepartureTime(source.departureTime);
@@ -221,15 +193,7 @@ const normalizeDeparture = (value) => {
                     || ''
             )
         ],
-        train: (() => {
-            const resolved = resolveCanonicalTrainType(
-                source.train,
-                source.operator
-            );
-            return TRAIN_TYPES.some((type) => type.name === resolved)
-                ? resolved
-                : '';
-        })(),
+        train: resolveProfileTrainType(source.train, source.operator),
         trainNumber: /^\d{1,4}$/.test(String(source.trainNumber || ''))
             ? String(source.trainNumber)
             : '',
@@ -322,9 +286,9 @@ export class CatalogFlapDisplay {
         element,
         cards,
         {
-            audio = new SplitFlapAudio(),
+            audio = null,
             timing = FLAP_TIMING_DEFAULTS,
-            ownsAudio = audio instanceof SplitFlapAudio
+            ownsAudio = null
         } = {}
     ) {
         if (!element || !Array.isArray(cards) || cards.length === 0) {
@@ -333,8 +297,8 @@ export class CatalogFlapDisplay {
 
         this.element = element;
         this.cards = cards;
-        this.audio = audio;
-        this.ownsAudio = ownsAudio;
+        this.audio = audio || new SplitFlapAudio();
+        this.ownsAudio = ownsAudio ?? !audio;
         this.timing = normalizeFlapTiming(timing);
         this.currentIndex = 0;
         this.targetIndex = 0;
@@ -350,17 +314,35 @@ export class CatalogFlapDisplay {
         return { ...this.timing };
     }
 
+    setCards(cards) {
+        if (!Array.isArray(cards) || cards.length === 0) {
+            return this.cards;
+        }
+
+        const current = this.cards[this.currentIndex];
+        this.cards = cards;
+        const byKey = this.cards.findIndex((card) => card.key === current?.key);
+        const nextIndex = byKey !== -1
+            ? byKey
+            : this.cards.findIndex((card) =>
+                card.value !== '' && card.value === current?.value
+            );
+        const index = nextIndex === -1 ? 0 : nextIndex;
+        this.sequence += 1;
+        clearTimer(this, 'timer');
+        clearFlapAnimation(this.element);
+        this.currentIndex = index;
+        this.targetIndex = index;
+        this.render(this.cards[index], this.cards[index]);
+        return this.cards;
+    }
+
     indexFor(value) {
         const key = value && typeof value === 'object'
             ? value.key
             : String(value ?? '') || 'blank';
         const index = this.cards.findIndex((card) => card.key === key);
-
-        if (index === -1) {
-            throw new RangeError(`Hodnota "${value}" není v katalogu klapky.`);
-        }
-
-        return index;
+        return index === -1 ? 0 : index;
     }
 
     ensureFaces() {
@@ -515,6 +497,7 @@ export class TrainNumberDisplay {
         this.timing = normalizeFlapTiming(timing);
         this.element.classList.add('train-number-display');
         this.element.replaceChildren();
+        this.cards = createTrainNumberCards();
 
         for (let index = 0; index < 4; index += 1) {
             const slotElement = document.createElement('span');
@@ -522,7 +505,7 @@ export class TrainNumberDisplay {
             this.element.appendChild(slotElement);
             this.slots.push(new CatalogFlapDisplay(
                 slotElement,
-                TRAIN_NUMBER_FLAP_CARDS,
+                this.cards,
                 {
                     audio,
                     timing: this.timing,
@@ -538,19 +521,24 @@ export class TrainNumberDisplay {
         return { ...this.timing };
     }
 
+    setProfile(profile = getActiveStationProfile()) {
+        this.cards = createTrainNumberCards(profile);
+        this.slots.forEach((slot) => slot.setCards(this.cards));
+        return this.cards;
+    }
+
     targetCards(value = {}) {
         const number = String(value.number ?? value.trainNumber ?? '')
             .replace(/\D/g, '')
             .slice(-4)
             .padStart(4, ' ');
-        const style = getTrainNumberCardStyle(value.train);
+        const style = trainNumberStyleId(value.train);
+        const cards = this.cards || createTrainNumberCards();
 
         return Array.from(number, (digit) => digit === ' '
-            ? findCard(TRAIN_NUMBER_FLAP_CARDS, 'blank')
-            : findCard(
-                TRAIN_NUMBER_FLAP_CARDS,
-                `${style}-${digit}`
-            ));
+            ? findCard(cards, 'blank')
+            : findCard(cards, `${style}-${digit}`)
+        );
     }
 
     set(value) {
@@ -636,19 +624,20 @@ export class DepartureBoardRow {
                 applyDelayOffset
             }
         );
+        const profile = getActiveStationProfile();
         this.platform = new CatalogFlapDisplay(
             element.querySelector('[data-departure-slot="platform"]'),
-            PLATFORM_CARDS,
+            createCatalogCards(profile.platforms),
             { audio, timing: this.timing, ownsAudio: false }
         );
         this.track = new CatalogFlapDisplay(
             element.querySelector('[data-departure-slot="track"]'),
-            TRACK_CARDS,
+            createCatalogCards(profile.tracks),
             { audio, timing: this.timing, ownsAudio: false }
         );
         this.sector = new CatalogFlapDisplay(
             element.querySelector('[data-departure-slot="sector"]'),
-            SECTOR_CARDS,
+            createCatalogCards(profileSectorValues(profile)),
             { audio, timing: this.timing, ownsAudio: false }
         );
         this.lenses = new LensDisplay(
@@ -680,6 +669,14 @@ export class DepartureBoardRow {
         this.timing = normalizeFlapTiming(timing);
         this.components.forEach((component) => component.setTiming?.(this.timing));
         return { ...this.timing };
+    }
+
+    applyStationProfile(profile = getActiveStationProfile()) {
+        this.train.setTypes(profile.trainTypes);
+        this.trainNumber.setProfile(profile);
+        this.platform.setCards(createCatalogCards(profile.platforms));
+        this.track.setCards(createCatalogCards(profile.tracks));
+        this.sector.setCards(createCatalogCards(profileSectorValues(profile)));
     }
 
     setDelayOffset(enabled) {
@@ -874,6 +871,11 @@ export class DepartureBoardDisplay {
         this.identificationActive = false;
         this.root.setAttribute('aria-busy', 'false');
         this.setRowCount(rowCount);
+        this.applyStationProfile(getActiveStationProfile());
+    }
+
+    applyStationProfile(profile = getActiveStationProfile()) {
+        this.rows.forEach((row) => row.applyStationProfile(profile));
     }
 
     setTiming(timing) {
@@ -945,14 +947,16 @@ export class DepartureBoardDisplay {
             const index = this.rows.length;
             const element = createDepartureRowElement(index);
             container.appendChild(element);
-            this.rows.push(new DepartureBoardRow(element, {
+            const row = new DepartureBoardRow(element, {
                 audio: this.audio,
                 timing: this.timing,
                 rowIndex: index,
                 applyDelayOffset: this.applyDelayOffset,
                 lensColorTemplate: this.lensSettings,
                 synchronizeRows: this.synchronizeRows
-            }));
+            });
+            row.applyStationProfile(getActiveStationProfile());
+            this.rows.push(row);
             this.displayedRows.push(null);
             this.targetRows.push(null);
         }

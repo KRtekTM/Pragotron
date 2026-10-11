@@ -178,40 +178,19 @@ const normalizeVolume = (value) => {
     return Math.min(100, Math.max(0, Math.round(numeric)));
 };
 
-const readStoredMute = () => {
+// A previous visit must not keep playing after reload while manage shows
+// the default. Drop both keys even when this document cannot write them.
+const forgetStoredAudioLevel = () => {
     try {
-        return globalThis.sessionStorage?.getItem(AUDIO_MUTE_STORAGE_KEY) === '1';
+        globalThis.sessionStorage?.removeItem(AUDIO_MUTE_STORAGE_KEY);
+        globalThis.sessionStorage?.removeItem(AUDIO_VOLUME_STORAGE_KEY);
     } catch {
-        return false;
-    }
-};
-
-const writeStoredMute = (muted) => {
-    try {
-        globalThis.sessionStorage?.setItem(
-            AUDIO_MUTE_STORAGE_KEY,
-            muted ? '1' : '0'
-        );
-    } catch {
-        // The board can still mute for this page view.
-    }
-};
-
-const readStoredVolume = () => {
-    try {
-        const stored = globalThis.sessionStorage?.getItem(AUDIO_VOLUME_STORAGE_KEY);
-        if (stored === null || stored === '') {
-            return 100;
-        }
-
-        return normalizeVolume(stored);
-    } catch {
-        return 100;
+        // The in-memory level is still the default or the URL value.
     }
 };
 
 // `?volume=0`–`100` on a board page forces the level for that load.
-// Anything else keeps the stored value. An empty query is not zero.
+// Anything else, including an empty or invalid query, uses 100.
 const readVolumeOverride = () => {
     try {
         const params = new URLSearchParams(globalThis.location?.search || '');
@@ -235,17 +214,6 @@ const readVolumeOverride = () => {
     }
 };
 
-const writeStoredVolume = (volume) => {
-    try {
-        globalThis.sessionStorage?.setItem(
-            AUDIO_VOLUME_STORAGE_KEY,
-            String(volume)
-        );
-    } catch {
-        // The board can still keep the volume for this page view.
-    }
-};
-
 export class SplitFlapAudio {
     constructor(source = DEFAULT_SOUND_URL) {
         this.template = typeof Audio === 'function' ? new Audio(source) : null;
@@ -253,14 +221,10 @@ export class SplitFlapAudio {
             ? new Audio(PITCHED_SOUND_URL)
             : null;
         this.unlocked = false;
-        this.muted = readStoredMute();
+        this.muted = false;
         const volumeOverride = readVolumeOverride();
-        this.volume = volumeOverride === null
-            ? readStoredVolume()
-            : volumeOverride;
-        if (volumeOverride !== null) {
-            writeStoredVolume(volumeOverride);
-        }
+        this.volume = volumeOverride === null ? 100 : volumeOverride;
+        forgetStoredAudioLevel();
         this.activationTarget = null;
         this.activationHandler = null;
         this.listeners = new Set();
@@ -356,7 +320,13 @@ export class SplitFlapAudio {
             }
             this.holdPitch(sound);
         };
-        sound.addEventListener('loadedmetadata', keepPitch);
+        sound.addEventListener('loadedmetadata', () => {
+            keepPitch();
+            if (voice.sound !== sound) {
+                return;
+            }
+            sound.volume = this.volume / 100;
+        });
         sound.addEventListener('ended', () => {
             if (voice.sound !== sound) {
                 return;
@@ -416,21 +386,18 @@ export class SplitFlapAudio {
         }
 
         this.muted = nextValue;
-        writeStoredMute(nextValue);
         this.listeners.forEach((listener) => listener(this.getState()));
         return this.muted;
     }
 
     setVolume(value) {
         const nextValue = normalizeVolume(value);
-        if (nextValue === this.volume) {
-            return this.volume;
-        }
-
+        const changed = nextValue !== this.volume;
         this.volume = nextValue;
-        writeStoredVolume(nextValue);
         this.applyVolume();
-        this.listeners.forEach((listener) => listener(this.getState()));
+        if (changed) {
+            this.listeners.forEach((listener) => listener(this.getState()));
+        }
         return this.volume;
     }
 
@@ -515,6 +482,7 @@ export class SplitFlapAudio {
             this.setUnlocked(true);
             this.removeActivationListeners();
             this.context?.resume?.();
+            this.applyVolume();
             cleanup();
         };
 
@@ -537,6 +505,7 @@ export class SplitFlapAudio {
             return;
         }
 
+        this.applyVolume();
         this.pendingPlays.push({ variant, durationMs });
         if (this.flushingPlays) {
             return;
