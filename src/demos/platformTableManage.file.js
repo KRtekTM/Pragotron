@@ -4628,6 +4628,199 @@
     }
   };
   var normalizeLiveSourceUrl = (value) => parseLiveSourceUrl(value).sourceUrl;
+  var SCRAPER_PARAMETER_ID = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
+  var SCRAPER_PARAMETER_TYPES = /* @__PURE__ */ new Set(["text", "url", "number", "select"]);
+  var SCRAPER_PARAMETER_LIMIT = 12;
+  var SCRAPER_TEXT_LIMIT = 500;
+  var scraperText = (value, limit = SCRAPER_TEXT_LIMIT) => String(value ?? "").trim().slice(0, limit);
+  var scraperNumber = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+  var normalizeScraperOptions = (options) => {
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    (Array.isArray(options) ? options : []).forEach((option) => {
+      if (result.length >= 40) {
+        return;
+      }
+      const value = scraperText(
+        typeof option === "string" ? option : option?.value,
+        120
+      );
+      const label = scraperText(
+        typeof option === "string" ? option : option?.label || value,
+        80
+      );
+      if (!value || seen.has(value)) {
+        return;
+      }
+      seen.add(value);
+      result.push({ value, label: label || value });
+    });
+    return result;
+  };
+  var SCRAPER_IDLE_ERROR = "Scraper je v klidu.";
+  var LIVE_SCRAPER_SCHEMA = Object.freeze({
+    id: "sprava-zeleznic",
+    name: "Spr\xE1va \u017Eeleznic",
+    description: "Odjezdy z tabule Spr\xE1vy \u017Eeleznic.",
+    controls: Object.freeze({
+      watch: true,
+      stop: true
+    }),
+    parameters: Object.freeze([
+      Object.freeze({
+        id: "source",
+        label: "Adresa tabule S\u017D",
+        type: "url",
+        format: "sz-station-url",
+        default: LIVE_STATION_DEFAULTS.sourceUrl,
+        help: "Stejn\xFD form\xE1t StationTable.aspx?Key=\u2026. V\xFDchoz\xED je Brno hlavn\xED n\xE1dra\u017E\xED (Key=455).",
+        showStation: true
+      })
+    ])
+  });
+  var normalizeScraperSchema = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    const parameters = [];
+    const seen = /* @__PURE__ */ new Set();
+    (Array.isArray(value.parameters) ? value.parameters : []).forEach((item) => {
+      if (!item || typeof item !== "object" || parameters.length >= SCRAPER_PARAMETER_LIMIT) {
+        return;
+      }
+      const id = scraperText(item.id, 41);
+      const type = scraperText(item.type, 20);
+      if (id === "interval" || !SCRAPER_PARAMETER_ID.test(id) || seen.has(id) || !SCRAPER_PARAMETER_TYPES.has(type)) {
+        return;
+      }
+      const parameter = {
+        id,
+        label: scraperText(item.label, 80) || id,
+        type,
+        help: scraperText(item.help, 240),
+        placeholder: scraperText(item.placeholder, 120),
+        format: scraperText(item.format, 40),
+        required: item.required === true,
+        showStation: item.showStation === true,
+        default: scraperText(item.default)
+      };
+      if (type === "number") {
+        parameter.min = scraperNumber(item.min);
+        parameter.max = scraperNumber(item.max);
+        parameter.step = scraperNumber(item.step);
+      }
+      if (type === "select") {
+        parameter.options = normalizeScraperOptions(item.options);
+        if (parameter.options.length === 0) {
+          return;
+        }
+      }
+      seen.add(id);
+      parameters.push(parameter);
+    });
+    const controls = value.controls && typeof value.controls === "object" ? value.controls : {};
+    return {
+      id: scraperText(value.id, 40),
+      name: scraperText(value.name, 80),
+      description: scraperText(value.description, 240),
+      controls: {
+        watch: controls.watch === true,
+        stop: controls.stop === true
+      },
+      parameters
+    };
+  };
+  var normalizeScraperParameterValue = (parameter, raw) => {
+    const label = parameter?.label || "Parametr";
+    const text = String(raw ?? "").trim();
+    if (!parameter) {
+      return { ok: false, value: "", message: "Nezn\xE1m\xFD parametr scraperu." };
+    }
+    if (!text) {
+      if (parameter.format === "sz-station-url") {
+        const parsed = parseLiveSourceUrl("");
+        return { ok: true, value: parsed.sourceUrl, key: parsed.key };
+      }
+      if (parameter.required) {
+        return { ok: false, value: "", message: `Vypl\u0148te pole ${label}.` };
+      }
+      if (parameter.default) {
+        return normalizeScraperParameterValue(parameter, parameter.default);
+      }
+      return { ok: true, value: "" };
+    }
+    if (parameter.format === "sz-station-url") {
+      const parsed = parseLiveSourceUrl(text);
+      if (!parsed.valid) {
+        return {
+          ok: false,
+          value: text,
+          message: "URL mus\xED b\xFDt tabule Spr\xE1vy \u017Eeleznic ve form\xE1tu StationTable.aspx?Key=\u2026"
+        };
+      }
+      return { ok: true, value: parsed.sourceUrl, key: parsed.key };
+    }
+    if (parameter.type === "url") {
+      try {
+        const url = new URL(text);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          throw new Error("unsupported");
+        }
+        return { ok: true, value: url.toString() };
+      } catch {
+        return {
+          ok: false,
+          value: text,
+          message: `${label} mus\xED b\xFDt adresa http nebo https.`
+        };
+      }
+    }
+    if (parameter.type === "number") {
+      const number = Number(text);
+      if (!Number.isFinite(number)) {
+        return { ok: false, value: text, message: `${label} mus\xED b\xFDt \u010D\xEDslo.` };
+      }
+      if (parameter.min != null && number < parameter.min) {
+        return {
+          ok: false,
+          value: text,
+          message: `${label} mus\xED b\xFDt aspo\u0148 ${parameter.min}.`
+        };
+      }
+      if (parameter.max != null && number > parameter.max) {
+        return {
+          ok: false,
+          value: text,
+          message: `${label} m\u016F\u017Ee b\xFDt nejv\xFD\u0161e ${parameter.max}.`
+        };
+      }
+      return { ok: true, value: String(number) };
+    }
+    if (parameter.type === "select") {
+      const match = parameter.options.find((option) => option.value === text);
+      if (!match) {
+        return {
+          ok: false,
+          value: parameter.default || parameter.options[0]?.value || "",
+          message: `${label} m\xE1 nezn\xE1mou volbu.`
+        };
+      }
+      return { ok: true, value: match.value };
+    }
+    return { ok: true, value: text.slice(0, SCRAPER_TEXT_LIMIT) };
+  };
+  var scraperEndpointUrl = (apiUrl, suffix) => {
+    const endpoint = new URL(normalizeLiveApiUrl(apiUrl));
+    endpoint.pathname = `${endpoint.pathname.replace(/\/+$/, "")}${suffix}`;
+    endpoint.search = "";
+    endpoint.hash = "";
+    return endpoint.toString();
+  };
+  var scraperSchemaUrl = (apiUrl) => scraperEndpointUrl(apiUrl, "/schema");
+  var scraperControlUrl = (apiUrl, action) => scraperEndpointUrl(apiUrl, `/${action}`);
   var wait = (ms) => new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
@@ -4689,9 +4882,101 @@
     }
     return fallback;
   };
+  var fetchScraperSchema = async ({
+    apiUrl = getDefaultLiveApiUrl(),
+    fetchImpl = globalThis.fetch
+  } = {}) => {
+    if (typeof fetchImpl !== "function") {
+      throw new Error("Pro definici scraperu nen\xED dostupn\xE1 funkce fetch.");
+    }
+    let response;
+    try {
+      response = await fetchImpl(scraperSchemaUrl(apiUrl), {
+        cache: "no-store",
+        headers: {
+          Accept: "application/json"
+        }
+      });
+    } catch (error) {
+      throw new Error(describeLiveNetworkError(error));
+    }
+    if (!response.ok) {
+      throw new Error(
+        `Scraper nevr\xE1til definici parametr\u016F (HTTP ${response.status}).`
+      );
+    }
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    const schema = normalizeScraperSchema(payload);
+    if (!schema) {
+      throw new Error("Scraper vr\xE1til neplatnou definici parametr\u016F.");
+    }
+    return schema;
+  };
+  var postScraperControl = async ({
+    apiUrl = getDefaultLiveApiUrl(),
+    action,
+    parameters = {},
+    pollIntervalMs = LIVE_POLL_INTERVAL_MS,
+    clientId = "",
+    fetchImpl = globalThis.fetch
+  } = {}) => {
+    if (typeof fetchImpl !== "function") {
+      throw new Error("Pro ovl\xE1d\xE1n\xED scraperu nen\xED dostupn\xE1 funkce fetch.");
+    }
+    if (action !== "watch" && action !== "stop") {
+      throw new Error("Nezn\xE1m\xFD p\u0159\xEDkaz scraperu.");
+    }
+    let response;
+    try {
+      response = await fetchImpl(scraperControlUrl(apiUrl, action), {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          ...parameters && typeof parameters === "object" ? parameters : {},
+          interval: normalizeLivePollIntervalMs(pollIntervalMs),
+          client: scraperText(clientId, 80)
+        })
+      });
+    } catch (error) {
+      throw new Error(describeLiveNetworkError(error));
+    }
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    if (!response.ok) {
+      throw new Error(
+        payload?.error ? String(payload.error) : `Scraper nevr\xE1til potvrzen\xED (HTTP ${response.status}).`
+      );
+    }
+    return payload || {};
+  };
+  var appendScraperQuery = (endpoint, parameters) => {
+    Object.entries(parameters || {}).forEach(([key, value]) => {
+      if (!SCRAPER_PARAMETER_ID.test(key) || key === "interval") {
+        return;
+      }
+      if (value == null || String(value).trim() === "") {
+        return;
+      }
+      endpoint.searchParams.set(key, String(value));
+    });
+  };
   var fetchLiveDepartures = async ({
     apiUrl = getDefaultLiveApiUrl(),
     sourceUrl = normalizeLiveSourceUrl(LIVE_STATION_DEFAULTS.sourceUrl),
+    parameters,
     pollIntervalMs = LIVE_POLL_INTERVAL_MS,
     fetchImpl = globalThis.fetch,
     attempts = 3
@@ -4703,9 +4988,9 @@
       normalizeLiveApiUrl(apiUrl),
       globalThis.location?.href
     );
-    endpoint.searchParams.set(
-      "source",
-      normalizeLiveSourceUrl(sourceUrl)
+    appendScraperQuery(
+      endpoint,
+      parameters && typeof parameters === "object" ? parameters : { source: normalizeLiveSourceUrl(sourceUrl) }
     );
     endpoint.searchParams.set(
       "interval",
@@ -5489,9 +5774,9 @@
   var departuresTableBody = documentRef.querySelector("#departuresTableBody");
   var departuresEmptyState = documentRef.querySelector("#departuresEmptyState");
   var liveApiUrlInput = documentRef.querySelector("#liveApiUrl");
-  var liveSourceUrlInput = documentRef.querySelector("#liveSourceUrl");
-  var liveSourceStation = documentRef.querySelector("#liveSourceStation");
-  var liveSourceStationLink = documentRef.querySelector("#liveSourceStationLink");
+  var liveScraperParametersRoot = documentRef.querySelector(
+    "#liveScraperParameters"
+  );
   var liveToggleButton = documentRef.querySelector("#liveToggleButton");
   var liveDeparturesState = documentRef.querySelector("#liveDeparturesState");
   var liveDeparturesStatus = documentRef.querySelector("#liveDeparturesStatus");
@@ -5545,9 +5830,20 @@
   var liveApiUrl = normalizeLiveApiUrl(
     typeof savedLiveSettings.apiUrl === "string" && savedLiveSettings.apiUrl.trim() ? savedLiveSettings.apiUrl.trim() : getDefaultLiveApiUrl()
   );
-  var liveSourceUrl = normalizeLiveSourceUrl(
-    typeof savedLiveSettings.sourceUrl === "string" && savedLiveSettings.sourceUrl.trim() ? savedLiveSettings.sourceUrl.trim() : LIVE_STATION_DEFAULTS.sourceUrl
+  var savedScraperParameters = savedLiveSettings.parameters && typeof savedLiveSettings.parameters === "object" && !Array.isArray(savedLiveSettings.parameters) ? savedLiveSettings.parameters : {};
+  var liveParameterValues = Object.fromEntries(
+    Object.entries(savedScraperParameters).filter(([key]) => /^[A-Za-z][A-Za-z0-9_-]{0,40}$/.test(key)).map(([key, value]) => [key, String(value ?? "")])
   );
+  var liveSourceUrl = normalizeLiveSourceUrl(
+    typeof liveParameterValues.source === "string" && liveParameterValues.source.trim() ? liveParameterValues.source.trim() : typeof savedLiveSettings.sourceUrl === "string" && savedLiveSettings.sourceUrl.trim() ? savedLiveSettings.sourceUrl.trim() : LIVE_STATION_DEFAULTS.sourceUrl
+  );
+  if (liveParameterValues.source == null) {
+    liveParameterValues.source = liveSourceUrl;
+  }
+  var liveScraperSchema = null;
+  var liveSchemaLoading = false;
+  var liveSchemaToken = 0;
+  var liveWatchApiUrl = "";
   var savedLiveStationName = typeof savedLiveSettings.station === "string" ? savedLiveSettings.station.trim() : "";
   var savedLiveStationKey = String(savedLiveSettings.stationKey || "");
   var liveStationName = savedLiveStationName && savedLiveStationKey === parseLiveSourceUrl(liveSourceUrl).key ? savedLiveStationName : parseLiveSourceUrl(liveSourceUrl).key === LIVE_STATION_DEFAULTS.key ? LIVE_STATION_DEFAULTS.name : "";
@@ -5802,6 +6098,7 @@
         station: liveStationName,
         stationKey: parseLiveSourceUrl(liveSourceUrl).key,
         sourceUrl: liveSourceUrl,
+        parameters: { ...liveParameterValues },
         pollIntervalMs: livePollIntervalMs
       },
       revision: nextRevision,
@@ -8018,18 +8315,23 @@
   var renderLiveSourceStation = () => {
     const name = String(liveStationName || "").trim();
     renderManageHeaderStation();
-    if (!liveSourceStation || !liveSourceStationLink) {
-      return;
-    }
-    if (!name) {
-      liveSourceStation.hidden = true;
-      liveSourceStationLink.removeAttribute("href");
-      liveSourceStationLink.textContent = "";
-      return;
-    }
-    liveSourceStation.hidden = false;
-    liveSourceStationLink.textContent = name;
-    liveSourceStationLink.href = liveSourceUrl;
+    documentRef.querySelectorAll("[data-parameter-station]").forEach((station) => {
+      const link = station.querySelector("a");
+      const href = String(
+        liveParameterValues[station.dataset.parameterStation] || ""
+      ).trim();
+      if (!name || !href || !link) {
+        station.hidden = true;
+        link?.removeAttribute("href");
+        if (link) {
+          link.textContent = "";
+        }
+        return;
+      }
+      station.hidden = false;
+      link.textContent = name;
+      link.href = href;
+    });
   };
   var formatLivePollInterval = (intervalMs) => `${Math.round(normalizeLivePollIntervalMs(intervalMs) / 1e3)} s`;
   var renderLivePollInterval = () => {
@@ -8043,14 +8345,196 @@
       );
     }
     if (liveDeparturesDescription) {
-      liveDeparturesDescription.textContent = `\u017Div\xE9 odjezdy ze stanice Spr\xE1vy \u017Eeleznic \xB7 aktualizace ka\u017Ed\xFDch ${seconds} sekund. Pro na\u010D\xEDt\xE1n\xED je pot\u0159eba spustit scraper server.`;
+      if (liveSchemaLoading && !liveScraperSchema) {
+        liveDeparturesDescription.textContent = "Na\u010D\xEDt\xE1m parametry scraperu\u2026";
+      } else if (liveScraperSchema?.description) {
+        liveDeparturesDescription.textContent = `${liveScraperSchema.description} Aktualizace ka\u017Ed\xFDch ${seconds} sekund.`;
+      } else {
+        liveDeparturesDescription.textContent = `\u017Div\xE9 odjezdy \xB7 aktualizace ka\u017Ed\xFDch ${seconds} sekund.`;
+      }
+    }
+  };
+  var scraperQueryParameters = () => {
+    const query = {};
+    (liveScraperSchema?.parameters || []).forEach((parameter) => {
+      const normalized = normalizeScraperParameterValue(
+        parameter,
+        liveParameterValues[parameter.id]
+      );
+      if (!normalized.ok || normalized.value === "") {
+        return;
+      }
+      query[parameter.id] = normalized.value;
+    });
+    return query;
+  };
+  var syncLiveSourceFromParameters = () => {
+    const parameter = liveScraperSchema?.parameters?.find(
+      (item) => item.format === "sz-station-url"
+    );
+    if (!parameter) {
+      return;
+    }
+    const normalized = normalizeScraperParameterValue(
+      parameter,
+      liveParameterValues[parameter.id]
+    );
+    if (!normalized.ok) {
+      return;
+    }
+    if (normalized.key !== parseLiveSourceUrl(liveSourceUrl).key) {
+      liveStationName = normalized.key === LIVE_STATION_DEFAULTS.key ? LIVE_STATION_DEFAULTS.name : "";
+    }
+    liveSourceUrl = normalized.value;
+    liveParameterValues[parameter.id] = normalized.value;
+  };
+  var applyParameterInput = (parameter, control) => {
+    const normalized = normalizeScraperParameterValue(parameter, control.value);
+    if (!normalized.ok) {
+      setLiveStatus(normalized.message, true);
+      control.value = liveParameterValues[parameter.id] ?? "";
+      return;
+    }
+    const previousKey = parameter.format === "sz-station-url" ? parseLiveSourceUrl(liveSourceUrl).key : "";
+    liveParameterValues[parameter.id] = normalized.value;
+    control.value = normalized.value;
+    if (parameter.format === "sz-station-url") {
+      if (normalized.key !== previousKey) {
+        liveStationName = normalized.key === LIVE_STATION_DEFAULTS.key ? LIVE_STATION_DEFAULTS.name : "";
+      }
+      liveSourceUrl = normalized.value;
+    }
+    renderLiveSourceStation();
+    persistState();
+    setLiveStatus("");
+  };
+  var renderScraperParameters = () => {
+    if (!liveScraperParametersRoot) {
+      return;
+    }
+    const activeId = documentRef.activeElement?.dataset?.parameter || "";
+    liveScraperParametersRoot.replaceChildren();
+    (liveScraperSchema?.parameters || []).forEach((parameter) => {
+      const field = documentRef.createElement("label");
+      field.className = "board-form-field";
+      field.htmlFor = `liveParameter-${parameter.id}`;
+      const heading = documentRef.createElement("span");
+      heading.className = "live-source-heading";
+      const label = documentRef.createElement("span");
+      label.textContent = parameter.label;
+      heading.append(label);
+      if (parameter.showStation) {
+        const station = documentRef.createElement("span");
+        station.className = "live-source-station";
+        station.hidden = true;
+        station.dataset.parameterStation = parameter.id;
+        const link = documentRef.createElement("a");
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        station.append("(", link, ")");
+        heading.append(station);
+      }
+      field.append(heading);
+      const control = parameter.type === "select" ? documentRef.createElement("select") : documentRef.createElement("input");
+      control.id = `liveParameter-${parameter.id}`;
+      control.dataset.parameter = parameter.id;
+      control.disabled = liveDeparturesEnabled;
+      if (parameter.type === "select") {
+        parameter.options.forEach((option) => {
+          const item = documentRef.createElement("option");
+          item.value = option.value;
+          item.textContent = option.label;
+          control.append(item);
+        });
+      } else {
+        control.type = parameter.type === "number" ? "number" : parameter.type;
+        control.autocomplete = "off";
+        control.spellcheck = false;
+        if (parameter.placeholder) {
+          control.placeholder = parameter.placeholder;
+        }
+        if (parameter.type === "number") {
+          if (parameter.min != null) {
+            control.min = String(parameter.min);
+          }
+          if (parameter.max != null) {
+            control.max = String(parameter.max);
+          }
+          if (parameter.step != null) {
+            control.step = String(parameter.step);
+          }
+        }
+      }
+      control.value = liveParameterValues[parameter.id] ?? parameter.default ?? "";
+      field.append(control);
+      if (parameter.help) {
+        const help = documentRef.createElement("small");
+        help.id = `liveParameterHelp-${parameter.id}`;
+        help.textContent = parameter.help;
+        control.setAttribute("aria-describedby", help.id);
+        field.append(help);
+      }
+      liveScraperParametersRoot.append(field);
+      control.addEventListener("change", () => {
+        applyParameterInput(parameter, control);
+      });
+    });
+    renderLiveSourceStation();
+    if (activeId) {
+      liveScraperParametersRoot.querySelector(`[data-parameter="${CSS.escape(activeId)}"]`)?.focus();
+    }
+  };
+  var adoptScraperSchema = (schema) => {
+    liveScraperSchema = schema;
+    schema.parameters.forEach((parameter) => {
+      const raw = Object.prototype.hasOwnProperty.call(
+        liveParameterValues,
+        parameter.id
+      ) ? liveParameterValues[parameter.id] : parameter.default;
+      const normalized = normalizeScraperParameterValue(parameter, raw);
+      liveParameterValues[parameter.id] = normalized.ok ? normalized.value : String(raw ?? "");
+    });
+    syncLiveSourceFromParameters();
+    renderScraperParameters();
+    renderLivePollInterval();
+    persistState();
+  };
+  var loadScraperSchema = async () => {
+    const token = liveSchemaToken + 1;
+    liveSchemaToken = token;
+    liveSchemaLoading = true;
+    renderLivePollInterval();
+    try {
+      const schema = await fetchScraperSchema({ apiUrl: liveApiUrl });
+      if (token !== liveSchemaToken) {
+        return false;
+      }
+      liveSchemaLoading = false;
+      adoptScraperSchema(schema);
+      return true;
+    } catch (error) {
+      if (token !== liveSchemaToken) {
+        return false;
+      }
+      liveSchemaLoading = false;
+      liveScraperSchema = null;
+      liveScraperParametersRoot?.replaceChildren();
+      renderLivePollInterval();
+      setLiveStatus(
+        error instanceof Error ? error.message : "Scraper neposkytl definici parametr\u016F.",
+        true
+      );
+      return false;
     }
   };
   var renderLiveControls = () => {
-    if (liveSourceUrlInput) {
-      liveSourceUrlInput.value = liveSourceUrl;
-      liveSourceUrlInput.disabled = liveDeparturesEnabled;
-    }
+    liveScraperParametersRoot?.querySelectorAll("[data-parameter]").forEach((control) => {
+      const id = control.dataset.parameter;
+      if (documentRef.activeElement !== control) {
+        control.value = liveParameterValues[id] ?? "";
+      }
+      control.disabled = liveDeparturesEnabled;
+    });
     renderLiveSourceStation();
     renderLivePollInterval();
     if (liveApiUrlInput) {
@@ -8068,6 +8552,42 @@
     if (liveDeparturesState) {
       liveDeparturesState.textContent = liveDeparturesEnabled ? "Live odjezdy jsou spu\u0161t\u011Bn\xE9." : "Live odjezdy jsou vypnut\xE9.";
     }
+  };
+  var scraperWatchesItself = () => liveScraperSchema?.controls?.watch === true;
+  var releaseScraperWatch = () => {
+    const apiUrl = liveWatchApiUrl;
+    if (!apiUrl) {
+      return;
+    }
+    liveWatchApiUrl = "";
+    const url = scraperControlUrl(apiUrl, "stop");
+    void fetch(url, {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ client: transport.id })
+    }).catch(() => {
+    });
+  };
+  var engageScraperWatch = async () => {
+    if (!scraperWatchesItself()) {
+      releaseScraperWatch();
+      return;
+    }
+    if (liveWatchApiUrl && liveWatchApiUrl !== liveApiUrl) {
+      releaseScraperWatch();
+    }
+    await postScraperControl({
+      apiUrl: liveApiUrl,
+      action: "watch",
+      parameters: scraperQueryParameters(),
+      pollIntervalMs: livePollIntervalMs,
+      clientId: transport.id
+    });
+    liveWatchApiUrl = liveApiUrl;
   };
   var stopLivePolling = () => {
     liveRunToken += 1;
@@ -8097,11 +8617,34 @@
     renderLiveControls();
     const runToken = liveRunToken;
     try {
-      const payload = await fetchLiveDepartures({
-        apiUrl: liveApiUrl,
-        sourceUrl: liveSourceUrl,
-        pollIntervalMs: livePollIntervalMs
-      });
+      if (!liveScraperSchema) {
+        const ready = await loadScraperSchema();
+        if (!ready || !liveDeparturesEnabled || runToken !== liveRunToken) {
+          return;
+        }
+      }
+      let payload;
+      try {
+        payload = await fetchLiveDepartures({
+          apiUrl: liveApiUrl,
+          parameters: scraperQueryParameters(),
+          pollIntervalMs: livePollIntervalMs
+        });
+      } catch (error) {
+        const idle = error instanceof Error && error.message === SCRAPER_IDLE_ERROR;
+        if (!idle || !scraperWatchesItself()) {
+          throw error;
+        }
+        await engageScraperWatch();
+        if (!liveDeparturesEnabled || runToken !== liveRunToken) {
+          return;
+        }
+        payload = await fetchLiveDepartures({
+          apiUrl: liveApiUrl,
+          parameters: scraperQueryParameters(),
+          pollIntervalMs: livePollIntervalMs
+        });
+      }
       if (!liveDeparturesEnabled || runToken !== liveRunToken) {
         return;
       }
@@ -8112,7 +8655,7 @@
         persistState();
         renderLiveSourceStation();
       }
-      const stationName = liveStationName || "tabule S\u017D";
+      const stationName = liveStationName || liveScraperSchema?.name || "scraper";
       setLiveStatus(
         result.changed ? `Aktualizov\xE1no ${fetchedAt} (${stationName}): ${payload.departures.length} odjezd\u016F.` : `Beze zm\u011Bny, posledn\xED kontrola ${fetchedAt} (${stationName}).`
       );
@@ -8134,12 +8677,29 @@
     renderLiveControls();
     persistState();
     setLiveStatus("Na\u010D\xEDt\xE1m aktu\xE1ln\xED odjezdy\u2026");
-    void pollLiveDepartures();
-    restartLiveTimer();
+    void (async () => {
+      try {
+        await engageScraperWatch();
+      } catch (error) {
+        if (!liveDeparturesEnabled) {
+          return;
+        }
+        setLiveStatus(
+          error instanceof Error ? error.message : "Sledov\xE1n\xED scraperu se nepoda\u0159ilo spustit.",
+          true
+        );
+      }
+      if (!liveDeparturesEnabled) {
+        return;
+      }
+      void pollLiveDepartures();
+      restartLiveTimer();
+    })();
   };
   var stopLiveDepartures = () => {
     stopLivePolling();
     liveDeparturesEnabled = false;
+    releaseScraperWatch();
     renderLiveControls();
     persistState();
     setLiveStatus("Live odjezdy byly zastaveny.");
@@ -8482,9 +9042,12 @@
     storage2.clear();
     legacyStorage.clear();
     stopLivePolling();
+    releaseScraperWatch();
     liveDeparturesEnabled = false;
     liveApiUrl = getDefaultLiveApiUrl();
     liveSourceUrl = LIVE_STATION_DEFAULTS.sourceUrl;
+    liveParameterValues = { source: liveSourceUrl };
+    liveScraperSchema = null;
     liveStationName = LIVE_STATION_DEFAULTS.name;
     livePollIntervalMs = LIVE_POLL_INTERVAL_MS;
     departures = [];
@@ -8502,6 +9065,7 @@
     departureBoardLogoSvg = "";
     renderNightMode();
     renderLiveControls();
+    void loadScraperSchema();
     setLiveStatus("Live odjezdy byly vypnut\xE9 obnoven\xEDm nastaven\xED.");
     syncLensControls();
     syncDelayOffsetControls();
@@ -8604,31 +9168,13 @@
     input.addEventListener("input", persistState);
     input.addEventListener("change", persistState);
   });
-  liveSourceUrlInput?.addEventListener("change", () => {
-    const value = liveSourceUrlInput.value.trim();
-    const parsed = parseLiveSourceUrl(value);
-    if (value && !parsed.valid) {
-      setLiveStatus(
-        "URL mus\xED b\xFDt tabule Spr\xE1vy \u017Eeleznic ve form\xE1tu StationTable.aspx?Key=\u2026",
-        true
-      );
-      renderLiveControls();
-      return;
-    }
-    if (parsed.key !== parseLiveSourceUrl(liveSourceUrl).key) {
-      liveStationName = parsed.key === LIVE_STATION_DEFAULTS.key ? LIVE_STATION_DEFAULTS.name : "";
-    }
-    liveSourceUrl = parsed.sourceUrl;
-    renderLiveControls();
-    persistState();
-    setLiveStatus("");
-  });
   liveApiUrlInput?.addEventListener("change", () => {
     liveApiUrl = normalizeLiveApiUrl(
       liveApiUrlInput.value.trim() || getDefaultLiveApiUrl()
     );
     renderLiveControls();
     persistState();
+    void loadScraperSchema();
   });
   var applyLivePollInterval = (seconds) => {
     livePollIntervalMs = normalizeLivePollIntervalMs(Number(seconds) * 1e3);
@@ -8641,6 +9187,9 @@
     applyLivePollInterval(livePollIntervalInput.value);
     persistState();
     restartLiveTimer();
+    if (liveDeparturesEnabled && scraperWatchesItself()) {
+      void engageScraperWatch();
+    }
   });
   liveToggleButton?.addEventListener("click", () => {
     if (liveDeparturesEnabled) {
@@ -8759,6 +9308,9 @@
     }
   });
   setupManageBlockToggles();
+  window.addEventListener("pagehide", () => {
+    releaseScraperWatch();
+  });
   window.addEventListener("beforeunload", (event) => {
     event.preventDefault();
     event.returnValue = "Manage str\xE1nka mus\xED z\u016Fstat otev\u0159en\xE1. Obnoven\xED nebo zav\u0159en\xED p\u0159esko\u010D\xED animaci odjezdov\xE9 tabule a tabule p\u0159estanou dost\xE1vat data.";
@@ -8787,6 +9339,7 @@
         station: liveStationName,
         stationKey: parseLiveSourceUrl(liveSourceUrl).key,
         sourceUrl: liveSourceUrl,
+        parameters: { ...liveParameterValues },
         pollIntervalMs: livePollIntervalMs
       }
     }),
@@ -8822,7 +9375,9 @@
       lensDisplay.destroy();
     }
   };
-  if (liveDeparturesEnabled) {
-    startLivePolling();
-  }
+  void loadScraperSchema().then(() => {
+    if (liveDeparturesEnabled) {
+      startLivePolling();
+    }
+  });
 })();

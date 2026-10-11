@@ -4714,6 +4714,26 @@
     nbsp: " ",
     quot: '"'
   });
+  var LIVE_SCRAPER_SCHEMA = Object.freeze({
+    id: "sprava-zeleznic",
+    name: "Spr\xE1va \u017Eeleznic",
+    description: "Odjezdy z tabule Spr\xE1vy \u017Eeleznic.",
+    controls: Object.freeze({
+      watch: true,
+      stop: true
+    }),
+    parameters: Object.freeze([
+      Object.freeze({
+        id: "source",
+        label: "Adresa tabule S\u017D",
+        type: "url",
+        format: "sz-station-url",
+        default: LIVE_STATION_DEFAULTS.sourceUrl,
+        help: "Stejn\xFD form\xE1t StationTable.aspx?Key=\u2026. V\xFDchoz\xED je Brno hlavn\xED n\xE1dra\u017E\xED (Key=455).",
+        showStation: true
+      })
+    ])
+  });
 
   // src/demos/departureBoard.js
   var STORAGE_KEY = "pragotron.platformTable.state.v2";

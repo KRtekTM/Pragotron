@@ -53,13 +53,18 @@ import {
     createEmptyLensState,
     createEmptyBoardState,
     fetchLiveDepartures,
+    fetchScraperSchema,
     getDefaultLiveApiUrl,
     LIVE_POLL_INTERVAL_MS,
     LIVE_STATION_DEFAULTS,
     normalizeLiveApiUrl,
     normalizeLivePollIntervalMs,
     normalizeLiveSourceUrl,
-    parseLiveSourceUrl
+    normalizeScraperParameterValue,
+    parseLiveSourceUrl,
+    postScraperControl,
+    SCRAPER_IDLE_ERROR,
+    scraperControlUrl
 } from '../platform/index.js';
 import { mountStationProfileEditor } from './stationProfileEditor.js';
 
@@ -319,9 +324,9 @@ const departuresTable = documentRef.querySelector('#departuresTable');
 const departuresTableBody = documentRef.querySelector('#departuresTableBody');
 const departuresEmptyState = documentRef.querySelector('#departuresEmptyState');
 const liveApiUrlInput = documentRef.querySelector('#liveApiUrl');
-const liveSourceUrlInput = documentRef.querySelector('#liveSourceUrl');
-const liveSourceStation = documentRef.querySelector('#liveSourceStation');
-const liveSourceStationLink = documentRef.querySelector('#liveSourceStationLink');
+const liveScraperParametersRoot = documentRef.querySelector(
+    '#liveScraperParameters'
+);
 const liveToggleButton = documentRef.querySelector('#liveToggleButton');
 const liveDeparturesState = documentRef.querySelector('#liveDeparturesState');
 const liveDeparturesStatus = documentRef.querySelector('#liveDeparturesStatus');
@@ -392,12 +397,32 @@ let liveApiUrl = normalizeLiveApiUrl(
         ? savedLiveSettings.apiUrl.trim()
         : getDefaultLiveApiUrl()
 );
-let liveSourceUrl = normalizeLiveSourceUrl(
-    typeof savedLiveSettings.sourceUrl === 'string'
-        && savedLiveSettings.sourceUrl.trim()
-        ? savedLiveSettings.sourceUrl.trim()
-        : LIVE_STATION_DEFAULTS.sourceUrl
+const savedScraperParameters = savedLiveSettings.parameters
+    && typeof savedLiveSettings.parameters === 'object'
+    && !Array.isArray(savedLiveSettings.parameters)
+    ? savedLiveSettings.parameters
+    : {};
+let liveParameterValues = Object.fromEntries(
+    Object.entries(savedScraperParameters)
+        .filter(([key]) => /^[A-Za-z][A-Za-z0-9_-]{0,40}$/.test(key))
+        .map(([key, value]) => [key, String(value ?? '')])
 );
+let liveSourceUrl = normalizeLiveSourceUrl(
+    typeof liveParameterValues.source === 'string'
+        && liveParameterValues.source.trim()
+        ? liveParameterValues.source.trim()
+        : typeof savedLiveSettings.sourceUrl === 'string'
+            && savedLiveSettings.sourceUrl.trim()
+            ? savedLiveSettings.sourceUrl.trim()
+            : LIVE_STATION_DEFAULTS.sourceUrl
+);
+if (liveParameterValues.source == null) {
+    liveParameterValues.source = liveSourceUrl;
+}
+let liveScraperSchema = null;
+let liveSchemaLoading = false;
+let liveSchemaToken = 0;
+let liveWatchApiUrl = '';
 const savedLiveStationName = typeof savedLiveSettings.station === 'string'
     ? savedLiveSettings.station.trim()
     : '';
@@ -770,6 +795,7 @@ const persistState = () => {
             station: liveStationName,
             stationKey: parseLiveSourceUrl(liveSourceUrl).key,
             sourceUrl: liveSourceUrl,
+            parameters: { ...liveParameterValues },
             pollIntervalMs: livePollIntervalMs
         },
         revision: nextRevision,
@@ -3403,20 +3429,24 @@ const renderManageHeaderStation = () => {
 const renderLiveSourceStation = () => {
     const name = String(liveStationName || '').trim();
     renderManageHeaderStation();
-    if (!liveSourceStation || !liveSourceStationLink) {
-        return;
-    }
+    documentRef.querySelectorAll('[data-parameter-station]').forEach((station) => {
+        const link = station.querySelector('a');
+        const href = String(
+            liveParameterValues[station.dataset.parameterStation] || ''
+        ).trim();
+        if (!name || !href || !link) {
+            station.hidden = true;
+            link?.removeAttribute('href');
+            if (link) {
+                link.textContent = '';
+            }
+            return;
+        }
 
-    if (!name) {
-        liveSourceStation.hidden = true;
-        liveSourceStationLink.removeAttribute('href');
-        liveSourceStationLink.textContent = '';
-        return;
-    }
-
-    liveSourceStation.hidden = false;
-    liveSourceStationLink.textContent = name;
-    liveSourceStationLink.href = liveSourceUrl;
+        station.hidden = false;
+        link.textContent = name;
+        link.href = href;
+    });
 };
 
 const formatLivePollInterval = (intervalMs) => (
@@ -3435,18 +3465,226 @@ const renderLivePollInterval = () => {
         );
     }
     if (liveDeparturesDescription) {
-        liveDeparturesDescription.textContent =
-            'Živé odjezdy ze stanice Správy železnic · aktualizace '
-            + `každých ${seconds} sekund. Pro načítání je potřeba spustit `
-            + 'scraper server.';
+        if (liveSchemaLoading && !liveScraperSchema) {
+            liveDeparturesDescription.textContent = 'Načítám parametry scraperu…';
+        } else if (liveScraperSchema?.description) {
+            liveDeparturesDescription.textContent =
+                `${liveScraperSchema.description} Aktualizace každých ${seconds} sekund.`;
+        } else {
+            liveDeparturesDescription.textContent =
+                `Živé odjezdy · aktualizace každých ${seconds} sekund.`;
+        }
+    }
+};
+
+const scraperQueryParameters = () => {
+    const query = {};
+    (liveScraperSchema?.parameters || []).forEach((parameter) => {
+        const normalized = normalizeScraperParameterValue(
+            parameter,
+            liveParameterValues[parameter.id]
+        );
+        if (!normalized.ok || normalized.value === '') {
+            return;
+        }
+        query[parameter.id] = normalized.value;
+    });
+    return query;
+};
+
+const syncLiveSourceFromParameters = () => {
+    const parameter = liveScraperSchema?.parameters?.find(
+        (item) => item.format === 'sz-station-url'
+    );
+    if (!parameter) {
+        return;
+    }
+
+    const normalized = normalizeScraperParameterValue(
+        parameter,
+        liveParameterValues[parameter.id]
+    );
+    if (!normalized.ok) {
+        return;
+    }
+
+    if (normalized.key !== parseLiveSourceUrl(liveSourceUrl).key) {
+        liveStationName = normalized.key === LIVE_STATION_DEFAULTS.key
+            ? LIVE_STATION_DEFAULTS.name
+            : '';
+    }
+    liveSourceUrl = normalized.value;
+    liveParameterValues[parameter.id] = normalized.value;
+};
+
+const applyParameterInput = (parameter, control) => {
+    const normalized = normalizeScraperParameterValue(parameter, control.value);
+    if (!normalized.ok) {
+        setLiveStatus(normalized.message, true);
+        control.value = liveParameterValues[parameter.id] ?? '';
+        return;
+    }
+
+    const previousKey = parameter.format === 'sz-station-url'
+        ? parseLiveSourceUrl(liveSourceUrl).key
+        : '';
+    liveParameterValues[parameter.id] = normalized.value;
+    control.value = normalized.value;
+    if (parameter.format === 'sz-station-url') {
+        if (normalized.key !== previousKey) {
+            liveStationName = normalized.key === LIVE_STATION_DEFAULTS.key
+                ? LIVE_STATION_DEFAULTS.name
+                : '';
+        }
+        liveSourceUrl = normalized.value;
+    }
+    renderLiveSourceStation();
+    persistState();
+    setLiveStatus('');
+};
+
+const renderScraperParameters = () => {
+    if (!liveScraperParametersRoot) {
+        return;
+    }
+
+    const activeId = documentRef.activeElement?.dataset?.parameter || '';
+    liveScraperParametersRoot.replaceChildren();
+    (liveScraperSchema?.parameters || []).forEach((parameter) => {
+        const field = documentRef.createElement('label');
+        field.className = 'board-form-field';
+        field.htmlFor = `liveParameter-${parameter.id}`;
+        const heading = documentRef.createElement('span');
+        heading.className = 'live-source-heading';
+        const label = documentRef.createElement('span');
+        label.textContent = parameter.label;
+        heading.append(label);
+        if (parameter.showStation) {
+            const station = documentRef.createElement('span');
+            station.className = 'live-source-station';
+            station.hidden = true;
+            station.dataset.parameterStation = parameter.id;
+            const link = documentRef.createElement('a');
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            station.append('(', link, ')');
+            heading.append(station);
+        }
+        field.append(heading);
+
+        const control = parameter.type === 'select'
+            ? documentRef.createElement('select')
+            : documentRef.createElement('input');
+        control.id = `liveParameter-${parameter.id}`;
+        control.dataset.parameter = parameter.id;
+        control.disabled = liveDeparturesEnabled;
+        if (parameter.type === 'select') {
+            parameter.options.forEach((option) => {
+                const item = documentRef.createElement('option');
+                item.value = option.value;
+                item.textContent = option.label;
+                control.append(item);
+            });
+        } else {
+            control.type = parameter.type === 'number' ? 'number' : parameter.type;
+            control.autocomplete = 'off';
+            control.spellcheck = false;
+            if (parameter.placeholder) {
+                control.placeholder = parameter.placeholder;
+            }
+            if (parameter.type === 'number') {
+                if (parameter.min != null) {
+                    control.min = String(parameter.min);
+                }
+                if (parameter.max != null) {
+                    control.max = String(parameter.max);
+                }
+                if (parameter.step != null) {
+                    control.step = String(parameter.step);
+                }
+            }
+        }
+        control.value = liveParameterValues[parameter.id] ?? parameter.default ?? '';
+        field.append(control);
+        if (parameter.help) {
+            const help = documentRef.createElement('small');
+            help.id = `liveParameterHelp-${parameter.id}`;
+            help.textContent = parameter.help;
+            control.setAttribute('aria-describedby', help.id);
+            field.append(help);
+        }
+        liveScraperParametersRoot.append(field);
+        control.addEventListener('change', () => {
+            applyParameterInput(parameter, control);
+        });
+    });
+    renderLiveSourceStation();
+    if (activeId) {
+        liveScraperParametersRoot
+            .querySelector(`[data-parameter="${CSS.escape(activeId)}"]`)
+            ?.focus();
+    }
+};
+
+const adoptScraperSchema = (schema) => {
+    liveScraperSchema = schema;
+    schema.parameters.forEach((parameter) => {
+        const raw = Object.prototype.hasOwnProperty.call(
+            liveParameterValues,
+            parameter.id
+        )
+            ? liveParameterValues[parameter.id]
+            : parameter.default;
+        const normalized = normalizeScraperParameterValue(parameter, raw);
+        liveParameterValues[parameter.id] = normalized.ok
+            ? normalized.value
+            : String(raw ?? '');
+    });
+    syncLiveSourceFromParameters();
+    renderScraperParameters();
+    renderLivePollInterval();
+    persistState();
+};
+
+const loadScraperSchema = async () => {
+    const token = liveSchemaToken + 1;
+    liveSchemaToken = token;
+    liveSchemaLoading = true;
+    renderLivePollInterval();
+    try {
+        const schema = await fetchScraperSchema({ apiUrl: liveApiUrl });
+        if (token !== liveSchemaToken) {
+            return false;
+        }
+        liveSchemaLoading = false;
+        adoptScraperSchema(schema);
+        return true;
+    } catch (error) {
+        if (token !== liveSchemaToken) {
+            return false;
+        }
+        liveSchemaLoading = false;
+        liveScraperSchema = null;
+        liveScraperParametersRoot?.replaceChildren();
+        renderLivePollInterval();
+        setLiveStatus(
+            error instanceof Error
+                ? error.message
+                : 'Scraper neposkytl definici parametrů.',
+            true
+        );
+        return false;
     }
 };
 
 const renderLiveControls = () => {
-    if (liveSourceUrlInput) {
-        liveSourceUrlInput.value = liveSourceUrl;
-        liveSourceUrlInput.disabled = liveDeparturesEnabled;
-    }
+    liveScraperParametersRoot?.querySelectorAll('[data-parameter]').forEach((control) => {
+        const id = control.dataset.parameter;
+        if (documentRef.activeElement !== control) {
+            control.value = liveParameterValues[id] ?? '';
+        }
+        control.disabled = liveDeparturesEnabled;
+    });
     renderLiveSourceStation();
     renderLivePollInterval();
     if (liveApiUrlInput) {
@@ -3468,6 +3706,46 @@ const renderLiveControls = () => {
             ? 'Live odjezdy jsou spuštěné.'
             : 'Live odjezdy jsou vypnuté.';
     }
+};
+
+const scraperWatchesItself = () => liveScraperSchema?.controls?.watch === true;
+
+const releaseScraperWatch = () => {
+    const apiUrl = liveWatchApiUrl;
+    if (!apiUrl) {
+        return;
+    }
+    liveWatchApiUrl = '';
+    const url = scraperControlUrl(apiUrl, 'stop');
+    void fetch(url, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ client: transport.id })
+    }).catch(() => {
+        // The server stops on its own when the lease expires.
+    });
+};
+
+const engageScraperWatch = async () => {
+    if (!scraperWatchesItself()) {
+        releaseScraperWatch();
+        return;
+    }
+    if (liveWatchApiUrl && liveWatchApiUrl !== liveApiUrl) {
+        releaseScraperWatch();
+    }
+    await postScraperControl({
+        apiUrl: liveApiUrl,
+        action: 'watch',
+        parameters: scraperQueryParameters(),
+        pollIntervalMs: livePollIntervalMs,
+        clientId: transport.id
+    });
+    liveWatchApiUrl = liveApiUrl;
 };
 
 const stopLivePolling = () => {
@@ -3502,11 +3780,35 @@ const pollLiveDepartures = async () => {
     renderLiveControls();
     const runToken = liveRunToken;
     try {
-        const payload = await fetchLiveDepartures({
-            apiUrl: liveApiUrl,
-            sourceUrl: liveSourceUrl,
-            pollIntervalMs: livePollIntervalMs
-        });
+        if (!liveScraperSchema) {
+            const ready = await loadScraperSchema();
+            if (!ready || !liveDeparturesEnabled || runToken !== liveRunToken) {
+                return;
+            }
+        }
+        let payload;
+        try {
+            payload = await fetchLiveDepartures({
+                apiUrl: liveApiUrl,
+                parameters: scraperQueryParameters(),
+                pollIntervalMs: livePollIntervalMs
+            });
+        } catch (error) {
+            const idle = error instanceof Error
+                && error.message === SCRAPER_IDLE_ERROR;
+            if (!idle || !scraperWatchesItself()) {
+                throw error;
+            }
+            await engageScraperWatch();
+            if (!liveDeparturesEnabled || runToken !== liveRunToken) {
+                return;
+            }
+            payload = await fetchLiveDepartures({
+                apiUrl: liveApiUrl,
+                parameters: scraperQueryParameters(),
+                pollIntervalMs: livePollIntervalMs
+            });
+        }
         if (!liveDeparturesEnabled || runToken !== liveRunToken) {
             return;
         }
@@ -3520,7 +3822,9 @@ const pollLiveDepartures = async () => {
             persistState();
             renderLiveSourceStation();
         }
-        const stationName = liveStationName || 'tabule SŽ';
+        const stationName = liveStationName
+            || liveScraperSchema?.name
+            || 'scraper';
         setLiveStatus(
             result.changed
                 ? `Aktualizováno ${fetchedAt} (${stationName}): ${
@@ -3549,13 +3853,32 @@ const startLivePolling = () => {
     renderLiveControls();
     persistState();
     setLiveStatus('Načítám aktuální odjezdy…');
-    void pollLiveDepartures();
-    restartLiveTimer();
+    void (async () => {
+        try {
+            await engageScraperWatch();
+        } catch (error) {
+            if (!liveDeparturesEnabled) {
+                return;
+            }
+            setLiveStatus(
+                error instanceof Error
+                    ? error.message
+                    : 'Sledování scraperu se nepodařilo spustit.',
+                true
+            );
+        }
+        if (!liveDeparturesEnabled) {
+            return;
+        }
+        void pollLiveDepartures();
+        restartLiveTimer();
+    })();
 };
 
 const stopLiveDepartures = () => {
     stopLivePolling();
     liveDeparturesEnabled = false;
+    releaseScraperWatch();
     renderLiveControls();
     persistState();
     setLiveStatus('Live odjezdy byly zastaveny.');
@@ -3965,9 +4288,12 @@ resetAllSettingsButton.addEventListener('click', () => {
     storage.clear();
     legacyStorage.clear();
     stopLivePolling();
+    releaseScraperWatch();
     liveDeparturesEnabled = false;
     liveApiUrl = getDefaultLiveApiUrl();
     liveSourceUrl = LIVE_STATION_DEFAULTS.sourceUrl;
+    liveParameterValues = { source: liveSourceUrl };
+    liveScraperSchema = null;
     liveStationName = LIVE_STATION_DEFAULTS.name;
     livePollIntervalMs = LIVE_POLL_INTERVAL_MS;
     departures = [];
@@ -3985,6 +4311,7 @@ resetAllSettingsButton.addEventListener('click', () => {
     departureBoardLogoSvg = '';
     renderNightMode();
     renderLiveControls();
+    void loadScraperSchema();
     setLiveStatus('Live odjezdy byly vypnuté obnovením nastavení.');
     syncLensControls();
     syncDelayOffsetControls();
@@ -4091,36 +4418,13 @@ boardForm.addEventListener('submit', (event) => {
         input.addEventListener('change', persistState);
     });
 
-liveSourceUrlInput?.addEventListener('change', () => {
-    const value = liveSourceUrlInput.value.trim();
-    const parsed = parseLiveSourceUrl(value);
-    if (value && !parsed.valid) {
-        setLiveStatus(
-            'URL musí být tabule Správy železnic ve formátu '
-            + 'StationTable.aspx?Key=…',
-            true
-        );
-        renderLiveControls();
-        return;
-    }
-
-    if (parsed.key !== parseLiveSourceUrl(liveSourceUrl).key) {
-        liveStationName = parsed.key === LIVE_STATION_DEFAULTS.key
-            ? LIVE_STATION_DEFAULTS.name
-            : '';
-    }
-    liveSourceUrl = parsed.sourceUrl;
-    renderLiveControls();
-    persistState();
-    setLiveStatus('');
-});
-
 liveApiUrlInput?.addEventListener('change', () => {
     liveApiUrl = normalizeLiveApiUrl(
         liveApiUrlInput.value.trim() || getDefaultLiveApiUrl()
     );
     renderLiveControls();
     persistState();
+    void loadScraperSchema();
 });
 
 const applyLivePollInterval = (seconds) => {
@@ -4136,6 +4440,9 @@ livePollIntervalInput?.addEventListener('change', () => {
     applyLivePollInterval(livePollIntervalInput.value);
     persistState();
     restartLiveTimer();
+    if (liveDeparturesEnabled && scraperWatchesItself()) {
+        void engageScraperWatch();
+    }
 });
 
 liveToggleButton?.addEventListener('click', () => {
@@ -4269,6 +4576,9 @@ mountStationProfileEditor({
     }
 });
 setupManageBlockToggles();
+window.addEventListener('pagehide', () => {
+    releaseScraperWatch();
+});
 window.addEventListener('beforeunload', (event) => {
     event.preventDefault();
     event.returnValue = 'Manage stránka musí zůstat otevřená. Obnovení nebo zavření přeskočí animaci odjezdové tabule a tabule přestanou dostávat data.';
@@ -4298,6 +4608,7 @@ window.pragotron = {
             station: liveStationName,
             stationKey: parseLiveSourceUrl(liveSourceUrl).key,
             sourceUrl: liveSourceUrl,
+            parameters: { ...liveParameterValues },
             pollIntervalMs: livePollIntervalMs
         }
     }),
@@ -4334,6 +4645,8 @@ window.pragotron = {
     }
 };
 
-if (liveDeparturesEnabled) {
-    startLivePolling();
-}
+void loadScraperSchema().then(() => {
+    if (liveDeparturesEnabled) {
+        startLivePolling();
+    }
+});

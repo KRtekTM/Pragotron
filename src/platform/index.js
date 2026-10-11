@@ -147,10 +147,13 @@ export {
     LIVE_SERVER_HOST,
     LIVE_SOURCE_ORIGIN,
     LIVE_SOURCE_PATH,
+    LIVE_SCRAPER_SCHEMA,
     LIVE_STATION_DEFAULTS,
+    SCRAPER_IDLE_ERROR,
     describeLiveNetworkError,
     extractStationName,
     fetchLiveDepartures,
+    fetchScraperSchema,
     fetchStationTable,
     getDefaultLiveApiUrl,
     isAllowedLiveSourceUrl,
@@ -158,6 +161,11 @@ export {
     normalizeLiveApiUrl,
     normalizeLivePollIntervalMs,
     normalizeLiveSourceUrl,
+    normalizeScraperParameterValue,
+    normalizeScraperSchema,
     parseLiveSourceUrl,
-    parseStationTable
+    parseStationTable,
+    postScraperControl,
+    scraperControlUrl,
+    scraperSchemaUrl
 } from './live-departures.js';

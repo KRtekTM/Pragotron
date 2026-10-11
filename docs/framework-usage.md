@@ -32,7 +32,8 @@ npm run serve
 ```
 
 Ten kromě statických souborů poskytuje endpoint
-`/api/live-departures`. Ve výchozím nastavení manage stahuje tabuli
+`/api/live-departures` a definici jeho parametrů na
+`/api/live-departures/schema`. Ve výchozím nastavení manage stahuje tabuli
 jednou za minutu; interval 30–300 sekund se nastavuje posuvníkem v bloku
 Živé odjezdy. Zdrojová stránka
 nemá CORS hlavičku, proto ji nelze načítat přímo z prohlížeče. Server
@@ -1154,15 +1155,24 @@ zaškrtnutá; blikání čoček je součástí jejich komponentového chování.
 
 ## Živé odjezdy ze stanice
 
-Manage stránka obsahuje tlačítko `Spustit live odjezdy`. Po jeho aktivaci
-stahuje zvolenou tabuli Správy železnic přes `/api/live-departures`.
-Interval je 30–300 sekund po 30 sekundách, výchozí je 60 sekund a ukládá se
-s ostatním nastavením manage. Dokud jsou live odjezdy zapnuté a je známý
-název stanice, title stránky je `Název stanice – PRAGOTRON – manage`.
-Výchozí zdroj je Brno hlavní nádraží
-(`StationTable.aspx?Key=455`), v manage jde URL změnit na jinou stanici
-se stejným formátem. Vedle popisku `Adresa tabule SŽ` parser doplní název
-stanice z `LStationName` jako odkaz na právě použitou URL. Nový snapshot:
+Manage stránka obsahuje tlačítko `Spustit live odjezdy`. První pole je
+adresa scraperu. Manage si z `{adresa}/schema` načte definici volitelných
+parametrů, zobrazí je pod adresou a při stahování je pošle jako query
+parametry (`id=hodnota`). `interval` je vyhrazený pro interval dotazování
+a scraper ho nesmí použít jako vlastní parametr. Vestavěný scraper definuje
+parametr `source` typu URL tabule Správy železnic
+(`StationTable.aspx?Key=…`, výchozí Brno `Key=455`). V klidu jen vrací
+schéma. Periodicky stahuje tabuli až po `POST {adresa}/watch`, tedy když
+manage spustí živé odjezdy právě přes něj, a po `POST {adresa}/stop` nebo
+po vypršení sledování zase skončí. Jiný endpoint se tímto scraperem
+nespouští. Jiný scraper, třeba z modelového kolejiště, může ve schématu
+uvést vlastní pole typů `text`, `url`, `number` nebo `select`. Po aktivaci
+manage stahuje odjezdy přes zadanou adresu. Interval je 30–300 sekund po 30 sekundách, výchozí je
+60 sekund a ukládá se s ostatním nastavením manage. Dokud jsou live odjezdy
+zapnuté a je známý název stanice, title stránky je
+`Název stanice – PRAGOTRON – manage`. Když má parametr `showStation`,
+vedle jeho popisku parser doplní název stanice z `LStationName` jako odkaz
+na hodnotu toho pole. Nový snapshot:
 
 - používá pravidelný čas jako `departureTime`,
 - z rozdílu pravidelného a aktuálního času vypočítá skutečné zpoždění,

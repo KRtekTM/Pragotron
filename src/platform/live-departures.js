@@ -345,6 +345,233 @@ export const normalizeLiveSourceUrl = (value) =>
 export const isAllowedLiveSourceUrl = (value) =>
     parseLiveSourceUrl(value).valid;
 
+const SCRAPER_PARAMETER_ID = /^[A-Za-z][A-Za-z0-9_-]{0,40}$/;
+const SCRAPER_PARAMETER_TYPES = new Set(['text', 'url', 'number', 'select']);
+const SCRAPER_PARAMETER_LIMIT = 12;
+const SCRAPER_TEXT_LIMIT = 500;
+
+const scraperText = (value, limit = SCRAPER_TEXT_LIMIT) =>
+    String(value ?? '').trim().slice(0, limit);
+
+const scraperNumber = (value) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+};
+
+const normalizeScraperOptions = (options) => {
+    const result = [];
+    const seen = new Set();
+    (Array.isArray(options) ? options : []).forEach((option) => {
+        if (result.length >= 40) {
+            return;
+        }
+        const value = scraperText(
+            typeof option === 'string' ? option : option?.value,
+            120
+        );
+        const label = scraperText(
+            typeof option === 'string' ? option : (option?.label || value),
+            80
+        );
+        if (!value || seen.has(value)) {
+            return;
+        }
+        seen.add(value);
+        result.push({ value, label: label || value });
+    });
+    return result;
+};
+
+export const SCRAPER_IDLE_ERROR = 'Scraper je v klidu.';
+
+// Jiný scraper zveřejní stejný tvar na `{adresa}/schema`. Manage z něj
+// vykreslí pole a každé `id` pošle jako query parametr. `interval` je
+// vyhrazený pro interval dotazování z manage stránky. `controls.watch`
+// znamená, že periodické stahování běží jen po dobu sledování.
+export const LIVE_SCRAPER_SCHEMA = Object.freeze({
+    id: 'sprava-zeleznic',
+    name: 'Správa železnic',
+    description: 'Odjezdy z tabule Správy železnic.',
+    controls: Object.freeze({
+        watch: true,
+        stop: true
+    }),
+    parameters: Object.freeze([
+        Object.freeze({
+            id: 'source',
+            label: 'Adresa tabule SŽ',
+            type: 'url',
+            format: 'sz-station-url',
+            default: LIVE_STATION_DEFAULTS.sourceUrl,
+            help: 'Stejný formát StationTable.aspx?Key=…. '
+                + 'Výchozí je Brno hlavní nádraží (Key=455).',
+            showStation: true
+        })
+    ])
+});
+
+export const normalizeScraperSchema = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+
+    const parameters = [];
+    const seen = new Set();
+    (Array.isArray(value.parameters) ? value.parameters : []).forEach((item) => {
+        if (!item || typeof item !== 'object' || parameters.length >= SCRAPER_PARAMETER_LIMIT) {
+            return;
+        }
+        const id = scraperText(item.id, 41);
+        const type = scraperText(item.type, 20);
+        if (id === 'interval'
+            || !SCRAPER_PARAMETER_ID.test(id)
+            || seen.has(id)
+            || !SCRAPER_PARAMETER_TYPES.has(type)) {
+            return;
+        }
+
+        const parameter = {
+            id,
+            label: scraperText(item.label, 80) || id,
+            type,
+            help: scraperText(item.help, 240),
+            placeholder: scraperText(item.placeholder, 120),
+            format: scraperText(item.format, 40),
+            required: item.required === true,
+            showStation: item.showStation === true,
+            default: scraperText(item.default)
+        };
+        if (type === 'number') {
+            parameter.min = scraperNumber(item.min);
+            parameter.max = scraperNumber(item.max);
+            parameter.step = scraperNumber(item.step);
+        }
+        if (type === 'select') {
+            parameter.options = normalizeScraperOptions(item.options);
+            if (parameter.options.length === 0) {
+                return;
+            }
+        }
+        seen.add(id);
+        parameters.push(parameter);
+    });
+
+    const controls = value.controls && typeof value.controls === 'object'
+        ? value.controls
+        : {};
+
+    return {
+        id: scraperText(value.id, 40),
+        name: scraperText(value.name, 80),
+        description: scraperText(value.description, 240),
+        controls: {
+            watch: controls.watch === true,
+            stop: controls.stop === true
+        },
+        parameters
+    };
+};
+
+export const normalizeScraperParameterValue = (parameter, raw) => {
+    const label = parameter?.label || 'Parametr';
+    const text = String(raw ?? '').trim();
+    if (!parameter) {
+        return { ok: false, value: '', message: 'Neznámý parametr scraperu.' };
+    }
+
+    if (!text) {
+        if (parameter.format === 'sz-station-url') {
+            const parsed = parseLiveSourceUrl('');
+            return { ok: true, value: parsed.sourceUrl, key: parsed.key };
+        }
+        if (parameter.required) {
+            return { ok: false, value: '', message: `Vyplňte pole ${label}.` };
+        }
+        if (parameter.default) {
+            return normalizeScraperParameterValue(parameter, parameter.default);
+        }
+        return { ok: true, value: '' };
+    }
+
+    if (parameter.format === 'sz-station-url') {
+        const parsed = parseLiveSourceUrl(text);
+        if (!parsed.valid) {
+            return {
+                ok: false,
+                value: text,
+                message: 'URL musí být tabule Správy železnic ve formátu '
+                    + 'StationTable.aspx?Key=…'
+            };
+        }
+        return { ok: true, value: parsed.sourceUrl, key: parsed.key };
+    }
+
+    if (parameter.type === 'url') {
+        try {
+            const url = new URL(text);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                throw new Error('unsupported');
+            }
+            return { ok: true, value: url.toString() };
+        } catch {
+            return {
+                ok: false,
+                value: text,
+                message: `${label} musí být adresa http nebo https.`
+            };
+        }
+    }
+
+    if (parameter.type === 'number') {
+        const number = Number(text);
+        if (!Number.isFinite(number)) {
+            return { ok: false, value: text, message: `${label} musí být číslo.` };
+        }
+        if (parameter.min != null && number < parameter.min) {
+            return {
+                ok: false,
+                value: text,
+                message: `${label} musí být aspoň ${parameter.min}.`
+            };
+        }
+        if (parameter.max != null && number > parameter.max) {
+            return {
+                ok: false,
+                value: text,
+                message: `${label} může být nejvýše ${parameter.max}.`
+            };
+        }
+        return { ok: true, value: String(number) };
+    }
+
+    if (parameter.type === 'select') {
+        const match = parameter.options.find((option) => option.value === text);
+        if (!match) {
+            return {
+                ok: false,
+                value: parameter.default || parameter.options[0]?.value || '',
+                message: `${label} má neznámou volbu.`
+            };
+        }
+        return { ok: true, value: match.value };
+    }
+
+    return { ok: true, value: text.slice(0, SCRAPER_TEXT_LIMIT) };
+};
+
+const scraperEndpointUrl = (apiUrl, suffix) => {
+    const endpoint = new URL(normalizeLiveApiUrl(apiUrl));
+    endpoint.pathname = `${endpoint.pathname.replace(/\/+$/, '')}${suffix}`;
+    endpoint.search = '';
+    endpoint.hash = '';
+    return endpoint.toString();
+};
+
+export const scraperSchemaUrl = (apiUrl) => scraperEndpointUrl(apiUrl, '/schema');
+
+export const scraperControlUrl = (apiUrl, action) =>
+    scraperEndpointUrl(apiUrl, `/${action}`);
+
 export const extractStationName = (html) => {
     const match = String(html ?? '').match(
         /id="[^"]*LStationName[^"]*"[^>]*>([^<]*)/i
@@ -569,9 +796,111 @@ export const getDefaultLiveApiUrl = (
     return fallback;
 };
 
+export const fetchScraperSchema = async ({
+    apiUrl = getDefaultLiveApiUrl(),
+    fetchImpl = globalThis.fetch
+} = {}) => {
+    if (typeof fetchImpl !== 'function') {
+        throw new Error('Pro definici scraperu není dostupná funkce fetch.');
+    }
+
+    let response;
+    try {
+        response = await fetchImpl(scraperSchemaUrl(apiUrl), {
+            cache: 'no-store',
+            headers: {
+                Accept: 'application/json'
+            }
+        });
+    } catch (error) {
+        throw new Error(describeLiveNetworkError(error));
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            `Scraper nevrátil definici parametrů (HTTP ${response.status}).`
+        );
+    }
+
+    let payload = null;
+    try {
+        payload = await response.json();
+    } catch {
+        payload = null;
+    }
+    const schema = normalizeScraperSchema(payload);
+    if (!schema) {
+        throw new Error('Scraper vrátil neplatnou definici parametrů.');
+    }
+    return schema;
+};
+
+export const postScraperControl = async ({
+    apiUrl = getDefaultLiveApiUrl(),
+    action,
+    parameters = {},
+    pollIntervalMs = LIVE_POLL_INTERVAL_MS,
+    clientId = '',
+    fetchImpl = globalThis.fetch
+} = {}) => {
+    if (typeof fetchImpl !== 'function') {
+        throw new Error('Pro ovládání scraperu není dostupná funkce fetch.');
+    }
+    if (action !== 'watch' && action !== 'stop') {
+        throw new Error('Neznámý příkaz scraperu.');
+    }
+
+    let response;
+    try {
+        response = await fetchImpl(scraperControlUrl(apiUrl, action), {
+            method: 'POST',
+            cache: 'no-store',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ...(parameters && typeof parameters === 'object' ? parameters : {}),
+                interval: normalizeLivePollIntervalMs(pollIntervalMs),
+                client: scraperText(clientId, 80)
+            })
+        });
+    } catch (error) {
+        throw new Error(describeLiveNetworkError(error));
+    }
+
+    let payload = null;
+    try {
+        payload = await response.json();
+    } catch {
+        payload = null;
+    }
+    if (!response.ok) {
+        throw new Error(
+            payload?.error
+                ? String(payload.error)
+                : `Scraper nevrátil potvrzení (HTTP ${response.status}).`
+        );
+    }
+    return payload || {};
+};
+
+const appendScraperQuery = (endpoint, parameters) => {
+    Object.entries(parameters || {}).forEach(([key, value]) => {
+        if (!SCRAPER_PARAMETER_ID.test(key) || key === 'interval') {
+            return;
+        }
+        if (value == null || String(value).trim() === '') {
+            return;
+        }
+        endpoint.searchParams.set(key, String(value));
+    });
+};
+
 export const fetchLiveDepartures = async ({
     apiUrl = getDefaultLiveApiUrl(),
     sourceUrl = normalizeLiveSourceUrl(LIVE_STATION_DEFAULTS.sourceUrl),
+    parameters,
     pollIntervalMs = LIVE_POLL_INTERVAL_MS,
     fetchImpl = globalThis.fetch,
     attempts = 3
@@ -584,9 +913,11 @@ export const fetchLiveDepartures = async ({
         normalizeLiveApiUrl(apiUrl),
         globalThis.location?.href
     );
-    endpoint.searchParams.set(
-        'source',
-        normalizeLiveSourceUrl(sourceUrl)
+    appendScraperQuery(
+        endpoint,
+        parameters && typeof parameters === 'object'
+            ? parameters
+            : { source: normalizeLiveSourceUrl(sourceUrl) }
     );
     endpoint.searchParams.set(
         'interval',

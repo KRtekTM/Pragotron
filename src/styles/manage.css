@@ -440,7 +440,8 @@
     font-weight: 700;
 }
 
-#liveDeparturesPanel input {
+#liveDeparturesPanel input,
+#liveDeparturesPanel select {
     width: 100%;
     min-height: 2.4rem;
     padding: 0.45rem 0.6rem;

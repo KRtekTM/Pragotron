@@ -10,11 +10,14 @@ import {
     LIVE_POLL_INTERVAL_MS,
     LIVE_SERVER_DEFAULT_PORT,
     LIVE_SERVER_FALLBACK_PORTS,
+    LIVE_SCRAPER_SCHEMA,
     LIVE_STATION_DEFAULTS,
+    SCRAPER_IDLE_ERROR,
     fetchStationTable,
+    normalizeLivePollIntervalMs,
+    normalizeScraperSchema,
     isAllowedLiveSourceUrl,
     liveCacheTtlMs,
-    normalizeLivePollIntervalMs,
     parseLiveSourceUrl
 } from '../src/platform/live-departures.js';
 import { attachBoardChannel } from './board-channel-server.mjs';
@@ -145,6 +148,108 @@ const writeJson = (response, status, value) => {
 
 const isAllowedSource = (sourceUrl) => isAllowedLiveSourceUrl(sourceUrl);
 
+const scrapeLabel = (sourceUrl) => {
+    const source = parseLiveSourceUrl(sourceUrl);
+    return source.key ? `Key ${source.key}` : sourceUrl;
+};
+
+const logScrape = (message) => {
+    const time = new Date().toLocaleTimeString('cs-CZ', { hour12: false });
+    console.log(`[${time}] ${message}`);
+};
+
+let scrapeWatch = null;
+
+const watchLeaseMs = (intervalMs) => Math.max(intervalMs * 2, 70_000);
+
+const stopScrapeWatch = (reason) => {
+    if (!scrapeWatch) {
+        return;
+    }
+    if (scrapeWatch.timer) {
+        clearTimeout(scrapeWatch.timer);
+    }
+    const label = scrapeLabel(scrapeWatch.sourceUrl);
+    scrapeWatch = null;
+    logScrape(
+        `Scrape ${label}: sledování zastaveno${reason ? ` (${reason})` : ''}.`
+    );
+};
+
+const scheduleScrapeWatch = () => {
+    if (!scrapeWatch) {
+        return;
+    }
+    if (scrapeWatch.timer) {
+        clearTimeout(scrapeWatch.timer);
+    }
+    const current = scrapeWatch;
+    current.timer = setTimeout(async () => {
+        if (scrapeWatch !== current) {
+            return;
+        }
+        if (Date.now() > current.expiresAt) {
+            stopScrapeWatch('vypršelo');
+            return;
+        }
+        try {
+            await getCachedLiveDepartures(current.sourceUrl, current.intervalMs);
+        } catch {
+            // The scrape log already describes the failure.
+        }
+        if (scrapeWatch === current) {
+            scheduleScrapeWatch();
+        }
+    }, current.intervalMs);
+};
+
+const armScrapeWatch = async ({ sourceUrl, intervalMs, clientId }) => {
+    const same = scrapeWatch
+        && scrapeWatch.sourceUrl === sourceUrl
+        && scrapeWatch.intervalMs === intervalMs;
+    if (same) {
+        scrapeWatch.expiresAt = Date.now() + watchLeaseMs(intervalMs);
+        if (clientId) {
+            scrapeWatch.clientId = clientId;
+        }
+        return liveCache.get(sourceUrl)?.payload || null;
+    }
+
+    if (scrapeWatch?.timer) {
+        clearTimeout(scrapeWatch.timer);
+    }
+    scrapeWatch = {
+        sourceUrl,
+        intervalMs,
+        clientId: clientId || '',
+        expiresAt: Date.now() + watchLeaseMs(intervalMs),
+        timer: null
+    };
+    logScrape(
+        `Scrape ${scrapeLabel(sourceUrl)}: sledování spuštěno, `
+        + `interval ${Math.round(intervalMs / 1000)} s`
+    );
+    scheduleScrapeWatch();
+    return getCachedLiveDepartures(sourceUrl, intervalMs);
+};
+
+const readRequestJson = async (request) => {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of request) {
+        size += chunk.length;
+        if (size > 16_384) {
+            throw new Error('Příliš velké tělo požadavku.');
+        }
+        chunks.push(chunk);
+    }
+    const text = Buffer.concat(chunks).toString('utf8').trim();
+    if (!text) {
+        return {};
+    }
+    return JSON.parse(text);
+};
+
 const getCachedLiveDepartures = async (sourceUrl, intervalMs) => {
     const ttl = liveCacheTtlMs(intervalMs);
     const cached = liveCache.get(sourceUrl);
@@ -159,6 +264,8 @@ const getCachedLiveDepartures = async (sourceUrl, intervalMs) => {
     }
 
     const startedAt = Date.now();
+    const label = scrapeLabel(sourceUrl);
+    logScrape(`Scrape ${label}: stahuji zdrojovou tabuli`);
     const inflight = fetchStationTable({
         url: sourceUrl,
         fetchImpl: fetchIpv4
@@ -169,6 +276,13 @@ const getCachedLiveDepartures = async (sourceUrl, intervalMs) => {
                 fetchedAt: startedAt,
                 inflight: null
             });
+            const count = Array.isArray(payload?.departures)
+                ? payload.departures.length
+                : 0;
+            const station = payload?.station || label;
+            logScrape(
+                `Scrape ${station}: ${count} odjezdů za ${Date.now() - startedAt} ms`
+            );
             return payload;
         })
         .catch((error) => {
@@ -178,6 +292,14 @@ const getCachedLiveDepartures = async (sourceUrl, intervalMs) => {
                 fetchedAt: stale?.fetchedAt || 0,
                 inflight: null
             });
+            const message = error instanceof Error
+                ? error.message
+                : 'stažení selhalo';
+            logScrape(
+                stale?.payload
+                    ? `Scrape ${label}: ${message} Zůstává předchozí stažení.`
+                    : `Scrape ${label}: ${message}`
+            );
             if (stale?.payload) {
                 return stale.payload;
             }
@@ -262,39 +384,122 @@ const server = createServer(async (request, response) => {
     if (request.method === 'OPTIONS') {
         response.writeHead(204, {
             'Access-Control-Allow-Headers': 'Content-Type',
-            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Origin': '*'
         });
         response.end();
         return;
     }
 
+    if (requestUrl.pathname === '/api/live-departures/schema'
+        && request.method === 'GET') {
+        writeJson(response, 200, normalizeScraperSchema(LIVE_SCRAPER_SCHEMA));
+        return;
+    }
+
+    if (requestUrl.pathname === '/api/live-departures/watch'
+        && request.method === 'POST') {
+        try {
+            const body = await readRequestJson(request);
+            const parsed = parseLiveSourceUrl(body.source || '');
+            if (body.source && !parsed.valid) {
+                writeJson(response, 400, {
+                    error: 'Povolena je pouze tabule Správy železnic ve formátu '
+                        + 'StationTable.aspx?Key=…'
+                });
+                return;
+            }
+            const payload = await armScrapeWatch({
+                sourceUrl: parsed.sourceUrl,
+                intervalMs: normalizeLivePollIntervalMs(body.interval),
+                clientId: String(body.client || '').trim().slice(0, 80)
+            });
+            writeJson(response, 200, payload || {
+                watching: true,
+                departures: []
+            });
+        } catch (error) {
+            writeJson(response, 502, {
+                error: error instanceof Error
+                    ? error.message
+                    : 'Sledování se nepodařilo spustit.'
+            });
+        }
+        return;
+    }
+
+    if (requestUrl.pathname === '/api/live-departures/stop'
+        && request.method === 'POST') {
+        try {
+            const body = await readRequestJson(request);
+            const clientId = String(body.client || '').trim();
+            if (scrapeWatch
+                && clientId
+                && scrapeWatch.clientId
+                && scrapeWatch.clientId !== clientId) {
+                writeJson(response, 200, { watching: true });
+                return;
+            }
+            stopScrapeWatch('požadavek');
+            writeJson(response, 200, { watching: false });
+        } catch (error) {
+            writeJson(response, 400, {
+                error: error instanceof Error
+                    ? error.message
+                    : 'Sledování se nepodařilo zastavit.'
+            });
+        }
+        return;
+    }
+
     if (request.method !== 'GET') {
-        response.writeHead(405, { Allow: 'GET, OPTIONS' });
+        response.writeHead(405, { Allow: 'GET, POST, OPTIONS' });
         response.end('Method not allowed');
         return;
     }
 
     if (requestUrl.pathname === '/api/live-departures') {
-        const requestedSource = requestUrl.searchParams.get('source')
-            || LIVE_STATION_DEFAULTS.sourceUrl;
-        if (!isAllowedSource(requestedSource)) {
+        if (!scrapeWatch || Date.now() > scrapeWatch.expiresAt) {
+            if (scrapeWatch) {
+                stopScrapeWatch('vypršelo');
+            }
+            writeJson(response, 409, { error: SCRAPER_IDLE_ERROR });
+            return;
+        }
+
+        const requestedSource = requestUrl.searchParams.get('source') || '';
+        const parsed = parseLiveSourceUrl(
+            requestedSource || scrapeWatch.sourceUrl
+        );
+        if (requestedSource && !parsed.valid) {
             writeJson(response, 400, {
                 error: 'Povolena je pouze tabule Správy železnic ve formátu '
                     + 'StationTable.aspx?Key=…'
             });
             return;
         }
+        if (parsed.sourceUrl !== scrapeWatch.sourceUrl) {
+            writeJson(response, 409, {
+                error: 'Scraper sleduje jinou tabuli.'
+            });
+            return;
+        }
 
+        scrapeWatch.expiresAt = Date.now() + watchLeaseMs(scrapeWatch.intervalMs);
+        const cached = liveCache.get(scrapeWatch.sourceUrl);
         try {
-            const payload = await getCachedLiveDepartures(
-                parseLiveSourceUrl(requestedSource).sourceUrl,
-                normalizeLivePollIntervalMs(
-                    requestUrl.searchParams.get('interval')
-                        || LIVE_POLL_INTERVAL_MS
-                )
-            );
-            writeJson(response, 200, payload);
+            if (cached?.inflight) {
+                writeJson(response, 200, await cached.inflight);
+                return;
+            }
+            if (cached?.payload) {
+                writeJson(response, 200, cached.payload);
+                return;
+            }
+            writeJson(response, 200, await getCachedLiveDepartures(
+                scrapeWatch.sourceUrl,
+                scrapeWatch.intervalMs
+            ));
         } catch (error) {
             writeJson(response, 502, {
                 error: error instanceof Error
@@ -330,6 +535,88 @@ const listenOnPort = (port) => new Promise((resolve, reject) => {
     server.listen(port, LISTEN_HOST);
 });
 
+// Textový nápis podle images/tabule/pragotronNapis2.svg.
+const PRAGOTRON_LOGO = [
+    '  ████      ████        █       ████      ████     █████     ████       ████     █   █  ',
+    '  █   █     █   █      ███     ██   █    ██  ██      █       █   █     ██  ██    ██  █  ',
+    '  █   █     █   █      █ █     █         █    █      █       █   █     █    █    ███ █  ',
+    '  ████      ████      █   █    █  ███    █    █      █       ████      █    █    █ █ █  ',
+    '  █         █   █     █████    █    █    █    █      █       █   █     █    █    █  ██  ',
+    '  █         █   █    ██   ██   ██   █    ██  ██      █       █   █     ██  ██    █  ██  ',
+    '  █         █   █    ██   ██    ████      ████       █       █   █      ████     █   █  '
+];
+
+const textWidth = (value) => [...String(value)].length;
+
+const ansi = (code) => (process.stdout.isTTY ? `\u001b[${code}m` : '');
+
+const paint = (code, value) => `${ansi(code)}${value}${ansi('0')}`;
+
+const printStartupBanner = ({ localBase, addresses, network }) => {
+    const entries = [
+        ['Server', `${localBase}/`],
+        ['Manage', `${localBase}/platformTableManage.html`],
+        ['Odjezdová', `${localBase}/departureBoard.html`],
+        ['Nástupištní', `${localBase}/platformTable.html?platform=1&track=6a`]
+    ];
+    const notes = [];
+    if (localBase.startsWith('http://127.0.0.1:')) {
+        notes.push('Otevírejte 127.0.0.1, ne localhost.');
+        notes.push('Na Windows localhost končí chybou ERR_NO_BUFFER_SPACE.');
+    }
+    if (network) {
+        addresses.forEach((address) => {
+            notes.push(
+                `Síť  http://${address}:${listeningPort}/platformTableManage.html`
+            );
+        });
+        notes.push('Tabule z jiného počítače otevřete na adrese serveru.');
+        notes.push('Nástupiště, kolej a sektor se zadávají v URL stejně jako lokálně.');
+        notes.push('Jen tento počítač: HOST=127.0.0.1 npm run serve');
+    }
+
+    const labelWidth = Math.max(...entries.map(([label]) => textWidth(label)));
+    const rows = entries.map(([label, value]) => ({
+        text: `${label.padEnd(labelWidth, ' ')}  ${value}`,
+        label,
+        value
+    }));
+    const inner = Math.max(
+        56,
+        ...PRAGOTRON_LOGO.map((line) => textWidth(line)),
+        ...rows.map((row) => textWidth(row.text)),
+        ...notes.map((note) => textWidth(note))
+    );
+    const rule = (left, fill, right) => `${left}${fill.repeat(inner + 2)}${right}`;
+    const padLine = (text) => text.padEnd(inner, ' ');
+    const frameLine = (text) => `${paint('2', '│')} ${text} ${paint('2', '│')}`;
+    const logoWidth = Math.max(...PRAGOTRON_LOGO.map((line) => textWidth(line)));
+    const logoPad = 2 + Math.max(0, Math.floor((inner - logoWidth) / 2));
+
+    console.log('');
+    PRAGOTRON_LOGO.forEach((line) => {
+        const centered = `${' '.repeat(logoPad)}${line.padEnd(logoWidth, ' ')}`;
+        console.log(paint('1', centered));
+    });
+    console.log('');
+    console.log(paint('2', rule('┌', '─', '┐')));
+    rows.forEach((row) => {
+        const label = paint('2', row.label.padEnd(labelWidth, ' '));
+        const gap = '  ';
+        const valueWidth = inner - labelWidth - gap.length;
+        const value = `${paint('36', row.value)}${' '.repeat(Math.max(0, valueWidth - textWidth(row.value)))}`;
+        console.log(frameLine(`${label}${gap}${value}`));
+    });
+    if (notes.length > 0) {
+        console.log(paint('2', rule('├', '─', '┤')));
+        notes.forEach((note) => {
+            console.log(frameLine(paint('2', padLine(note))));
+        });
+    }
+    console.log(paint('2', rule('└', '─', '┘')));
+    console.log('');
+};
+
 const startServer = async () => {
     let lastError = null;
 
@@ -341,39 +628,14 @@ const startServer = async () => {
                 && LISTEN_HOST !== '::'
                 ? `http://${LISTEN_HOST}:${listeningPort}`
                 : `http://127.0.0.1:${listeningPort}`;
-            console.log(`Pragotron server běží na ${localBase}/`);
-            console.log(
-                `Manage stránka: ${localBase}/platformTableManage.html`
-            );
-            console.log(
-                `Odjezdová tabule: ${localBase}/departureBoard.html`
-            );
-            console.log(
-                'Nástupištní tabule: '
-                + `${localBase}/platformTable.html?platform=1&track=6a`
-            );
-            if (localBase.startsWith('http://127.0.0.1:')) {
-                console.log(
-                    'Otevírejte 127.0.0.1, ne localhost — na Windows to jinak končí ERR_NO_BUFFER_SPACE.'
-                );
-            }
-            if (listensOnNetwork) {
-                const addresses = LISTEN_HOST === '0.0.0.0' || LISTEN_HOST === '::'
-                    ? lanAddresses()
-                    : [LISTEN_HOST];
-                addresses.forEach((address) => {
-                    console.log(
-                        `Síť: http://${address}:${listeningPort}/platformTableManage.html`
-                    );
-                });
-                console.log(
-                    'Tabule z jiného počítače otevřete na stejné adrese serveru. '
-                    + 'Identita nástupiště, koleje a sektoru se zadává stejně jako lokálně.'
-                );
-                console.log(
-                    'Jen pro tento počítač spusťte server s HOST=127.0.0.1.'
-                );
-            }
+            const addresses = LISTEN_HOST === '0.0.0.0' || LISTEN_HOST === '::'
+                ? lanAddresses()
+                : [LISTEN_HOST];
+            printStartupBanner({
+                localBase,
+                addresses,
+                network: listensOnNetwork
+            });
             return;
         } catch (error) {
             lastError = error;

@@ -285,35 +285,8 @@
             <fieldset id="liveDeparturesPanel" class="manage-panel live-departures-panel">
                 <div><legend>Živé odjezdy</legend></div>
                 <p id="liveDeparturesDescription" class="live-departures-description">
-                    Živé odjezdy ze stanice Správy železnic · aktualizace
-                    každých 60 sekund. Pro načítání je potřeba spustit
-                    scraper server.
+                    Živé odjezdy · aktualizace každých 60 sekund.
                 </p>
-                <div class="board-form-field">
-                    <span class="live-source-heading">
-                        <label for="liveSourceUrl">Adresa tabule SŽ</label>
-                        <span id="liveSourceStation" class="live-source-station" hidden>
-                            (<a
-                                id="liveSourceStationLink"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            ></a>)
-                        </span>
-                    </span>
-                    <input
-                        id="liveSourceUrl"
-                        type="url"
-                        autocomplete="off"
-                        spellcheck="false"
-                        aria-describedby="liveSourceHelp"
-                    >
-                    <small id="liveSourceHelp">
-                        Stejný formát
-                        <code>StationTable.aspx?Key=…</code>.
-                        Výchozí je Brno hlavní nádraží
-                        (<code>Key=455</code>).
-                    </small>
-                </div>
                 <label class="board-form-field" for="liveApiUrl">
                     Adresa scraperu
                     <input
@@ -324,10 +297,11 @@
                         aria-describedby="liveApiHelp"
                     >
                     <small id="liveApiHelp">
-                        Ve výchozím nastavení se používá
-                        <code>http://127.0.0.1:4787/api/live-departures</code>.
+                        Endpoint odjezdů. Jeho volitelné parametry se načtou
+                        z <code>/schema</code> na stejné adrese.
                     </small>
                 </label>
+                <div id="liveScraperParameters"></div>
                 <label class="board-form-field" for="livePollInterval">
                     Interval aktualizace
                     <span class="live-poll-interval">
@@ -343,7 +317,7 @@
                         <output id="livePollIntervalValue" for="livePollInterval">60 s</output>
                     </span>
                     <small id="livePollIntervalHelp">
-                        Jak často se stáhne tabule SŽ. 30–300 sekund,
+                        Jak často se manage zeptá scraperu. 30–300 sekund,
                         výchozí je 60 sekund.
                     </small>
                 </label>
