@@ -2377,3 +2377,284 @@ body.manage-night-mode #manage #departuresTable th {
         grid-column: auto;
     }
 }
+
+html.manage-session-pending #manageHeader,
+html.manage-session-pending #manageLayoutBar,
+html.manage-session-pending #manage,
+html.manage-session-pending #boardSettingsDialog,
+html.manage-session-denied #manageHeader,
+html.manage-session-denied #manageLayoutBar,
+html.manage-session-denied #manage,
+html.manage-session-denied #boardSettingsDialog {
+    display: none;
+}
+
+.manage-session-pending-note,
+.manage-session-screen {
+    display: none;
+}
+
+html.manage-session-pending .manage-session-pending-note {
+    display: flex;
+    min-height: 100vh;
+    box-sizing: border-box;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 2rem;
+    font-size: 1.4rem;
+}
+
+html.manage-session-denied .manage-session-screen {
+    display: flex;
+    position: fixed;
+    z-index: 40;
+    inset: 0;
+    overflow: auto;
+    box-sizing: border-box;
+    justify-content: center;
+    padding: 3.25rem 1.25rem 3rem;
+    background: #111;
+}
+
+.manage-session-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 2rem;
+    width: min(72rem, 100%);
+    text-align: left;
+}
+
+.manage-session-card > img {
+    position: sticky;
+    top: 0;
+    display: block;
+    flex: 0 0 22rem;
+    width: 22rem;
+    max-width: 42%;
+    height: auto;
+    margin: 0;
+    border-radius: 0.7rem;
+}
+
+.manage-session-copy {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.manage-session-card h1 {
+    margin: 0 0 1.35rem;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.15;
+}
+
+.manage-session-copy > p {
+    margin: 0;
+    font-size: 1.25rem;
+    line-height: 1.45;
+}
+
+.manage-session-card strong {
+    color: var(--control-focus);
+    font-weight: 700;
+}
+
+.manage-session-guide {
+    margin-top: 1.6rem;
+    text-align: left;
+}
+
+.manage-session-guide h2 {
+    margin: 1.15rem 0 0.55rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.manage-session-guide-intro,
+.manage-session-empty,
+.manage-session-hint,
+.manage-session-fallback {
+    margin: 0 0 0.8rem;
+    color: #d5d5d5;
+    font-size: 1rem;
+    line-height: 1.4;
+}
+
+.manage-session-hint {
+    margin: 0.85rem 0 0;
+    color: var(--control-focus);
+}
+
+.manage-session-add {
+    margin-top: 1.15rem;
+}
+
+.manage-session-fallback {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+
+.manage-session-choices {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(5rem, 20rem));
+    justify-content: center;
+    gap: 0.6rem;
+    align-items: stretch;
+    margin-bottom: 1.5rem;
+}
+
+.manage-session-choices label {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.55rem;
+    padding: 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: var(--control-radius);
+    background: #1c1c1c;
+    cursor: pointer;
+}
+
+.manage-session-choices img {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    margin-inline: auto;
+    border-radius: 0.25rem;
+}
+
+.manage-session-choice-caption {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    width: 100%;
+    margin-top: auto;
+    white-space: nowrap;
+}
+
+.manage-session-choice-caption input {
+    flex: none;
+    align-self: center;
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.manage-session-choices label:has(input:checked) {
+    border-color: var(--control-focus);
+    color: var(--control-focus);
+}
+
+.manage-session-params {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.manage-session-param,
+.manage-session-add,
+.manage-session-link {
+    display: grid;
+    grid-template-columns: minmax(7rem, 9rem) minmax(0, 1fr) auto;
+    gap: 0.45rem;
+    align-items: center;
+}
+
+.manage-session-link {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.manage-session-lens-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+}
+
+.manage-session-guide select,
+.manage-session-guide input:not([type="radio"]),
+.manage-session-guide button,
+.manage-session-open,
+#manageSessionRetry {
+    box-sizing: border-box;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    font: inherit;
+    font-weight: 700;
+}
+
+.manage-session-guide select,
+.manage-session-guide input:not([type="radio"]) {
+    width: 100%;
+    min-width: 0;
+    padding: 0.4rem 0.5rem;
+    background: #fff;
+    font-weight: 400;
+}
+
+.manage-session-guide button,
+.manage-session-open,
+#manageSessionRetry {
+    padding: 0.45rem 0.7rem;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+}
+
+.manage-session-open {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--control-focus);
+}
+
+.manage-session-guide button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.manage-session-guide button:hover:not(:disabled),
+.manage-session-open:hover,
+#manageSessionRetry:hover {
+    background: #fff;
+}
+
+.manage-session-open:hover {
+    background: #ffe566;
+}
+
+#manageSessionRetry {
+    margin-top: 1.4rem;
+}
+
+@media (max-width: 800px) {
+    .manage-session-card {
+        flex-direction: column;
+    }
+
+    .manage-session-card > img {
+        position: static;
+        flex-basis: auto;
+        width: min(22rem, 100%);
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 700px) {
+    .manage-session-choices,
+    .manage-session-param,
+    .manage-session-add,
+    .manage-session-lens-fields,
+    .manage-session-link {
+        grid-template-columns: 1fr;
+    }
+}

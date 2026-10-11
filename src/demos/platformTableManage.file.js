@@ -1,700 +1,1816 @@
 (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __esm = (fn, res, err) => function __init() {
+    if (err) throw err[0];
+    try {
+      return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+    } catch (e) {
+      throw err = [e], e;
+    }
+  };
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+
   // src/platform/data.js
-  var STATION_CHARACTER_COUNT = 14;
-  var STATION_FLAP_SEQUENCE = Object.freeze([
-    " ",
-    ".",
-    "-",
-    "/",
-    "A",
-    "\xC1",
-    "\xC4",
-    "B",
-    "C",
-    "\u010C",
-    "D",
-    "\u010E",
-    "E",
-    "\xC9",
-    "\u011A",
-    "\xCB",
-    "F",
-    "G",
-    "H",
-    "I",
-    "\xCD",
-    "\xCF",
-    "J",
-    "K",
-    "L",
-    "\u013D",
-    "M",
-    "N",
-    "\u0147",
-    "O",
-    "\xD3",
-    "\xD6",
-    "P",
-    "Q",
-    "R",
-    "\u0158",
-    "\u0154",
-    "S",
-    "\u0160",
-    "T",
-    "\u0164",
-    "U",
-    "\xDA",
-    "\u016E",
-    "\xDC",
-    "V",
-    "W",
-    "X",
-    "Y",
-    "\xDD",
-    "\u0178",
-    "Z",
-    "\u017D",
-    ",",
-    ":",
-    ";",
-    "+",
-    "(",
-    ")",
-    "[",
-    "]",
-    "!",
-    "?",
-    "%",
-    "&",
-    "#",
-    "'",
-    "0",
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9"
-  ]);
-  var STATION_NAME_VOWELS = Object.freeze(/* @__PURE__ */ new Set([
-    "A",
-    "\xC1",
-    "\xC4",
-    "E",
-    "\xC9",
-    "\u011A",
-    "\xCB",
-    "I",
-    "\xCD",
-    "\xCF",
-    "O",
-    "\xD3",
-    "\xD6",
-    "U",
-    "\xDA",
-    "\u016E",
-    "\xDC",
-    "Y",
-    "\xDD",
-    "\u0178"
-  ]));
-  var stationNameChars = (value) => Array.from(String(value ?? ""));
-  var stationNameLength = (value) => stationNameChars(value).length;
-  var sliceStationName = (value, start, end) => stationNameChars(value).slice(start, end).join("");
-  var abbreviateStationConnectors = (value) => {
-    const words = String(value).split(" ").filter(Boolean);
-    const result = [];
-    for (let index = 0; index < words.length; index += 1) {
-      if (words[index] === "NAD" && words[index + 1]) {
-        result.push(`N/${words[index + 1]}`);
-        index += 1;
-        continue;
-      }
-      result.push(words[index]);
+  var STATION_CHARACTER_COUNT, STATION_FLAP_SEQUENCE, STATION_NAME_VOWELS, stationNameChars, stationNameLength, sliceStationName, abbreviateStationConnectors, fillStationName, stripTrailingVowels, nextKeptLetter, formatStationName, STATION_FLIP_DURATION, FLAP_TIMING_VARIATION_MS, FLAP_TIMING_DURATION_MIN, FLAP_TIMING_DURATION_MAX, FLAP_TIMING_VARIATION_MIN, FLAP_TIMING_VARIATION_MAX, FLAP_TIMING_DEFAULTS, DEPARTURE_FLAP_TIMING_DEFAULTS, PLATFORM_FLAP_TIMING_DEFAULTS, DEPARTURE_BOARD_ROW_COUNT_DEFAULT, DEPARTURE_BOARD_ROW_COUNT_MIN, DEPARTURE_BOARD_ROW_COUNT_MAX, normalizeDepartureBoardRowCount, DEPARTURE_BOARD_LOGO_CUSTOM_ID, DEPARTURE_BOARD_LOGO_DEFAULT, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH, DEPARTURE_BOARD_LOGO_PRESETS, normalizeDepartureBoardLogoId, normalizeCustomBoardLogoSvg, getDepartureBoardLogoLabel, getDepartureBoardLogoSrc, TRAIN_TYPE_IMAGE_FILE_NAMES, TRAIN_TYPE_IMAGE_CUSTOM, trainTypeImageLabel, TRAIN_TYPE_IMAGE_FILES, TRAIN_TYPE_IMAGE_FILE_SET, trainTypeImageSrc, normalizeTrainTypeSource, trainTypeImageUrl, trainTypeImageChoice, clampInteger, normalizeFlapTiming, DELAY_VALUES, DELAY_DISPLAY_THRESHOLD, DELAY_OFFSET_DEFAULT, RECENT_DEPARTURE_GRACE_MS, DEPARTURE_HOLD_RELEASE_MS, minutesSinceClock, normalizeDelayOffset, parseDelayMinutes, getDisplayedDelay, getEffectiveDepartureDate, getDepartureSortTimestamp, compareDeparturesByTime, TRAIN_TYPES, DEPARTURE_TRACK_VALUES, DEPARTURE_PLATFORM_VALUES, DEPARTURE_SECTOR_VALUES, TRAIN_NUMBER_CARD_STYLES, createTrainNumberCard, createTrainNumberDigitCards, TRAIN_NUMBER_FLAP_CARDS, getTrainNumberCardStyle, NIGHT_FADE_MODES, NIGHT_LIGHT_BASE_DEFAULTS, NIGHT_LIGHT_DEFAULTS, NIGHT_CLOCK_DEFAULTS, createEmptyBoardState;
+  var init_data = __esm({
+    "src/platform/data.js"() {
+      STATION_CHARACTER_COUNT = 14;
+      STATION_FLAP_SEQUENCE = Object.freeze([
+        " ",
+        ".",
+        "-",
+        "/",
+        "A",
+        "\xC1",
+        "\xC4",
+        "B",
+        "C",
+        "\u010C",
+        "D",
+        "\u010E",
+        "E",
+        "\xC9",
+        "\u011A",
+        "\xCB",
+        "F",
+        "G",
+        "H",
+        "I",
+        "\xCD",
+        "\xCF",
+        "J",
+        "K",
+        "L",
+        "\u013D",
+        "M",
+        "N",
+        "\u0147",
+        "O",
+        "\xD3",
+        "\xD6",
+        "P",
+        "Q",
+        "R",
+        "\u0158",
+        "\u0154",
+        "S",
+        "\u0160",
+        "T",
+        "\u0164",
+        "U",
+        "\xDA",
+        "\u016E",
+        "\xDC",
+        "V",
+        "W",
+        "X",
+        "Y",
+        "\xDD",
+        "\u0178",
+        "Z",
+        "\u017D",
+        ",",
+        ":",
+        ";",
+        "+",
+        "(",
+        ")",
+        "[",
+        "]",
+        "!",
+        "?",
+        "%",
+        "&",
+        "#",
+        "'",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9"
+      ]);
+      STATION_NAME_VOWELS = Object.freeze(/* @__PURE__ */ new Set([
+        "A",
+        "\xC1",
+        "\xC4",
+        "E",
+        "\xC9",
+        "\u011A",
+        "\xCB",
+        "I",
+        "\xCD",
+        "\xCF",
+        "O",
+        "\xD3",
+        "\xD6",
+        "U",
+        "\xDA",
+        "\u016E",
+        "\xDC",
+        "Y",
+        "\xDD",
+        "\u0178"
+      ]));
+      stationNameChars = (value) => Array.from(String(value ?? ""));
+      stationNameLength = (value) => stationNameChars(value).length;
+      sliceStationName = (value, start, end) => stationNameChars(value).slice(start, end).join("");
+      abbreviateStationConnectors = (value) => {
+        const words = String(value).split(" ").filter(Boolean);
+        const result = [];
+        for (let index = 0; index < words.length; index += 1) {
+          if (words[index] === "NAD" && words[index + 1]) {
+            result.push(`N/${words[index + 1]}`);
+            index += 1;
+            continue;
+          }
+          result.push(words[index]);
+        }
+        return result.join(" ");
+      };
+      fillStationName = (value, width) => {
+        const words = String(value).split(" ").filter(Boolean);
+        let result = "";
+        for (const word of words) {
+          if (!result) {
+            result = stationNameLength(word) <= width ? word : sliceStationName(word, 0, width);
+            continue;
+          }
+          const remaining = width - stationNameLength(result);
+          const next = ` ${word}`;
+          if (stationNameLength(next) <= remaining) {
+            result += next;
+            continue;
+          }
+          if (remaining <= 1) {
+            break;
+          }
+          result += ` ${sliceStationName(word, 0, remaining - 1)}`;
+          break;
+        }
+        return result.replace(/ +$/g, "");
+      };
+      stripTrailingVowels = (value) => {
+        const chars = stationNameChars(value);
+        while (chars.length > 1 && STATION_NAME_VOWELS.has(chars[chars.length - 1])) {
+          chars.pop();
+        }
+        return chars.join("");
+      };
+      nextKeptLetter = (value) => {
+        for (const character of stationNameChars(value)) {
+          if (character !== " " && character !== ".") {
+            return character;
+          }
+        }
+        return "";
+      };
+      formatStationName = (value, {
+        maxLength = STATION_CHARACTER_COUNT,
+        sequence = STATION_FLAP_SEQUENCE
+      } = {}) => {
+        const cleaned = stationNameChars(
+          String(value ?? "").replace(/[–—−]/g, "-").toLocaleUpperCase("cs-CZ")
+        ).map((character) => sequence.includes(character) ? character : " ").join("").replace(/\s+/g, " ").trim();
+        if (!cleaned || maxLength <= 0) {
+          return "";
+        }
+        const abbreviated = abbreviateStationConnectors(cleaned);
+        if (stationNameLength(abbreviated) <= maxLength) {
+          return abbreviated;
+        }
+        if (maxLength === 1) {
+          return ".";
+        }
+        const filled = fillStationName(abbreviated, maxLength - 1);
+        const remaining = sliceStationName(abbreviated, stationNameLength(filled));
+        if (filled.endsWith(".")) {
+          const extra = nextKeptLetter(remaining);
+          const combined = `${filled}${extra}`;
+          return stationNameLength(combined) <= maxLength ? combined : sliceStationName(combined, 0, maxLength);
+        }
+        return `${stripTrailingVowels(filled)}.`;
+      };
+      STATION_FLIP_DURATION = 190;
+      FLAP_TIMING_VARIATION_MS = 0;
+      FLAP_TIMING_DURATION_MIN = 50;
+      FLAP_TIMING_DURATION_MAX = 500;
+      FLAP_TIMING_VARIATION_MIN = 0;
+      FLAP_TIMING_VARIATION_MAX = 10;
+      FLAP_TIMING_DEFAULTS = Object.freeze({
+        duration: STATION_FLIP_DURATION,
+        variation: FLAP_TIMING_VARIATION_MS
+      });
+      DEPARTURE_FLAP_TIMING_DEFAULTS = Object.freeze({
+        duration: 100,
+        variation: FLAP_TIMING_VARIATION_MS
+      });
+      PLATFORM_FLAP_TIMING_DEFAULTS = Object.freeze({
+        duration: 130,
+        variation: FLAP_TIMING_VARIATION_MS
+      });
+      DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 12;
+      DEPARTURE_BOARD_ROW_COUNT_MIN = 1;
+      DEPARTURE_BOARD_ROW_COUNT_MAX = 24;
+      normalizeDepartureBoardRowCount = (value) => clampInteger(
+        value,
+        DEPARTURE_BOARD_ROW_COUNT_MIN,
+        DEPARTURE_BOARD_ROW_COUNT_MAX,
+        DEPARTURE_BOARD_ROW_COUNT_DEFAULT
+      );
+      DEPARTURE_BOARD_LOGO_CUSTOM_ID = "custom";
+      DEPARTURE_BOARD_LOGO_DEFAULT = "sprzel";
+      DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH = 8e4;
+      DEPARTURE_BOARD_LOGO_PRESETS = Object.freeze([
+        {
+          id: "cd",
+          src: "images/tabule/CD_logo.svg",
+          label: "\u010CD"
+        },
+        {
+          id: "sprzel",
+          src: "images/tabule/sprzel.svg",
+          label: "Spr\xE1va \u017Eeleznic"
+        },
+        {
+          id: "sprzel-white",
+          src: "images/tabule/sprzel_bile.svg",
+          label: "Spr\xE1va \u017Eeleznic b\xEDl\xE9"
+        },
+        {
+          id: "pragotron",
+          src: "images/tabule/pragotron_bile.svg",
+          label: "Pragotron"
+        }
+      ]);
+      normalizeDepartureBoardLogoId = (value) => {
+        if (value === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+          return DEPARTURE_BOARD_LOGO_CUSTOM_ID;
+        }
+        return DEPARTURE_BOARD_LOGO_PRESETS.some((item) => item.id === value) ? value : DEPARTURE_BOARD_LOGO_DEFAULT;
+      };
+      normalizeCustomBoardLogoSvg = (value) => {
+        const text = String(value ?? "").trim();
+        if (!text || text.length > DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH || !/<svg[\s>]/i.test(text) || /<script/i.test(text) || /\bon\w+\s*=/i.test(text)) {
+          return "";
+        }
+        return text;
+      };
+      getDepartureBoardLogoLabel = (value, fallback = DEPARTURE_BOARD_LOGO_DEFAULT) => {
+        const logoId = normalizeDepartureBoardLogoId(value ?? fallback);
+        if (logoId === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+          return "Vlastn\xED logo";
+        }
+        return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.label || "Logo";
+      };
+      getDepartureBoardLogoSrc = (value, customSvg = "", fallback = DEPARTURE_BOARD_LOGO_DEFAULT) => {
+        const logoId = normalizeDepartureBoardLogoId(value ?? fallback);
+        if (logoId === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
+          const svg = normalizeCustomBoardLogoSvg(customSvg);
+          return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : "";
+        }
+        return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.src || "";
+      };
+      TRAIN_TYPE_IMAGE_FILE_NAMES = [
+        "EuroCity_Logo.svg",
+        "InterCity_Austria.svg",
+        "intercity.svg",
+        "Nightjet_logo.svg",
+        "nightjet.svg",
+        "Railjet_logo.svg",
+        "railjet.svg",
+        "Regiojet_logo.svg",
+        "regiojet.svg",
+        "Spr\xE1va_\u017Eeleznic_logo.svg",
+        "supercity.svg"
+      ];
+      TRAIN_TYPE_IMAGE_CUSTOM = "custom";
+      trainTypeImageLabel = (file) => String(file || "").replace(/\.svg$/i, "").replaceAll("_", " ");
+      TRAIN_TYPE_IMAGE_FILES = Object.freeze(
+        [...TRAIN_TYPE_IMAGE_FILE_NAMES].sort(
+          (left, right) => trainTypeImageLabel(left).localeCompare(
+            trainTypeImageLabel(right),
+            "cs",
+            { sensitivity: "base" }
+          )
+        )
+      );
+      TRAIN_TYPE_IMAGE_FILE_SET = new Set(TRAIN_TYPE_IMAGE_FILES);
+      trainTypeImageSrc = (file) => `images/typy-vlaku/${file}`;
+      normalizeTrainTypeSource = (value) => {
+        const raw = String(value ?? "").trim();
+        if (!raw) {
+          return "";
+        }
+        if (/<svg[\s>]/i.test(raw)) {
+          return normalizeCustomBoardLogoSvg(raw);
+        }
+        const file = raw.split(/[/\\]/).pop();
+        if (TRAIN_TYPE_IMAGE_FILE_SET.has(file) && (raw === trainTypeImageSrc(file) || raw === `images/${file}` || raw === file)) {
+          return trainTypeImageSrc(file);
+        }
+        return "";
+      };
+      trainTypeImageUrl = (value) => {
+        const source = normalizeTrainTypeSource(value);
+        if (!source) {
+          return "";
+        }
+        if (source.startsWith("<")) {
+          return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+        }
+        return source;
+      };
+      trainTypeImageChoice = (value) => {
+        const source = normalizeTrainTypeSource(value);
+        if (!source) {
+          return { choice: "", svg: "" };
+        }
+        if (source.startsWith("<")) {
+          return { choice: TRAIN_TYPE_IMAGE_CUSTOM, svg: source };
+        }
+        return { choice: source, svg: "" };
+      };
+      clampInteger = (value, minimum, maximum, fallback) => {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, Math.round(number))) : fallback;
+      };
+      normalizeFlapTiming = (value = {}) => {
+        const source = value && typeof value === "object" ? value : {};
+        return {
+          duration: clampInteger(
+            source.duration,
+            FLAP_TIMING_DURATION_MIN,
+            FLAP_TIMING_DURATION_MAX,
+            FLAP_TIMING_DEFAULTS.duration
+          ),
+          variation: clampInteger(
+            source.variation,
+            FLAP_TIMING_VARIATION_MIN,
+            FLAP_TIMING_VARIATION_MAX,
+            FLAP_TIMING_DEFAULTS.variation
+          )
+        };
+      };
+      DELAY_VALUES = Object.freeze([
+        "",
+        5,
+        10,
+        15,
+        20,
+        25,
+        30,
+        35,
+        40,
+        45,
+        50,
+        55,
+        60,
+        70,
+        80,
+        90,
+        100,
+        110,
+        120,
+        150,
+        180,
+        210,
+        240,
+        270,
+        300,
+        330,
+        360,
+        390
+      ]);
+      DELAY_DISPLAY_THRESHOLD = 5;
+      DELAY_OFFSET_DEFAULT = false;
+      RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1e3;
+      DEPARTURE_HOLD_RELEASE_MS = RECENT_DEPARTURE_GRACE_MS + 60 * 1e3;
+      minutesSinceClock = (clockDate, reference) => {
+        const referenceMinute = new Date(reference.getTime());
+        referenceMinute.setSeconds(0, 0);
+        return referenceMinute.getTime() - clockDate.getTime();
+      };
+      normalizeDelayOffset = (value) => value === true;
+      parseDelayMinutes = (value) => {
+        if (value === "" || value === null || value === void 0) {
+          return "";
+        }
+        const text = String(value).trim();
+        const match = text.match(/^(\d+(?:[.,]\d+)?)\s*min\.?$/i);
+        const numericValue = Number(match ? match[1].replace(",", ".") : value);
+        return Number.isFinite(numericValue) && numericValue >= 0 ? Math.floor(numericValue) : null;
+      };
+      getDisplayedDelay = (value, values = DELAY_VALUES, applyOffset = DELAY_OFFSET_DEFAULT) => {
+        const minutes = parseDelayMinutes(value);
+        if (minutes === "" || minutes === null) {
+          return "";
+        }
+        const offsetEnabled = normalizeDelayOffset(applyOffset);
+        if (offsetEnabled && minutes <= DELAY_DISPLAY_THRESHOLD) {
+          return "";
+        }
+        const availableValues = values.filter(
+          (candidate) => Number.isFinite(Number(candidate)) && Number(candidate) > 0 && (offsetEnabled ? Number(candidate) < minutes : Number(candidate) <= minutes)
+        );
+        return availableValues.length ? availableValues[availableValues.length - 1] : "";
+      };
+      getEffectiveDepartureDate = (departureTime, delay, now = /* @__PURE__ */ new Date(), applyOffset = DELAY_OFFSET_DEFAULT) => {
+        const hours = Number(departureTime?.hours);
+        const minutes = Number(departureTime?.minutes);
+        if (!Number.isInteger(hours) || hours < 0 || hours > 23 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+          return null;
+        }
+        const reference = now instanceof Date ? now : new Date(now);
+        if (Number.isNaN(reference.getTime())) {
+          return null;
+        }
+        const clock = new Date(reference.getTime());
+        clock.setSeconds(0, 0);
+        clock.setHours(hours, minutes, 0, 0);
+        const date = new Date(clock.getTime());
+        const displayedDelay = getDisplayedDelay(delay, DELAY_VALUES, applyOffset);
+        if (displayedDelay !== "") {
+          date.setMinutes(date.getMinutes() + Number(displayedDelay));
+        }
+        const recentDeparture = minutesSinceClock(date, reference) <= RECENT_DEPARTURE_GRACE_MS;
+        if (date.getTime() < reference.getTime() && !recentDeparture) {
+          date.setDate(date.getDate() + 1);
+        }
+        return date;
+      };
+      getDepartureSortTimestamp = (departureTime, delay, now = /* @__PURE__ */ new Date(), applyOffset = DELAY_OFFSET_DEFAULT) => {
+        const hours = Number(departureTime?.hours);
+        const minutes = Number(departureTime?.minutes);
+        if (!Number.isInteger(hours) || hours < 0 || hours > 23 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+          return Number.POSITIVE_INFINITY;
+        }
+        const reference = now instanceof Date ? now : new Date(now);
+        if (Number.isNaN(reference.getTime())) {
+          return Number.POSITIVE_INFINITY;
+        }
+        const date = new Date(reference.getTime());
+        date.setSeconds(0, 0);
+        date.setHours(hours, minutes, 0, 0);
+        const actualDelay = parseDelayMinutes(delay);
+        const delayMinutes = Number.isFinite(actualDelay) ? actualDelay : 0;
+        const effective = new Date(date.getTime());
+        if (delayMinutes > 0) {
+          effective.setMinutes(effective.getMinutes() + delayMinutes);
+        }
+        if (minutesSinceClock(effective, reference) > RECENT_DEPARTURE_GRACE_MS) {
+          date.setDate(date.getDate() + 1);
+        }
+        return date.getTime();
+      };
+      compareDeparturesByTime = (first, second, now = /* @__PURE__ */ new Date(), applyOffset = DELAY_OFFSET_DEFAULT) => {
+        const firstTime = getDepartureSortTimestamp(
+          first?.departureTime,
+          first?.delay,
+          now,
+          applyOffset
+        );
+        const secondTime = getDepartureSortTimestamp(
+          second?.departureTime,
+          second?.delay,
+          now,
+          applyOffset
+        );
+        return firstTime - secondTime || String(first?.id || "").localeCompare(String(second?.id || ""));
+      };
+      TRAIN_TYPES = Object.freeze([
+        {
+          name: "",
+          text: "",
+          background: "var(--flap-background)",
+          foreground: "var(--flap-foreground)"
+        },
+        { name: "\u010CEDOK", text: "\u010CEDOK", background: "#D80300", foreground: "#fff" },
+        { name: "Ex", text: "Ex", background: "#D80300", foreground: "#fff" },
+        {
+          name: "Ex l\xF4\u017Ek.",
+          text: "Ex",
+          suffix: "l\xF4\u017Ek.",
+          background: "#D80300",
+          foreground: "#fff"
+        },
+        {
+          name: "Ex miest.",
+          text: "Ex",
+          suffix: "miest.",
+          background: "#D80300",
+          foreground: "#fff"
+        },
+        {
+          name: "Mim. Os",
+          text: "Mim. Os",
+          background: "var(--flap-background)",
+          foreground: "#fff"
+        },
+        { name: "Mim. R", text: "Mim. R", background: "#D80300", foreground: "#fff" },
+        { name: "ODKLON", text: "ODKLON", background: "#FFD800", foreground: "#000" },
+        { name: "Os", text: "Os", background: "var(--flap-background)", foreground: "#fff" },
+        { name: "R", text: "R", background: "#D80300", foreground: "#fff" },
+        {
+          name: "R miest.",
+          text: "R",
+          suffix: "miest.",
+          background: "#D80300",
+          foreground: "#fff"
+        },
+        { name: "ROH", text: "ROH", background: "#D80300", foreground: "#fff" },
+        { name: "Sp", text: "Sp", background: "#1e3c69", foreground: "#fff" },
+        {
+          name: "Z\xC1JAZD",
+          text: "Z\xC1JAZD",
+          background: "var(--flap-background)",
+          foreground: "#fff"
+        },
+        {
+          name: "Intercity",
+          source: "images/typy-vlaku/intercity.svg",
+          label: "Intercity (IC)",
+          background: "#fff",
+          foreground: "#CC3333"
+        },
+        {
+          name: "Eurocity",
+          source: "images/typy-vlaku/EuroCity_Logo.svg",
+          label: "Eurocity (EC)",
+          background: "#fff",
+          foreground: "#000"
+        },
+        {
+          name: "rj",
+          source: "images/typy-vlaku/railjet.svg",
+          label: "Railjet (rj)",
+          background: "#D80300",
+          foreground: "#fff"
+        },
+        {
+          name: "RJ",
+          source: "images/typy-vlaku/regiojet.svg",
+          label: "RegioJet (RJ)",
+          background: "#F1B504",
+          foreground: "#000"
+        },
+        {
+          name: "EuroNight",
+          text: "EN",
+          label: "EuroNight (EN)",
+          background: "var(--flap-background)",
+          foreground: "#fff"
+        },
+        {
+          name: "nj",
+          source: "images/typy-vlaku/nightjet.svg",
+          label: "NightJet (nj)",
+          background: "#1e3c69",
+          foreground: "#fff"
+        },
+        {
+          name: "SuperCity",
+          source: "images/typy-vlaku/supercity.svg",
+          label: "SuperCity (SC)",
+          background: "#fff",
+          foreground: "#F1B504"
+        }
+      ]);
+      DEPARTURE_TRACK_VALUES = Object.freeze([
+        "",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "6a",
+        "11a",
+        "701"
+      ]);
+      DEPARTURE_PLATFORM_VALUES = Object.freeze([
+        "",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ]);
+      DEPARTURE_SECTOR_VALUES = Object.freeze([
+        "",
+        "A",
+        "A-B",
+        "A-C",
+        "A-D",
+        "B",
+        "B-C",
+        "B-D",
+        "B-E",
+        "C",
+        "C-D",
+        "C-E",
+        "D",
+        "D-E",
+        "E",
+        "Sever",
+        "Jih"
+      ]);
+      TRAIN_NUMBER_CARD_STYLES = Object.freeze({
+        default: Object.freeze({
+          background: "var(--flap-background)",
+          foreground: "var(--flap-foreground)"
+        }),
+        intercity: Object.freeze({
+          background: "#fff",
+          foreground: "#000"
+        }),
+        sp: Object.freeze({
+          background: "#1e3c69",
+          foreground: "#fff"
+        }),
+        red: Object.freeze({
+          background: "#D80300",
+          foreground: "#fff"
+        })
+      });
+      createTrainNumberCard = (key, value, style) => Object.freeze({
+        key,
+        value,
+        ...TRAIN_NUMBER_CARD_STYLES[style],
+        style
+      });
+      createTrainNumberDigitCards = (style) => Array.from(
+        { length: 10 },
+        (_, digit) => createTrainNumberCard(`${style}-${digit}`, String(digit), style)
+      );
+      TRAIN_NUMBER_FLAP_CARDS = Object.freeze([
+        createTrainNumberCard("blank", "", "default"),
+        ...createTrainNumberDigitCards("default"),
+        ...createTrainNumberDigitCards("intercity"),
+        ...createTrainNumberDigitCards("sp"),
+        ...createTrainNumberDigitCards("red")
+      ]);
+      getTrainNumberCardStyle = (train) => {
+        const name = String(train ?? "");
+        const normalized = name.toLocaleLowerCase("cs-CZ");
+        if (name === "Intercity" || name === "Eurocity" || name === "IC" || name === "EC" || name === "SuperCity" || normalized === "sc") {
+          return "intercity";
+        }
+        if (name === "Sp" || normalized === "nj" || normalized === "nightjet") {
+          return "sp";
+        }
+        if (name === "R" || name === "R miest." || name === "Mim. R" || name === "Ex" || name.startsWith("Ex ") || name === "\u010CEDOK" || name === "ROH" || normalized === "rj" || normalized === "railjet" || normalized === "regiojet") {
+          return "red";
+        }
+        return "default";
+      };
+      NIGHT_FADE_MODES = Object.freeze([
+        { value: "none", label: "Bez pohas\xEDn\xE1n\xED (st\xE1l\xFD svit)" },
+        { value: "soft", label: "Jemn\xE9 kol\xEDs\xE1n\xED" },
+        { value: "slow", label: "Pomal\xE9 pohas\xEDn\xE1n\xED" },
+        { value: "flicker", label: "Nepravideln\xE9 poblik\xE1v\xE1n\xED" }
+      ]);
+      NIGHT_LIGHT_BASE_DEFAULTS = Object.freeze({
+        enabled: true,
+        variation: false,
+        intensity: 40,
+        speed: 120,
+        fade: "none"
+      });
+      NIGHT_LIGHT_DEFAULTS = Object.freeze([
+        { id: "top-left", label: "Horn\xED lev\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS },
+        { id: "top-center", label: "Horn\xED st\u0159ed", ...NIGHT_LIGHT_BASE_DEFAULTS },
+        { id: "top-right", label: "Horn\xED prav\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS },
+        { id: "bottom-left", label: "Doln\xED lev\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS },
+        { id: "bottom-center", label: "Doln\xED st\u0159ed", ...NIGHT_LIGHT_BASE_DEFAULTS },
+        { id: "bottom-right", label: "Doln\xED prav\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS }
+      ]);
+      NIGHT_CLOCK_DEFAULTS = Object.freeze({
+        enabled: true,
+        intensity: 60
+      });
+      createEmptyBoardState = () => ({
+        stations: ["", ""],
+        train: "",
+        delay: "",
+        departureTime: null
+      });
     }
-    return result.join(" ");
-  };
-  var fillStationName = (value, width) => {
-    const words = String(value).split(" ").filter(Boolean);
-    let result = "";
-    for (const word of words) {
-      if (!result) {
-        result = stationNameLength(word) <= width ? word : sliceStationName(word, 0, width);
-        continue;
-      }
-      const remaining = width - stationNameLength(result);
-      const next = ` ${word}`;
-      if (stationNameLength(next) <= remaining) {
-        result += next;
-        continue;
-      }
-      if (remaining <= 1) {
-        break;
-      }
-      result += ` ${sliceStationName(word, 0, remaining - 1)}`;
-      break;
-    }
-    return result.replace(/ +$/g, "");
-  };
-  var stripTrailingVowels = (value) => {
-    const chars = stationNameChars(value);
-    while (chars.length > 1 && STATION_NAME_VOWELS.has(chars[chars.length - 1])) {
-      chars.pop();
-    }
-    return chars.join("");
-  };
-  var nextKeptLetter = (value) => {
-    for (const character of stationNameChars(value)) {
-      if (character !== " " && character !== ".") {
-        return character;
-      }
-    }
-    return "";
-  };
-  var formatStationName = (value, {
-    maxLength = STATION_CHARACTER_COUNT,
-    sequence = STATION_FLAP_SEQUENCE
-  } = {}) => {
-    const cleaned = stationNameChars(
-      String(value ?? "").replace(/[–—−]/g, "-").toLocaleUpperCase("cs-CZ")
-    ).map((character) => sequence.includes(character) ? character : " ").join("").replace(/\s+/g, " ").trim();
-    if (!cleaned || maxLength <= 0) {
-      return "";
-    }
-    const abbreviated = abbreviateStationConnectors(cleaned);
-    if (stationNameLength(abbreviated) <= maxLength) {
-      return abbreviated;
-    }
-    if (maxLength === 1) {
-      return ".";
-    }
-    const filled = fillStationName(abbreviated, maxLength - 1);
-    const remaining = sliceStationName(abbreviated, stationNameLength(filled));
-    if (filled.endsWith(".")) {
-      const extra = nextKeptLetter(remaining);
-      const combined = `${filled}${extra}`;
-      return stationNameLength(combined) <= maxLength ? combined : sliceStationName(combined, 0, maxLength);
-    }
-    return `${stripTrailingVowels(filled)}.`;
-  };
-  var STATION_FLIP_DURATION = 190;
-  var FLAP_TIMING_VARIATION_MS = 0;
-  var FLAP_TIMING_DURATION_MIN = 50;
-  var FLAP_TIMING_DURATION_MAX = 500;
-  var FLAP_TIMING_VARIATION_MIN = 0;
-  var FLAP_TIMING_VARIATION_MAX = 10;
-  var FLAP_TIMING_DEFAULTS = Object.freeze({
-    duration: STATION_FLIP_DURATION,
-    variation: FLAP_TIMING_VARIATION_MS
-  });
-  var DEPARTURE_FLAP_TIMING_DEFAULTS = Object.freeze({
-    duration: 100,
-    variation: FLAP_TIMING_VARIATION_MS
-  });
-  var PLATFORM_FLAP_TIMING_DEFAULTS = Object.freeze({
-    duration: 130,
-    variation: FLAP_TIMING_VARIATION_MS
-  });
-  var DEPARTURE_BOARD_ROW_COUNT_DEFAULT = 12;
-  var DEPARTURE_BOARD_ROW_COUNT_MIN = 1;
-  var DEPARTURE_BOARD_ROW_COUNT_MAX = 24;
-  var normalizeDepartureBoardRowCount = (value) => clampInteger(
-    value,
-    DEPARTURE_BOARD_ROW_COUNT_MIN,
-    DEPARTURE_BOARD_ROW_COUNT_MAX,
-    DEPARTURE_BOARD_ROW_COUNT_DEFAULT
-  );
-  var DEPARTURE_BOARD_LOGO_CUSTOM_ID = "custom";
-  var DEPARTURE_BOARD_LOGO_DEFAULT = "sprzel";
-  var DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH = 8e4;
-  var DEPARTURE_BOARD_LOGO_PRESETS = Object.freeze([
-    {
-      id: "cd",
-      src: "images/tabule/CD_logo.svg",
-      label: "\u010CD"
-    },
-    {
-      id: "sprzel",
-      src: "images/tabule/sprzel.svg",
-      label: "Spr\xE1va \u017Eeleznic"
-    },
-    {
-      id: "sprzel-white",
-      src: "images/tabule/sprzel_bile.svg",
-      label: "Spr\xE1va \u017Eeleznic b\xEDl\xE9"
-    },
-    {
-      id: "pragotron",
-      src: "images/tabule/pragotron_bile.svg",
-      label: "Pragotron"
-    }
-  ]);
-  var normalizeDepartureBoardLogoId = (value) => {
-    if (value === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
-      return DEPARTURE_BOARD_LOGO_CUSTOM_ID;
-    }
-    return DEPARTURE_BOARD_LOGO_PRESETS.some((item) => item.id === value) ? value : DEPARTURE_BOARD_LOGO_DEFAULT;
-  };
-  var normalizeCustomBoardLogoSvg = (value) => {
-    const text = String(value ?? "").trim();
-    if (!text || text.length > DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH || !/<svg[\s>]/i.test(text) || /<script/i.test(text) || /\bon\w+\s*=/i.test(text)) {
-      return "";
-    }
-    return text;
-  };
-  var getDepartureBoardLogoLabel = (value, fallback = DEPARTURE_BOARD_LOGO_DEFAULT) => {
-    const logoId = normalizeDepartureBoardLogoId(value ?? fallback);
-    if (logoId === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
-      return "Vlastn\xED logo";
-    }
-    return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.label || "Logo";
-  };
-  var getDepartureBoardLogoSrc = (value, customSvg = "", fallback = DEPARTURE_BOARD_LOGO_DEFAULT) => {
-    const logoId = normalizeDepartureBoardLogoId(value ?? fallback);
-    if (logoId === DEPARTURE_BOARD_LOGO_CUSTOM_ID) {
-      const svg = normalizeCustomBoardLogoSvg(customSvg);
-      return svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : "";
-    }
-    return DEPARTURE_BOARD_LOGO_PRESETS.find((item) => item.id === logoId)?.src || "";
-  };
-  var TRAIN_TYPE_IMAGE_FILE_NAMES = [
-    "EuroCity_Logo.svg",
-    "InterCity_Austria.svg",
-    "intercity.svg",
-    "Nightjet_logo.svg",
-    "nightjet.svg",
-    "Railjet_logo.svg",
-    "railjet.svg",
-    "Regiojet_logo.svg",
-    "regiojet.svg",
-    "Spr\xE1va_\u017Eeleznic_logo.svg",
-    "supercity.svg"
-  ];
-  var TRAIN_TYPE_IMAGE_CUSTOM = "custom";
-  var trainTypeImageLabel = (file) => String(file || "").replace(/\.svg$/i, "").replaceAll("_", " ");
-  var TRAIN_TYPE_IMAGE_FILES = Object.freeze(
-    [...TRAIN_TYPE_IMAGE_FILE_NAMES].sort(
-      (left, right) => trainTypeImageLabel(left).localeCompare(
-        trainTypeImageLabel(right),
-        "cs",
-        { sensitivity: "base" }
-      )
-    )
-  );
-  var TRAIN_TYPE_IMAGE_FILE_SET = new Set(TRAIN_TYPE_IMAGE_FILES);
-  var trainTypeImageSrc = (file) => `images/typy-vlaku/${file}`;
-  var normalizeTrainTypeSource = (value) => {
-    const raw = String(value ?? "").trim();
-    if (!raw) {
-      return "";
-    }
-    if (/<svg[\s>]/i.test(raw)) {
-      return normalizeCustomBoardLogoSvg(raw);
-    }
-    const file = raw.split(/[/\\]/).pop();
-    if (TRAIN_TYPE_IMAGE_FILE_SET.has(file) && (raw === trainTypeImageSrc(file) || raw === `images/${file}` || raw === file)) {
-      return trainTypeImageSrc(file);
-    }
-    return "";
-  };
-  var trainTypeImageUrl = (value) => {
-    const source = normalizeTrainTypeSource(value);
-    if (!source) {
-      return "";
-    }
-    if (source.startsWith("<")) {
-      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
-    }
-    return source;
-  };
-  var trainTypeImageChoice = (value) => {
-    const source = normalizeTrainTypeSource(value);
-    if (!source) {
-      return { choice: "", svg: "" };
-    }
-    if (source.startsWith("<")) {
-      return { choice: TRAIN_TYPE_IMAGE_CUSTOM, svg: source };
-    }
-    return { choice: source, svg: "" };
-  };
-  var clampInteger = (value, minimum, maximum, fallback) => {
-    const number = Number(value);
-    return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, Math.round(number))) : fallback;
-  };
-  var normalizeFlapTiming = (value = {}) => {
-    const source = value && typeof value === "object" ? value : {};
-    return {
-      duration: clampInteger(
-        source.duration,
-        FLAP_TIMING_DURATION_MIN,
-        FLAP_TIMING_DURATION_MAX,
-        FLAP_TIMING_DEFAULTS.duration
-      ),
-      variation: clampInteger(
-        source.variation,
-        FLAP_TIMING_VARIATION_MIN,
-        FLAP_TIMING_VARIATION_MAX,
-        FLAP_TIMING_DEFAULTS.variation
-      )
-    };
-  };
-  var DELAY_VALUES = Object.freeze([
-    "",
-    5,
-    10,
-    15,
-    20,
-    25,
-    30,
-    35,
-    40,
-    45,
-    50,
-    55,
-    60,
-    70,
-    80,
-    90,
-    100,
-    110,
-    120,
-    150,
-    180,
-    210,
-    240,
-    270,
-    300,
-    330,
-    360,
-    390
-  ]);
-  var DELAY_DISPLAY_THRESHOLD = 5;
-  var DELAY_OFFSET_DEFAULT = false;
-  var RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1e3;
-  var DEPARTURE_HOLD_RELEASE_MS = RECENT_DEPARTURE_GRACE_MS + 60 * 1e3;
-  var minutesSinceClock = (clockDate, reference) => {
-    const referenceMinute = new Date(reference.getTime());
-    referenceMinute.setSeconds(0, 0);
-    return referenceMinute.getTime() - clockDate.getTime();
-  };
-  var normalizeDelayOffset = (value) => value === true;
-  var parseDelayMinutes = (value) => {
-    if (value === "" || value === null || value === void 0) {
-      return "";
-    }
-    const text = String(value).trim();
-    const match = text.match(/^(\d+(?:[.,]\d+)?)\s*min\.?$/i);
-    const numericValue = Number(match ? match[1].replace(",", ".") : value);
-    return Number.isFinite(numericValue) && numericValue >= 0 ? Math.floor(numericValue) : null;
-  };
-  var getDisplayedDelay = (value, values = DELAY_VALUES, applyOffset = DELAY_OFFSET_DEFAULT) => {
-    const minutes = parseDelayMinutes(value);
-    if (minutes === "" || minutes === null) {
-      return "";
-    }
-    const offsetEnabled = normalizeDelayOffset(applyOffset);
-    if (offsetEnabled && minutes <= DELAY_DISPLAY_THRESHOLD) {
-      return "";
-    }
-    const availableValues = values.filter(
-      (candidate) => Number.isFinite(Number(candidate)) && Number(candidate) > 0 && (offsetEnabled ? Number(candidate) < minutes : Number(candidate) <= minutes)
-    );
-    return availableValues.length ? availableValues[availableValues.length - 1] : "";
-  };
-  var getEffectiveDepartureDate = (departureTime, delay, now = /* @__PURE__ */ new Date(), applyOffset = DELAY_OFFSET_DEFAULT) => {
-    const hours = Number(departureTime?.hours);
-    const minutes = Number(departureTime?.minutes);
-    if (!Number.isInteger(hours) || hours < 0 || hours > 23 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
-      return null;
-    }
-    const reference = now instanceof Date ? now : new Date(now);
-    if (Number.isNaN(reference.getTime())) {
-      return null;
-    }
-    const clock = new Date(reference.getTime());
-    clock.setSeconds(0, 0);
-    clock.setHours(hours, minutes, 0, 0);
-    const date = new Date(clock.getTime());
-    const displayedDelay = getDisplayedDelay(delay, DELAY_VALUES, applyOffset);
-    if (displayedDelay !== "") {
-      date.setMinutes(date.getMinutes() + Number(displayedDelay));
-    }
-    const recentDeparture = minutesSinceClock(date, reference) <= RECENT_DEPARTURE_GRACE_MS;
-    if (date.getTime() < reference.getTime() && !recentDeparture) {
-      date.setDate(date.getDate() + 1);
-    }
-    return date;
-  };
-  var getDepartureSortTimestamp = (departureTime, delay, now = /* @__PURE__ */ new Date(), applyOffset = DELAY_OFFSET_DEFAULT) => {
-    const hours = Number(departureTime?.hours);
-    const minutes = Number(departureTime?.minutes);
-    if (!Number.isInteger(hours) || hours < 0 || hours > 23 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
-      return Number.POSITIVE_INFINITY;
-    }
-    const reference = now instanceof Date ? now : new Date(now);
-    if (Number.isNaN(reference.getTime())) {
-      return Number.POSITIVE_INFINITY;
-    }
-    const date = new Date(reference.getTime());
-    date.setSeconds(0, 0);
-    date.setHours(hours, minutes, 0, 0);
-    const actualDelay = parseDelayMinutes(delay);
-    const delayMinutes = Number.isFinite(actualDelay) ? actualDelay : 0;
-    const effective = new Date(date.getTime());
-    if (delayMinutes > 0) {
-      effective.setMinutes(effective.getMinutes() + delayMinutes);
-    }
-    if (minutesSinceClock(effective, reference) > RECENT_DEPARTURE_GRACE_MS) {
-      date.setDate(date.getDate() + 1);
-    }
-    return date.getTime();
-  };
-  var compareDeparturesByTime = (first, second, now = /* @__PURE__ */ new Date(), applyOffset = DELAY_OFFSET_DEFAULT) => {
-    const firstTime = getDepartureSortTimestamp(
-      first?.departureTime,
-      first?.delay,
-      now,
-      applyOffset
-    );
-    const secondTime = getDepartureSortTimestamp(
-      second?.departureTime,
-      second?.delay,
-      now,
-      applyOffset
-    );
-    return firstTime - secondTime || String(first?.id || "").localeCompare(String(second?.id || ""));
-  };
-  var TRAIN_TYPES = Object.freeze([
-    {
-      name: "",
-      text: "",
-      background: "var(--flap-background)",
-      foreground: "var(--flap-foreground)"
-    },
-    { name: "\u010CEDOK", text: "\u010CEDOK", background: "#D80300", foreground: "#fff" },
-    { name: "Ex", text: "Ex", background: "#D80300", foreground: "#fff" },
-    {
-      name: "Ex l\xF4\u017Ek.",
-      text: "Ex",
-      suffix: "l\xF4\u017Ek.",
-      background: "#D80300",
-      foreground: "#fff"
-    },
-    {
-      name: "Ex miest.",
-      text: "Ex",
-      suffix: "miest.",
-      background: "#D80300",
-      foreground: "#fff"
-    },
-    {
-      name: "Mim. Os",
-      text: "Mim. Os",
-      background: "var(--flap-background)",
-      foreground: "#fff"
-    },
-    { name: "Mim. R", text: "Mim. R", background: "#D80300", foreground: "#fff" },
-    { name: "ODKLON", text: "ODKLON", background: "#FFD800", foreground: "#000" },
-    { name: "Os", text: "Os", background: "var(--flap-background)", foreground: "#fff" },
-    { name: "R", text: "R", background: "#D80300", foreground: "#fff" },
-    {
-      name: "R miest.",
-      text: "R",
-      suffix: "miest.",
-      background: "#D80300",
-      foreground: "#fff"
-    },
-    { name: "ROH", text: "ROH", background: "#D80300", foreground: "#fff" },
-    { name: "Sp", text: "Sp", background: "#1e3c69", foreground: "#fff" },
-    {
-      name: "Z\xC1JAZD",
-      text: "Z\xC1JAZD",
-      background: "var(--flap-background)",
-      foreground: "#fff"
-    },
-    {
-      name: "Intercity",
-      source: "images/typy-vlaku/intercity.svg",
-      label: "Intercity (IC)",
-      background: "#fff",
-      foreground: "#CC3333"
-    },
-    {
-      name: "Eurocity",
-      source: "images/typy-vlaku/EuroCity_Logo.svg",
-      label: "Eurocity (EC)",
-      background: "#fff",
-      foreground: "#000"
-    },
-    {
-      name: "rj",
-      source: "images/typy-vlaku/railjet.svg",
-      label: "Railjet (rj)",
-      background: "#D80300",
-      foreground: "#fff"
-    },
-    {
-      name: "RJ",
-      source: "images/typy-vlaku/regiojet.svg",
-      label: "RegioJet (RJ)",
-      background: "#F1B504",
-      foreground: "#000"
-    },
-    {
-      name: "EuroNight",
-      text: "EN",
-      label: "EuroNight (EN)",
-      background: "var(--flap-background)",
-      foreground: "#fff"
-    },
-    {
-      name: "nj",
-      source: "images/typy-vlaku/nightjet.svg",
-      label: "NightJet (nj)",
-      background: "#1e3c69",
-      foreground: "#fff"
-    },
-    {
-      name: "SuperCity",
-      source: "images/typy-vlaku/supercity.svg",
-      label: "SuperCity (SC)",
-      background: "#fff",
-      foreground: "#F1B504"
-    }
-  ]);
-  var DEPARTURE_TRACK_VALUES = Object.freeze([
-    "",
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6",
-    "7",
-    "8",
-    "9",
-    "10",
-    "11",
-    "12",
-    "13",
-    "6a",
-    "11a",
-    "701"
-  ]);
-  var DEPARTURE_PLATFORM_VALUES = Object.freeze([
-    "",
-    "1",
-    "2",
-    "3",
-    "4",
-    "5",
-    "6"
-  ]);
-  var DEPARTURE_SECTOR_VALUES = Object.freeze([
-    "",
-    "A",
-    "A-B",
-    "A-C",
-    "A-D",
-    "B",
-    "B-C",
-    "B-D",
-    "B-E",
-    "C",
-    "C-D",
-    "C-E",
-    "D",
-    "D-E",
-    "E",
-    "Sever",
-    "Jih"
-  ]);
-  var TRAIN_NUMBER_CARD_STYLES = Object.freeze({
-    default: Object.freeze({
-      background: "var(--flap-background)",
-      foreground: "var(--flap-foreground)"
-    }),
-    intercity: Object.freeze({
-      background: "#fff",
-      foreground: "#000"
-    }),
-    sp: Object.freeze({
-      background: "#1e3c69",
-      foreground: "#fff"
-    }),
-    red: Object.freeze({
-      background: "#D80300",
-      foreground: "#fff"
-    })
-  });
-  var createTrainNumberCard = (key, value, style) => Object.freeze({
-    key,
-    value,
-    ...TRAIN_NUMBER_CARD_STYLES[style],
-    style
-  });
-  var createTrainNumberDigitCards = (style) => Array.from(
-    { length: 10 },
-    (_, digit) => createTrainNumberCard(`${style}-${digit}`, String(digit), style)
-  );
-  var TRAIN_NUMBER_FLAP_CARDS = Object.freeze([
-    createTrainNumberCard("blank", "", "default"),
-    ...createTrainNumberDigitCards("default"),
-    ...createTrainNumberDigitCards("intercity"),
-    ...createTrainNumberDigitCards("sp"),
-    ...createTrainNumberDigitCards("red")
-  ]);
-  var getTrainNumberCardStyle = (train) => {
-    const name = String(train ?? "");
-    const normalized = name.toLocaleLowerCase("cs-CZ");
-    if (name === "Intercity" || name === "Eurocity" || name === "IC" || name === "EC" || name === "SuperCity" || normalized === "sc") {
-      return "intercity";
-    }
-    if (name === "Sp" || normalized === "nj" || normalized === "nightjet") {
-      return "sp";
-    }
-    if (name === "R" || name === "R miest." || name === "Mim. R" || name === "Ex" || name.startsWith("Ex ") || name === "\u010CEDOK" || name === "ROH" || normalized === "rj" || normalized === "railjet" || normalized === "regiojet") {
-      return "red";
-    }
-    return "default";
-  };
-  var NIGHT_FADE_MODES = Object.freeze([
-    { value: "none", label: "Bez pohas\xEDn\xE1n\xED (st\xE1l\xFD svit)" },
-    { value: "soft", label: "Jemn\xE9 kol\xEDs\xE1n\xED" },
-    { value: "slow", label: "Pomal\xE9 pohas\xEDn\xE1n\xED" },
-    { value: "flicker", label: "Nepravideln\xE9 poblik\xE1v\xE1n\xED" }
-  ]);
-  var NIGHT_LIGHT_BASE_DEFAULTS = Object.freeze({
-    enabled: true,
-    variation: false,
-    intensity: 40,
-    speed: 120,
-    fade: "none"
-  });
-  var NIGHT_LIGHT_DEFAULTS = Object.freeze([
-    { id: "top-left", label: "Horn\xED lev\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS },
-    { id: "top-center", label: "Horn\xED st\u0159ed", ...NIGHT_LIGHT_BASE_DEFAULTS },
-    { id: "top-right", label: "Horn\xED prav\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS },
-    { id: "bottom-left", label: "Doln\xED lev\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS },
-    { id: "bottom-center", label: "Doln\xED st\u0159ed", ...NIGHT_LIGHT_BASE_DEFAULTS },
-    { id: "bottom-right", label: "Doln\xED prav\xE1", ...NIGHT_LIGHT_BASE_DEFAULTS }
-  ]);
-  var NIGHT_CLOCK_DEFAULTS = Object.freeze({
-    enabled: true,
-    intensity: 60
-  });
-  var createEmptyBoardState = () => ({
-    stations: ["", ""],
-    train: "",
-    delay: "",
-    departureTime: null
   });
 
+  // src/platform/station-profile.js
+  var STATION_PROFILE_STORAGE_KEY, STATION_PROFILE_VERSION, MAX_LIST, MAX_TYPES, MAX_STYLES, MAX_TEXT, DEFAULT_ALIASES, clean, cleanToken, uniqueTokens, linesFrom, isCssColor, colorOr, slug, normalizeOperatorKey, isRegioJetOperator, isCDOperator, blankTrainType, createDefaultStationProfile, normalizeTrainType, normalizeStationProfile, activeProfile, storage, readStoredStationProfile, getActiveStationProfile, setActiveStationProfile, profileSectorValues, matchProfileValue, sectorAtoms, sectorsOverlap, typeLabels, resolveProfileTrainType;
+  var init_station_profile = __esm({
+    "src/platform/station-profile.js"() {
+      init_data();
+      STATION_PROFILE_STORAGE_KEY = "pragotron.stationProfile.v1";
+      STATION_PROFILE_VERSION = 1;
+      MAX_LIST = 80;
+      MAX_TYPES = 40;
+      MAX_STYLES = 12;
+      MAX_TEXT = 32;
+      DEFAULT_ALIASES = Object.freeze({
+        Intercity: ["IC", "ic", "intercity"],
+        Eurocity: ["EC", "ec", "eurocity"],
+        SuperCity: ["SC", "sc", "supercity"],
+        EuroNight: ["EN", "en", "euronight"],
+        nj: ["NJ", "NightJet", "Nightjet", "nightjet"],
+        rj: ["railjet", "Railjet"],
+        RJ: ["regiojet", "RegioJet"]
+      });
+      clean = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
+      cleanToken = (value) => clean(value).replace(/[–—−]/g, "-").replace(/\s*-\s*/g, "-").slice(0, MAX_TEXT);
+      uniqueTokens = (values, limit = MAX_LIST) => {
+        const result = [];
+        const seen = /* @__PURE__ */ new Set();
+        (Array.isArray(values) ? values : []).forEach((value) => {
+          const token = cleanToken(value);
+          const key = token.toLocaleLowerCase("cs-CZ");
+          if (!token || seen.has(key) || result.length >= limit) {
+            return;
+          }
+          seen.add(key);
+          result.push(token);
+        });
+        return result;
+      };
+      linesFrom = (value) => {
+        if (Array.isArray(value)) {
+          return value;
+        }
+        return String(value ?? "").split(/\r?\n/);
+      };
+      isCssColor = (value) => {
+        const text = clean(value);
+        return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) || /^var\(--[a-z0-9-]+\)$/i.test(text) || /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(text);
+      };
+      colorOr = (value, fallback) => isCssColor(value) ? clean(value) : fallback;
+      slug = (value, fallback) => {
+        const text = clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
+        return text || fallback;
+      };
+      normalizeOperatorKey = (value) => clean(value).toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, "");
+      isRegioJetOperator = (operator) => {
+        const normalized = normalizeOperatorKey(operator);
+        return normalized.includes("regiojet") || normalized === "rjet" || normalized === "rj";
+      };
+      isCDOperator = (operator) => {
+        const normalized = normalizeOperatorKey(operator);
+        return normalized === "\u010Dd" || normalized === "cd" || normalized.includes("\u010Desk\xE9dr\xE1hy") || normalized.includes("ceskedrahy");
+      };
+      blankTrainType = () => ({
+        name: "",
+        text: "",
+        suffix: "",
+        source: "",
+        label: "",
+        background: "var(--flap-background)",
+        foreground: "var(--flap-foreground)",
+        numberStyle: "default",
+        aliases: []
+      });
+      createDefaultStationProfile = () => {
+        const numberStyles = Object.entries(TRAIN_NUMBER_CARD_STYLES).map(
+          ([id, style]) => ({
+            id,
+            label: id,
+            background: style.background,
+            foreground: style.foreground
+          })
+        );
+        const knownStyles = new Set(numberStyles.map((style) => style.id));
+        const sectors = DEPARTURE_SECTOR_VALUES.filter(Boolean);
+        const atomic = sectors.filter((value) => !value.includes("-"));
+        return {
+          version: STATION_PROFILE_VERSION,
+          name: "Brno hlavn\xED n\xE1dra\u017E\xED",
+          platforms: DEPARTURE_PLATFORM_VALUES.filter(Boolean),
+          tracks: DEPARTURE_TRACK_VALUES.filter(Boolean),
+          sectors: atomic,
+          sectorRanges: sectors.filter((value) => value.includes("-")),
+          numberStyles,
+          trainTypes: [
+            blankTrainType(),
+            ...TRAIN_TYPES.filter((type) => type.name).map((type) => {
+              const numberStyle = getTrainNumberCardStyle(type.name);
+              return {
+                name: type.name,
+                text: type.text || "",
+                suffix: type.suffix || "",
+                source: type.source || "",
+                label: type.label || "",
+                background: type.background,
+                foreground: type.foreground,
+                numberStyle: knownStyles.has(numberStyle) ? numberStyle : "default",
+                aliases: [...DEFAULT_ALIASES[type.name] || []]
+              };
+            })
+          ]
+        };
+      };
+      normalizeTrainType = (value, styles) => {
+        const source = value && typeof value === "object" ? value : {};
+        const name = cleanToken(source.name);
+        const styleIds = new Set(styles.map((style) => style.id));
+        const aliases = uniqueTokens(
+          Array.isArray(source.aliases) ? source.aliases : String(source.aliases || "").split(/[,;]/),
+          12
+        ).filter((alias) => alias.toLocaleLowerCase("cs-CZ") !== name.toLocaleLowerCase("cs-CZ"));
+        return {
+          name,
+          text: cleanToken(source.text).slice(0, 16),
+          suffix: cleanToken(source.suffix).slice(0, 12),
+          source: normalizeTrainTypeSource(source.source),
+          label: clean(source.label).slice(0, 40),
+          background: colorOr(source.background, "var(--flap-background)"),
+          foreground: colorOr(source.foreground, "var(--flap-foreground)"),
+          numberStyle: styleIds.has(clean(source.numberStyle)) ? clean(source.numberStyle) : "default",
+          aliases
+        };
+      };
+      normalizeStationProfile = (value) => {
+        const source = value && typeof value === "object" ? value : null;
+        if (!source) {
+          return null;
+        }
+        const fallbackStyles = createDefaultStationProfile().numberStyles;
+        const numberStyles = [];
+        const seenStyles = /* @__PURE__ */ new Set();
+        (Array.isArray(source.numberStyles) ? source.numberStyles : fallbackStyles).forEach((style) => {
+          const id = slug(style?.id, "") || slug(style?.label, "");
+          if (!id || seenStyles.has(id) || numberStyles.length >= MAX_STYLES) {
+            return;
+          }
+          seenStyles.add(id);
+          numberStyles.push({
+            id,
+            label: id,
+            background: colorOr(
+              style.background,
+              id === "default" ? "var(--flap-background)" : "#111111"
+            ),
+            foreground: colorOr(style.foreground, "#ffffff")
+          });
+        });
+        if (!seenStyles.has("default")) {
+          numberStyles.unshift({
+            id: "default",
+            label: "default",
+            background: "var(--flap-background)",
+            foreground: "var(--flap-foreground)"
+          });
+        }
+        const trainTypes = [];
+        const seenTypes = /* @__PURE__ */ new Set();
+        (Array.isArray(source.trainTypes) ? source.trainTypes : []).forEach((type) => {
+          const normalized = normalizeTrainType(type, numberStyles);
+          const key = normalized.name;
+          if (!normalized.name || seenTypes.has(key) || trainTypes.length >= MAX_TYPES) {
+            return;
+          }
+          seenTypes.add(key);
+          trainTypes.push(normalized);
+        });
+        const platforms = uniqueTokens(linesFrom(source.platforms));
+        const tracks = uniqueTokens(linesFrom(source.tracks));
+        const sectors = uniqueTokens(linesFrom(source.sectors), 40);
+        if (platforms.length === 0 || tracks.length === 0 || trainTypes.length === 0) {
+          return null;
+        }
+        return {
+          version: STATION_PROFILE_VERSION,
+          name: clean(source.name).slice(0, 80) || "Profil stanice",
+          platforms,
+          tracks,
+          sectors,
+          sectorRanges: uniqueTokens(linesFrom(source.sectorRanges), 80).filter((value2) => !sectors.some(
+            (sector) => sector.toLocaleLowerCase("cs-CZ") === value2.toLocaleLowerCase("cs-CZ")
+          )),
+          numberStyles,
+          trainTypes: [blankTrainType(), ...trainTypes]
+        };
+      };
+      activeProfile = null;
+      storage = () => {
+        try {
+          return globalThis.localStorage || null;
+        } catch {
+          return null;
+        }
+      };
+      readStoredStationProfile = () => {
+        try {
+          const raw = storage()?.getItem(STATION_PROFILE_STORAGE_KEY);
+          return raw ? normalizeStationProfile(JSON.parse(raw)) : null;
+        } catch {
+          return null;
+        }
+      };
+      getActiveStationProfile = () => {
+        if (!activeProfile) {
+          activeProfile = readStoredStationProfile() || createDefaultStationProfile();
+        }
+        return activeProfile;
+      };
+      setActiveStationProfile = (value, { persist = true } = {}) => {
+        const next = normalizeStationProfile(value);
+        if (!next) {
+          return null;
+        }
+        activeProfile = next;
+        if (persist) {
+          try {
+            storage()?.setItem(
+              STATION_PROFILE_STORAGE_KEY,
+              JSON.stringify(next)
+            );
+          } catch {
+          }
+        }
+        return activeProfile;
+      };
+      profileSectorValues = (profile = getActiveStationProfile()) => [...profile.sectors, ...profile.sectorRanges];
+      matchProfileValue = (values, value) => {
+        const normalized = cleanToken(value);
+        if (!normalized) {
+          return "";
+        }
+        return values.find((candidate) => candidate === normalized) || values.find(
+          (candidate) => candidate.toLocaleLowerCase("cs-CZ") === normalized.toLocaleLowerCase("cs-CZ")
+        ) || "";
+      };
+      sectorAtoms = (label, profile = getActiveStationProfile()) => {
+        const value = cleanToken(label);
+        if (!value) {
+          return [];
+        }
+        const parts = value.split("-").filter(Boolean);
+        if (parts.length === 2) {
+          const from = profile.sectors.findIndex(
+            (sector) => sector.toLocaleLowerCase("cs-CZ") === parts[0].toLocaleLowerCase("cs-CZ")
+          );
+          const to = profile.sectors.findIndex(
+            (sector) => sector.toLocaleLowerCase("cs-CZ") === parts[1].toLocaleLowerCase("cs-CZ")
+          );
+          if (from !== -1 && to !== -1) {
+            const start = Math.min(from, to);
+            const end = Math.max(from, to);
+            return profile.sectors.slice(start, end + 1);
+          }
+        }
+        return [value];
+      };
+      sectorsOverlap = (boardSector, departureSector, profile = getActiveStationProfile()) => {
+        const boardAtoms = sectorAtoms(boardSector, profile).map((sector) => sector.toLocaleLowerCase("cs-CZ"));
+        const departureAtoms = sectorAtoms(departureSector, profile).map((sector) => sector.toLocaleLowerCase("cs-CZ"));
+        return departureAtoms.some((sector) => boardAtoms.includes(sector));
+      };
+      typeLabels = (type) => [
+        type.name,
+        type.text,
+        type.label,
+        ...type.aliases || []
+      ].map((value) => clean(value)).filter(Boolean);
+      resolveProfileTrainType = (sourceType, operator = "", profile = getActiveStationProfile()) => {
+        const original = clean(sourceType);
+        if (!original) {
+          return "";
+        }
+        const types = profile.trainTypes.filter((type) => type.name);
+        const lower = original.toLocaleLowerCase("cs-CZ");
+        if (lower === "rj") {
+          const preferred = isRegioJetOperator(operator) ? "RJ" : isCDOperator(operator) ? "rj" : original === "RJ" ? "RJ" : "rj";
+          const operatorMatch = types.find((type) => type.name === preferred);
+          if (operatorMatch) {
+            return operatorMatch.name;
+          }
+        }
+        const match = types.find((type) => typeLabels(type).some(
+          (label) => label.toLocaleLowerCase("cs-CZ") === lower
+        ));
+        return match?.name || "";
+      };
+    }
+  });
+
+  // src/platform/lenses.js
+  var LENS_COLORS, LENS_DEFAULTS, LENS_BLINK_INTERVAL_MIN, LENS_BLINK_INTERVAL_MAX, LENS_PREDEPARTURE_SECONDS_MIN, LENS_PREDEPARTURE_SECONDS_MAX, LENS_PREDEPARTURE_SECONDS_STEP, LENS_PREDEPARTURE_DEFAULTS, resolveBlinkInterval, resolveColor, positiveModulo, lensBlinkEntries, lensBlinkFrame, prefersReducedMotion, lensBlinkOpacity, paintLensBlinks, syncLensBlink, getLensBlinkPhase, normalizePreDeparture, createDefaultLensState, createEmptyLensState, clamp, cloneLens, synchronizeLensTiming, LensDisplay;
+  var init_lenses = __esm({
+    "src/platform/lenses.js"() {
+      LENS_COLORS = Object.freeze({
+        green: Object.freeze({
+          label: "Zelen\xE1",
+          glass: "#245c4a",
+          light: "#35e995",
+          core: "#5af3aa"
+        }),
+        yellow: Object.freeze({
+          label: "\u017Dlut\xE1",
+          glass: "#6b4311",
+          light: "#ff9d1c",
+          core: "#ffc04a"
+        }),
+        red: Object.freeze({
+          label: "\u010Cerven\xE1",
+          glass: "#702528",
+          light: "#ff443c",
+          core: "#ff694f"
+        }),
+        blue: Object.freeze({
+          label: "Modr\xE1",
+          glass: "#123f78",
+          light: "#167ed9",
+          core: "#4aa8f2"
+        }),
+        coolWhite: Object.freeze({
+          label: "Studen\xE1 b\xEDl\xE1",
+          glass: "#74838b",
+          light: "#effaff",
+          core: "#d7f1f5"
+        })
+      });
+      LENS_DEFAULTS = Object.freeze({
+        color: "green",
+        enabled: true,
+        blinking: true,
+        blinkInterval: 0.4,
+        blinkDelay: 0
+      });
+      LENS_BLINK_INTERVAL_MIN = 0.1;
+      LENS_BLINK_INTERVAL_MAX = 1.5;
+      LENS_PREDEPARTURE_SECONDS_MIN = 0;
+      LENS_PREDEPARTURE_SECONDS_MAX = 300;
+      LENS_PREDEPARTURE_SECONDS_STEP = 10;
+      LENS_PREDEPARTURE_DEFAULTS = Object.freeze({
+        enabled: true,
+        seconds: 90
+      });
+      resolveBlinkInterval = (setting, fallback) => {
+        const value = Number.isFinite(Number(setting?.blinkInterval)) ? Number(setting.blinkInterval) : Number(setting?.blinkPeriod);
+        return Number.isFinite(value) ? Math.min(
+          LENS_BLINK_INTERVAL_MAX,
+          Math.max(LENS_BLINK_INTERVAL_MIN, value)
+        ) : fallback;
+      };
+      resolveColor = (setting, fallback) => {
+        const candidates = [
+          setting?.color,
+          setting?.glassColor,
+          setting?.lightColor
+        ];
+        return candidates.find(
+          (value) => typeof value === "string" && LENS_COLORS[value]
+        ) || fallback;
+      };
+      positiveModulo = (value, divisor) => (value % divisor + divisor) % divisor;
+      lensBlinkEntries = /* @__PURE__ */ new Map();
+      lensBlinkFrame = 0;
+      prefersReducedMotion = () => {
+        if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+          return false;
+        }
+        return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      };
+      lensBlinkOpacity = (phase) => phase < LENS_DEFAULTS.blinkInterval ? "0.95" : "0";
+      paintLensBlinks = () => {
+        lensBlinkFrame = 0;
+        const now = Date.now();
+        for (const [light, entry] of lensBlinkEntries) {
+          if (!light.isConnected) {
+            lensBlinkEntries.delete(light);
+            continue;
+          }
+          const opacity = lensBlinkOpacity(getLensBlinkPhase({
+            now,
+            lensIndex: entry.lensIndex,
+            rowIndex: entry.rowIndex,
+            synchronizeRows: entry.synchronizeRows
+          }));
+          if (light.style.opacity !== opacity) {
+            light.style.opacity = opacity;
+          }
+        }
+        if (lensBlinkEntries.size > 0 && typeof window.requestAnimationFrame === "function") {
+          lensBlinkFrame = window.requestAnimationFrame(paintLensBlinks);
+        }
+      };
+      syncLensBlink = (lens, light, {
+        now,
+        lensIndex,
+        rowIndex,
+        synchronizeRows,
+        active
+      }) => {
+        const canShareClock = active && !prefersReducedMotion() && typeof window !== "undefined" && typeof window.requestAnimationFrame === "function";
+        if (!canShareClock) {
+          lensBlinkEntries.delete(light);
+          light.style.opacity = "";
+          lens.classList.remove("is-blink-synced");
+          return;
+        }
+        lensBlinkEntries.set(light, {
+          lensIndex,
+          rowIndex,
+          synchronizeRows
+        });
+        lens.classList.add("is-blink-synced");
+        light.style.opacity = lensBlinkOpacity(getLensBlinkPhase({
+          now,
+          lensIndex,
+          rowIndex,
+          synchronizeRows
+        }));
+        if (!lensBlinkFrame) {
+          lensBlinkFrame = window.requestAnimationFrame(paintLensBlinks);
+        }
+      };
+      getLensBlinkPhase = ({
+        now = Date.now(),
+        lensIndex = 0,
+        rowIndex = 0,
+        synchronizeRows = true
+      } = {}) => {
+        const interval = LENS_DEFAULTS.blinkInterval;
+        const period = interval * 2;
+        const globalPhase = positiveModulo(Number(now) / 1e3, period);
+        const lensOffset = Math.abs(Number(lensIndex) || 0) * interval;
+        const rowOffset = synchronizeRows ? 0 : Math.abs(Number(rowIndex) || 0) % 2 * interval;
+        return positiveModulo(globalPhase + lensOffset + rowOffset, period);
+      };
+      normalizePreDeparture = (setting = {}) => {
+        const source = setting?.preDeparture || setting;
+        const enabled = typeof source?.enabled === "boolean" ? source.enabled : typeof setting?.preDepartureEnabled === "boolean" ? setting.preDepartureEnabled : LENS_PREDEPARTURE_DEFAULTS.enabled;
+        const rawSeconds = source?.seconds ?? setting?.preDepartureSeconds ?? LENS_PREDEPARTURE_DEFAULTS.seconds;
+        const numericSeconds = Number(rawSeconds);
+        const seconds = Number.isFinite(numericSeconds) ? Math.round(
+          Math.min(
+            LENS_PREDEPARTURE_SECONDS_MAX,
+            Math.max(LENS_PREDEPARTURE_SECONDS_MIN, numericSeconds)
+          ) / LENS_PREDEPARTURE_SECONDS_STEP
+        ) * LENS_PREDEPARTURE_SECONDS_STEP : LENS_PREDEPARTURE_DEFAULTS.seconds;
+        return { enabled, seconds };
+      };
+      createDefaultLensState = (count = 2, overrides = {}) => {
+        const numericCount = Math.max(1, Math.floor(Number(count) || 2));
+        const sharedOverrides = { ...overrides };
+        const preDeparture = normalizePreDeparture(sharedOverrides);
+        const normalizedOverrides = {
+          ...sharedOverrides,
+          color: resolveColor(sharedOverrides, LENS_DEFAULTS.color)
+        };
+        delete normalizedOverrides.preDeparture;
+        delete normalizedOverrides.preDepartureEnabled;
+        delete normalizedOverrides.preDepartureSeconds;
+        delete normalizedOverrides.glassColor;
+        delete normalizedOverrides.lightColor;
+        delete normalizedOverrides.blinkPeriod;
+        delete normalizedOverrides.blinkInterval;
+        delete normalizedOverrides.synchronizeRows;
+        const blinkInterval = LENS_DEFAULTS.blinkInterval;
+        return {
+          lenses: Array.from({ length: numericCount }, (_, index) => ({
+            ...LENS_DEFAULTS,
+            ...normalizedOverrides,
+            blinkInterval,
+            blinkDelay: index * blinkInterval
+          })),
+          preDeparture,
+          synchronizeRows: sharedOverrides.synchronizeRows !== false
+        };
+      };
+      createEmptyLensState = (count = 2) => createDefaultLensState(
+        count,
+        {
+          enabled: false,
+          preDeparture: {
+            enabled: false,
+            seconds: LENS_PREDEPARTURE_DEFAULTS.seconds
+          }
+        }
+      );
+      clamp = (value, minimum, maximum, fallback) => {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
+      };
+      cloneLens = (setting, fallback, index) => ({
+        color: resolveColor(setting, fallback.color),
+        enabled: typeof setting?.enabled === "boolean" ? setting.enabled : fallback.enabled,
+        blinking: typeof setting?.blinking === "boolean" ? setting.blinking : fallback.blinking,
+        blinkInterval: resolveBlinkInterval(setting, fallback.blinkInterval),
+        blinkDelay: clamp(
+          setting?.blinkDelay,
+          0,
+          30,
+          fallback.blinkDelay
+        )
+      });
+      synchronizeLensTiming = (lenses) => {
+        const blinkInterval = LENS_DEFAULTS.blinkInterval;
+        return lenses.map((lens, index) => ({
+          ...lens,
+          blinkInterval,
+          blinkDelay: index * blinkInterval
+        }));
+      };
+      LensDisplay = class {
+        constructor(element, {
+          count = 2,
+          defaultState,
+          rowIndex = 0,
+          ...defaults
+        } = {}) {
+          if (!element) {
+            throw new TypeError("LensDisplay vy\u017Eaduje DOM element.");
+          }
+          this.element = element;
+          this.count = Math.max(1, Math.floor(Number(count) || 2));
+          this.rowIndex = Math.max(0, Math.floor(Number(rowIndex) || 0));
+          this.defaults = {
+            ...LENS_DEFAULTS,
+            ...defaults,
+            color: resolveColor(defaults, LENS_DEFAULTS.color),
+            blinkInterval: resolveBlinkInterval(
+              defaults,
+              LENS_DEFAULTS.blinkInterval
+            )
+          };
+          delete this.defaults.glassColor;
+          delete this.defaults.lightColor;
+          delete this.defaults.blinkPeriod;
+          const defaultOverrides = { ...defaults };
+          if (!Object.prototype.hasOwnProperty.call(defaults, "blinkDelay")) {
+            delete defaultOverrides.blinkDelay;
+          }
+          this.defaultState = defaultState || createDefaultLensState(this.count, defaultOverrides);
+          this.state = this.normalize(this.defaultState);
+          this.preDepartureActive = true;
+          this.render();
+        }
+        normalize(value) {
+          if (value === "" || value === null || value === void 0) {
+            return {
+              lenses: synchronizeLensTiming(
+                Array.from(
+                  { length: this.count },
+                  (_, index) => cloneLens(
+                    {
+                      ...this.defaults,
+                      enabled: false,
+                      blinking: false
+                    },
+                    this.defaults,
+                    index
+                  )
+                )
+              ),
+              preDeparture: normalizePreDeparture({
+                enabled: false,
+                seconds: LENS_PREDEPARTURE_DEFAULTS.seconds
+              }),
+              synchronizeRows: true
+            };
+          }
+          const source = Array.isArray(value) ? { lenses: value } : value;
+          const values = Array.isArray(source?.lenses) ? source.lenses : [source];
+          return {
+            lenses: synchronizeLensTiming(
+              Array.from(
+                { length: this.count },
+                (_, index) => cloneLens(
+                  values[index] || values[0] || {},
+                  this.defaults,
+                  index
+                )
+              )
+            ),
+            preDeparture: normalizePreDeparture(source),
+            synchronizeRows: source?.synchronizeRows !== false
+          };
+        }
+        renderLens(setting, index, now = Date.now()) {
+          const lens = document.createElement("span");
+          const color = LENS_COLORS[setting.color];
+          lens.className = "lens";
+          lens.dataset.lensIndex = String(index);
+          lens.setAttribute("aria-hidden", "true");
+          lens.style.setProperty("--lens-glass-color", color.glass);
+          lens.style.setProperty("--lens-light-color", color.light);
+          lens.style.setProperty("--lens-light-core-color", color.core);
+          lens.style.setProperty(
+            "--lens-blink-duration",
+            `${LENS_DEFAULTS.blinkInterval * 2}s`
+          );
+          lens.style.setProperty(
+            "--lens-blink-delay",
+            `${-getLensBlinkPhase({
+              now,
+              lensIndex: index,
+              rowIndex: this.rowIndex,
+              synchronizeRows: this.state.synchronizeRows
+            })}s`
+          );
+          const preDepartureActive = !this.state.preDeparture.enabled || this.preDepartureActive;
+          const blinking = setting.enabled && setting.blinking && preDepartureActive;
+          lens.classList.toggle(
+            "is-on",
+            setting.enabled && preDepartureActive
+          );
+          lens.classList.toggle("is-blinking", blinking);
+          const lightElement = document.createElement("span");
+          lightElement.className = "lens-light";
+          if (blinking && !prefersReducedMotion() && typeof window.requestAnimationFrame === "function") {
+            lens.classList.add("is-blink-synced");
+          }
+          lens.appendChild(lightElement);
+          syncLensBlink(lens, lightElement, {
+            now,
+            lensIndex: index,
+            rowIndex: this.rowIndex,
+            synchronizeRows: this.state.synchronizeRows,
+            active: blinking
+          });
+          return lens;
+        }
+        render() {
+          const now = Date.now();
+          this.element.replaceChildren(
+            ...this.state.lenses.map((setting, index) => this.renderLens(setting, index, now))
+          );
+          this.element.classList.add("lens-display");
+          this.element.setAttribute("role", "img");
+          this.element.setAttribute(
+            "aria-label",
+            `${this.state.lenses.length} signaliza\u010Dn\xEDch \u010Do\u010Dek`
+          );
+        }
+        set(value) {
+          this.state = this.normalize(value);
+          this.render();
+          return this.getValue();
+        }
+        setImmediate(value) {
+          return this.set(value);
+        }
+        setPreDepartureActive(isActive) {
+          const nextValue = Boolean(isActive);
+          if (nextValue === this.preDepartureActive && this.element.childElementCount === this.state.lenses.length) {
+            return this.preDepartureActive;
+          }
+          this.preDepartureActive = nextValue;
+          this.applyActivity();
+          return this.preDepartureActive;
+        }
+        applyActivity() {
+          const lenses = this.element.querySelectorAll(":scope > .lens");
+          if (lenses.length !== this.state.lenses.length) {
+            this.render();
+            return;
+          }
+          const now = Date.now();
+          const preDepartureActive = !this.state.preDeparture.enabled || this.preDepartureActive;
+          this.state.lenses.forEach((setting, index) => {
+            const lens = lenses[index];
+            const blinking = setting.enabled && setting.blinking && preDepartureActive;
+            const phase = getLensBlinkPhase({
+              now,
+              lensIndex: index,
+              rowIndex: this.rowIndex,
+              synchronizeRows: this.state.synchronizeRows
+            });
+            lens.style.setProperty(
+              "--lens-blink-duration",
+              `${LENS_DEFAULTS.blinkInterval * 2}s`
+            );
+            lens.style.setProperty("--lens-blink-delay", `${-phase}s`);
+            lens.classList.toggle(
+              "is-on",
+              setting.enabled && preDepartureActive
+            );
+            lens.classList.toggle("is-blinking", blinking);
+            const light = lens.querySelector(":scope > .lens-light");
+            if (light) {
+              syncLensBlink(lens, light, {
+                now,
+                lensIndex: index,
+                rowIndex: this.rowIndex,
+                synchronizeRows: this.state.synchronizeRows,
+                active: blinking
+              });
+            }
+          });
+        }
+        clear() {
+          return this.set("");
+        }
+        getValue() {
+          return {
+            lenses: this.state.lenses.map((setting) => ({ ...setting })),
+            preDeparture: { ...this.state.preDeparture },
+            synchronizeRows: this.state.synchronizeRows
+          };
+        }
+        isSettled() {
+          return true;
+        }
+        destroy() {
+          this.element.replaceChildren();
+          this.element.removeAttribute("aria-label");
+        }
+      };
+    }
+  });
+
+  // src/demos/manageSessionDenied.js
+  var manageSessionDenied_exports = {};
+  __export(manageSessionDenied_exports, {
+    mountManageSessionDenied: () => mountManageSessionDenied
+  });
+  var PARAM_ORDER, numberOptions, lensOptions, loadCatalog, appendOptions, createSelect, mountManageSessionDenied;
+  var init_manageSessionDenied = __esm({
+    "src/demos/manageSessionDenied.js"() {
+      init_data();
+      init_lenses();
+      init_station_profile();
+      PARAM_ORDER = [
+        "platform",
+        "track",
+        "sector",
+        "rows",
+        "volume",
+        "lenses"
+      ];
+      numberOptions = (min, max) => {
+        const options = [];
+        for (let value = min; value <= max; value += 1) {
+          options.push({
+            value: String(value),
+            label: String(value)
+          });
+        }
+        return options;
+      };
+      lensOptions = () => Object.entries(LENS_COLORS).map(([value, color]) => ({
+        value,
+        label: color.label
+      }));
+      loadCatalog = () => {
+        const profile = readStoredStationProfile() || createDefaultStationProfile();
+        const sectors = profileSectorValues(profile);
+        const lenses = lensOptions();
+        const definitions = {
+          platform: {
+            label: "N\xE1stupi\u0161t\u011B",
+            boards: ["platform"],
+            options: profile.platforms.map((value) => ({ value, label: value })),
+            fallback: profile.platforms[0] || ""
+          },
+          track: {
+            label: "Kolej",
+            boards: ["platform"],
+            options: profile.tracks.map((value) => ({ value, label: value })),
+            fallback: profile.tracks[0] || ""
+          },
+          sector: {
+            label: "Sektor",
+            boards: ["platform"],
+            options: sectors.map((value) => ({ value, label: value })),
+            fallback: sectors[0] || ""
+          },
+          rows: {
+            label: "Po\u010Det \u0159\xE1dk\u016F",
+            boards: ["departure"],
+            options: numberOptions(
+              DEPARTURE_BOARD_ROW_COUNT_MIN,
+              DEPARTURE_BOARD_ROW_COUNT_MAX
+            ),
+            fallback: String(DEPARTURE_BOARD_ROW_COUNT_DEFAULT)
+          },
+          volume: {
+            label: "Hlasitost",
+            boards: ["departure", "platform"],
+            options: numberOptions(0, 100).map((option) => ({
+              value: option.value,
+              label: `${option.value} %`
+            })),
+            fallback: "100"
+          },
+          lenses: {
+            label: "Barva \u010Do\u010Dek",
+            boards: ["departure", "platform"],
+            lenses: true,
+            options: lenses,
+            fallback: lenses[0]?.value || "green"
+          }
+        };
+        return Object.fromEntries(
+          Object.entries(definitions).filter(([, definition]) => definition.lenses || definition.options.length > 0)
+        );
+      };
+      appendOptions = (select, options, selected) => {
+        options.forEach((option) => {
+          const node = document.createElement("option");
+          node.value = option.value;
+          node.textContent = option.label;
+          node.selected = option.value === selected;
+          select.append(node);
+        });
+      };
+      createSelect = (options, selected, label) => {
+        const select = document.createElement("select");
+        select.setAttribute("aria-label", label);
+        appendOptions(select, options, selected);
+        return select;
+      };
+      mountManageSessionDenied = (documentRef2 = document) => {
+        const guide = documentRef2.querySelector("#manageSessionGuide");
+        if (!guide || guide.dataset.ready === "true") {
+          return;
+        }
+        guide.dataset.ready = "true";
+        const catalog = loadCatalog();
+        const selected = /* @__PURE__ */ new Map();
+        let kind = "departure";
+        const pageName = () => kind === "platform" ? "platformTable.html" : "departureBoard.html";
+        const availableKeys = () => PARAM_ORDER.filter((key) => {
+          const definition = catalog[key];
+          return definition && definition.boards.includes(kind) && !selected.has(key);
+        });
+        const currentHref = () => {
+          const url = new URL(pageName(), documentRef2.location?.href || window.location.href);
+          url.search = "";
+          PARAM_ORDER.forEach((key) => {
+            if (!selected.has(key)) {
+              return;
+            }
+            const value = selected.get(key);
+            if (value) {
+              url.searchParams.set(key, value);
+            }
+          });
+          return url.href;
+        };
+        guide.replaceChildren();
+        const intro = document.createElement("p");
+        intro.className = "manage-session-guide-intro";
+        intro.textContent = "Odtud jde otev\u0159\xEDt odjezdovou nebo n\xE1stupi\u0161tn\xED tabuli. Parametr p\u0159id\xE1te ze seznamu a hodnotu vyberete z mo\u017Enost\xED, kter\xE9 tabule bere.";
+        guide.append(intro);
+        const choiceHeading = document.createElement("h2");
+        choiceHeading.textContent = "1. Kter\xE1 tabule";
+        const choices = document.createElement("div");
+        choices.className = "manage-session-choices";
+        choices.setAttribute("role", "radiogroup");
+        choices.setAttribute("aria-label", "Kter\xE1 tabule");
+        const addChoice = (value, label, preview) => {
+          const choice = document.createElement("label");
+          const previewImage = document.createElement("img");
+          previewImage.src = preview;
+          previewImage.alt = "";
+          const caption = document.createElement("span");
+          caption.className = "manage-session-choice-caption";
+          const input = document.createElement("input");
+          input.type = "radio";
+          input.name = "manageSessionBoard";
+          input.value = value;
+          input.checked = value === kind;
+          const text = document.createElement("span");
+          text.textContent = label;
+          input.addEventListener("change", () => {
+            if (!input.checked) {
+              return;
+            }
+            kind = value;
+            [...selected.keys()].forEach((key) => {
+              const definition = catalog[key];
+              if (!definition?.boards.includes(kind)) {
+                selected.delete(key);
+              }
+            });
+            renderParams();
+            renderLink();
+          });
+          caption.append(input, text);
+          choice.append(previewImage, caption);
+          choices.append(choice);
+        };
+        addChoice(
+          "departure",
+          "Odjezdov\xE1 tabule",
+          "images/misc/preview-departureBoard.png"
+        );
+        addChoice(
+          "platform",
+          "N\xE1stupi\u0161tn\xED tabule",
+          "images/misc/preview-platformTable.png"
+        );
+        const paramHeading = document.createElement("h2");
+        paramHeading.textContent = "2. Parametry adresy";
+        const paramList = document.createElement("div");
+        paramList.className = "manage-session-params";
+        const hint = document.createElement("p");
+        hint.className = "manage-session-hint";
+        const addRow = document.createElement("div");
+        addRow.className = "manage-session-add";
+        const addSelect = document.createElement("select");
+        addSelect.setAttribute("aria-label", "Parametr k p\u0159id\xE1n\xED");
+        const addButton = document.createElement("button");
+        addButton.type = "button";
+        addButton.textContent = "P\u0159idat";
+        addRow.append(addSelect, addButton);
+        const linkHeading = document.createElement("h2");
+        linkHeading.textContent = "3. Odkaz";
+        const linkRow = document.createElement("div");
+        linkRow.className = "manage-session-link";
+        const linkField = document.createElement("input");
+        linkField.type = "text";
+        linkField.readOnly = true;
+        linkField.setAttribute("aria-label", "Odkaz na tabuli");
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.textContent = "Kop\xEDrovat odkaz";
+        const openLink = document.createElement("a");
+        openLink.className = "manage-session-open";
+        openLink.target = "_blank";
+        openLink.rel = "noopener";
+        openLink.textContent = "Otev\u0159\xEDt tabuli";
+        linkRow.append(linkField, copyButton, openLink);
+        guide.append(
+          choiceHeading,
+          choices,
+          paramHeading,
+          paramList,
+          hint,
+          addRow,
+          linkHeading,
+          linkRow
+        );
+        const renderAddSelect = () => {
+          const keys = availableKeys();
+          addSelect.replaceChildren();
+          const placeholder = document.createElement("option");
+          placeholder.value = "";
+          placeholder.textContent = keys.length ? "Vyberte parametr\u2026" : "V\u0161echny parametry jsou p\u0159idan\xE9";
+          addSelect.append(placeholder);
+          keys.forEach((key) => {
+            const option = document.createElement("option");
+            option.value = key;
+            option.textContent = catalog[key].label;
+            addSelect.append(option);
+          });
+          addSelect.disabled = keys.length === 0;
+          addButton.disabled = keys.length === 0 || addSelect.value === "";
+        };
+        const renderParams = () => {
+          paramList.replaceChildren();
+          const keys = PARAM_ORDER.filter((key) => selected.has(key));
+          if (keys.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "manage-session-empty";
+            empty.textContent = "Zat\xEDm bez parametr\u016F. Odkaz otev\u0159e tabuli ve v\xFDchoz\xEDm stavu.";
+            paramList.append(empty);
+          }
+          keys.forEach((key) => {
+            const definition = catalog[key];
+            const row = document.createElement("div");
+            row.className = "manage-session-param";
+            const label = document.createElement("span");
+            label.textContent = definition.label;
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.textContent = "Odebrat";
+            remove.addEventListener("click", () => {
+              selected.delete(key);
+              renderParams();
+              renderLink();
+            });
+            if (definition.lenses) {
+              const fields = document.createElement("div");
+              fields.className = "manage-session-lens-fields";
+              const current = String(selected.get(key) || definition.fallback);
+              const [first, second] = current.split(",");
+              const firstSelect = createSelect(
+                definition.options,
+                definition.options.some((option) => option.value === first) ? first : definition.fallback,
+                "Prvn\xED \u010Do\u010Dka"
+              );
+              const secondOptions = [
+                { value: "", label: "Stejn\xE1 jako prvn\xED" },
+                ...definition.options
+              ];
+              const secondSelect = createSelect(
+                secondOptions,
+                second && second !== first ? second : "",
+                "Druh\xE1 \u010Do\u010Dka"
+              );
+              const writeLenses = () => {
+                const primary = firstSelect.value || definition.fallback;
+                const extra = secondSelect.value;
+                selected.set(
+                  key,
+                  extra && extra !== primary ? `${primary},${extra}` : primary
+                );
+                renderLink();
+              };
+              firstSelect.addEventListener("change", writeLenses);
+              secondSelect.addEventListener("change", writeLenses);
+              fields.append(firstSelect, secondSelect);
+              row.append(label, fields, remove);
+            } else {
+              const select = createSelect(
+                definition.options,
+                selected.get(key),
+                definition.label
+              );
+              select.addEventListener("change", () => {
+                selected.set(key, select.value);
+                renderLink();
+              });
+              row.append(label, select, remove);
+            }
+            paramList.append(row);
+          });
+          const missingIdentity = kind === "platform" && (!selected.has("platform") || !selected.has("track"));
+          hint.hidden = !missingIdentity;
+          hint.textContent = missingIdentity ? "Bez n\xE1stupi\u0161t\u011B a koleje se n\xE1stupi\u0161tn\xED tabule k odjezd\u016Fm nep\u0159ipoj\xED." : "";
+          renderAddSelect();
+        };
+        const renderLink = () => {
+          const href = currentHref();
+          linkField.value = href;
+          openLink.href = href;
+          openLink.textContent = kind === "platform" ? "Otev\u0159\xEDt n\xE1stupi\u0161tn\xED tabuli" : "Otev\u0159\xEDt odjezdovou tabuli";
+        };
+        addSelect.addEventListener("change", () => {
+          addButton.disabled = !addSelect.value;
+        });
+        addButton.addEventListener("click", () => {
+          const key = addSelect.value;
+          const definition = catalog[key];
+          if (!definition || selected.has(key)) {
+            return;
+          }
+          const fallback = definition.options.some((option) => option.value === definition.fallback) ? definition.fallback : definition.options[0]?.value || definition.fallback;
+          selected.set(key, fallback);
+          addSelect.value = "";
+          renderParams();
+          renderLink();
+        });
+        let copyFeedbackTimer = 0;
+        const copyText = (text) => {
+          const field = document.createElement("textarea");
+          field.value = text;
+          field.setAttribute("aria-hidden", "true");
+          field.style.position = "fixed";
+          field.style.top = "0";
+          field.style.left = "0";
+          field.style.opacity = "0";
+          document.body.append(field);
+          field.focus();
+          field.select();
+          field.setSelectionRange(0, field.value.length);
+          let copied = false;
+          try {
+            copied = document.execCommand("copy");
+          } catch {
+            copied = false;
+          }
+          field.remove();
+          return copied;
+        };
+        copyButton.addEventListener("click", () => {
+          const copied = copyText(linkField.value);
+          copyButton.textContent = copied ? "Zkop\xEDrov\xE1no" : "Nepoda\u0159ilo se zkop\xEDrovat";
+          window.clearTimeout(copyFeedbackTimer);
+          copyFeedbackTimer = window.setTimeout(() => {
+            copyButton.textContent = "Kop\xEDrovat odkaz";
+          }, 1600);
+        });
+        renderParams();
+        renderLink();
+      };
+    }
+  });
+
+  // src/platform/index.js
+  init_data();
+
   // src/platform/audio.js
+  init_data();
   var soundUrl = (fileName) => typeof document === "undefined" ? fileName : new URL(fileName, document.baseURI).href;
   var DEFAULT_SOUND_URL = soundUrl("sounds/split-flap.wav");
   var PITCHED_SOUND_URL = soundUrl("sounds/split-flap_pitched_down.wav");
@@ -704,716 +1820,20 @@
     Math.max(0.0625, FLAP_SOUND_DURATION_MS / STATION_FLIP_DURATION)
   );
 
-  // src/platform/station-profile.js
-  var STATION_PROFILE_STORAGE_KEY = "pragotron.stationProfile.v1";
-  var STATION_PROFILE_VERSION = 1;
-  var MAX_LIST = 80;
-  var MAX_TYPES = 40;
-  var MAX_STYLES = 12;
-  var MAX_TEXT = 32;
-  var DEFAULT_ALIASES = Object.freeze({
-    Intercity: ["IC", "ic", "intercity"],
-    Eurocity: ["EC", "ec", "eurocity"],
-    SuperCity: ["SC", "sc", "supercity"],
-    EuroNight: ["EN", "en", "euronight"],
-    nj: ["NJ", "NightJet", "Nightjet", "nightjet"],
-    rj: ["railjet", "Railjet"],
-    RJ: ["regiojet", "RegioJet"]
-  });
-  var clean = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
-  var cleanToken = (value) => clean(value).replace(/[–—−]/g, "-").replace(/\s*-\s*/g, "-").slice(0, MAX_TEXT);
-  var uniqueTokens = (values, limit = MAX_LIST) => {
-    const result = [];
-    const seen = /* @__PURE__ */ new Set();
-    (Array.isArray(values) ? values : []).forEach((value) => {
-      const token = cleanToken(value);
-      const key = token.toLocaleLowerCase("cs-CZ");
-      if (!token || seen.has(key) || result.length >= limit) {
-        return;
-      }
-      seen.add(key);
-      result.push(token);
-    });
-    return result;
-  };
-  var linesFrom = (value) => {
-    if (Array.isArray(value)) {
-      return value;
-    }
-    return String(value ?? "").split(/\r?\n/);
-  };
-  var isCssColor = (value) => {
-    const text = clean(value);
-    return /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(text) || /^var\(--[a-z0-9-]+\)$/i.test(text) || /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i.test(text);
-  };
-  var colorOr = (value, fallback) => isCssColor(value) ? clean(value) : fallback;
-  var slug = (value, fallback) => {
-    const text = clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24);
-    return text || fallback;
-  };
-  var normalizeOperatorKey = (value) => clean(value).toLocaleLowerCase("cs-CZ").replace(/[^a-z0-9áäčďéěíľĺňóôŕřšťúůýž]+/gi, "");
-  var isRegioJetOperator = (operator) => {
-    const normalized = normalizeOperatorKey(operator);
-    return normalized.includes("regiojet") || normalized === "rjet" || normalized === "rj";
-  };
-  var isCDOperator = (operator) => {
-    const normalized = normalizeOperatorKey(operator);
-    return normalized === "\u010Dd" || normalized === "cd" || normalized.includes("\u010Desk\xE9dr\xE1hy") || normalized.includes("ceskedrahy");
-  };
-  var blankTrainType = () => ({
-    name: "",
-    text: "",
-    suffix: "",
-    source: "",
-    label: "",
-    background: "var(--flap-background)",
-    foreground: "var(--flap-foreground)",
-    numberStyle: "default",
-    aliases: []
-  });
-  var createDefaultStationProfile = () => {
-    const numberStyles = Object.entries(TRAIN_NUMBER_CARD_STYLES).map(
-      ([id, style]) => ({
-        id,
-        label: id,
-        background: style.background,
-        foreground: style.foreground
-      })
-    );
-    const knownStyles = new Set(numberStyles.map((style) => style.id));
-    const sectors = DEPARTURE_SECTOR_VALUES.filter(Boolean);
-    const atomic = sectors.filter((value) => !value.includes("-"));
-    return {
-      version: STATION_PROFILE_VERSION,
-      name: "Brno hlavn\xED n\xE1dra\u017E\xED",
-      platforms: DEPARTURE_PLATFORM_VALUES.filter(Boolean),
-      tracks: DEPARTURE_TRACK_VALUES.filter(Boolean),
-      sectors: atomic,
-      sectorRanges: sectors.filter((value) => value.includes("-")),
-      numberStyles,
-      trainTypes: [
-        blankTrainType(),
-        ...TRAIN_TYPES.filter((type) => type.name).map((type) => {
-          const numberStyle = getTrainNumberCardStyle(type.name);
-          return {
-            name: type.name,
-            text: type.text || "",
-            suffix: type.suffix || "",
-            source: type.source || "",
-            label: type.label || "",
-            background: type.background,
-            foreground: type.foreground,
-            numberStyle: knownStyles.has(numberStyle) ? numberStyle : "default",
-            aliases: [...DEFAULT_ALIASES[type.name] || []]
-          };
-        })
-      ]
-    };
-  };
-  var normalizeTrainType = (value, styles) => {
-    const source = value && typeof value === "object" ? value : {};
-    const name = cleanToken(source.name);
-    const styleIds = new Set(styles.map((style) => style.id));
-    const aliases = uniqueTokens(
-      Array.isArray(source.aliases) ? source.aliases : String(source.aliases || "").split(/[,;]/),
-      12
-    ).filter((alias) => alias.toLocaleLowerCase("cs-CZ") !== name.toLocaleLowerCase("cs-CZ"));
-    return {
-      name,
-      text: cleanToken(source.text).slice(0, 16),
-      suffix: cleanToken(source.suffix).slice(0, 12),
-      source: normalizeTrainTypeSource(source.source),
-      label: clean(source.label).slice(0, 40),
-      background: colorOr(source.background, "var(--flap-background)"),
-      foreground: colorOr(source.foreground, "var(--flap-foreground)"),
-      numberStyle: styleIds.has(clean(source.numberStyle)) ? clean(source.numberStyle) : "default",
-      aliases
-    };
-  };
-  var normalizeStationProfile = (value) => {
-    const source = value && typeof value === "object" ? value : null;
-    if (!source) {
-      return null;
-    }
-    const fallbackStyles = createDefaultStationProfile().numberStyles;
-    const numberStyles = [];
-    const seenStyles = /* @__PURE__ */ new Set();
-    (Array.isArray(source.numberStyles) ? source.numberStyles : fallbackStyles).forEach((style) => {
-      const id = slug(style?.id, "") || slug(style?.label, "");
-      if (!id || seenStyles.has(id) || numberStyles.length >= MAX_STYLES) {
-        return;
-      }
-      seenStyles.add(id);
-      numberStyles.push({
-        id,
-        label: id,
-        background: colorOr(
-          style.background,
-          id === "default" ? "var(--flap-background)" : "#111111"
-        ),
-        foreground: colorOr(style.foreground, "#ffffff")
-      });
-    });
-    if (!seenStyles.has("default")) {
-      numberStyles.unshift({
-        id: "default",
-        label: "default",
-        background: "var(--flap-background)",
-        foreground: "var(--flap-foreground)"
-      });
-    }
-    const trainTypes = [];
-    const seenTypes = /* @__PURE__ */ new Set();
-    (Array.isArray(source.trainTypes) ? source.trainTypes : []).forEach((type) => {
-      const normalized = normalizeTrainType(type, numberStyles);
-      const key = normalized.name;
-      if (!normalized.name || seenTypes.has(key) || trainTypes.length >= MAX_TYPES) {
-        return;
-      }
-      seenTypes.add(key);
-      trainTypes.push(normalized);
-    });
-    const platforms = uniqueTokens(linesFrom(source.platforms));
-    const tracks = uniqueTokens(linesFrom(source.tracks));
-    const sectors = uniqueTokens(linesFrom(source.sectors), 40);
-    if (platforms.length === 0 || tracks.length === 0 || trainTypes.length === 0) {
-      return null;
-    }
-    return {
-      version: STATION_PROFILE_VERSION,
-      name: clean(source.name).slice(0, 80) || "Profil stanice",
-      platforms,
-      tracks,
-      sectors,
-      sectorRanges: uniqueTokens(linesFrom(source.sectorRanges), 80).filter((value2) => !sectors.some(
-        (sector) => sector.toLocaleLowerCase("cs-CZ") === value2.toLocaleLowerCase("cs-CZ")
-      )),
-      numberStyles,
-      trainTypes: [blankTrainType(), ...trainTypes]
-    };
-  };
-  var activeProfile = null;
-  var storage = () => {
-    try {
-      return globalThis.localStorage || null;
-    } catch {
-      return null;
-    }
-  };
-  var readStoredStationProfile = () => {
-    try {
-      const raw = storage()?.getItem(STATION_PROFILE_STORAGE_KEY);
-      return raw ? normalizeStationProfile(JSON.parse(raw)) : null;
-    } catch {
-      return null;
-    }
-  };
-  var getActiveStationProfile = () => {
-    if (!activeProfile) {
-      activeProfile = readStoredStationProfile() || createDefaultStationProfile();
-    }
-    return activeProfile;
-  };
-  var setActiveStationProfile = (value, { persist = true } = {}) => {
-    const next = normalizeStationProfile(value);
-    if (!next) {
-      return null;
-    }
-    activeProfile = next;
-    if (persist) {
-      try {
-        storage()?.setItem(
-          STATION_PROFILE_STORAGE_KEY,
-          JSON.stringify(next)
-        );
-      } catch {
-      }
-    }
-    return activeProfile;
-  };
-  var profileSectorValues = (profile = getActiveStationProfile()) => [...profile.sectors, ...profile.sectorRanges];
-  var matchProfileValue = (values, value) => {
-    const normalized = cleanToken(value);
-    if (!normalized) {
-      return "";
-    }
-    return values.find((candidate) => candidate === normalized) || values.find(
-      (candidate) => candidate.toLocaleLowerCase("cs-CZ") === normalized.toLocaleLowerCase("cs-CZ")
-    ) || "";
-  };
-  var sectorAtoms = (label, profile = getActiveStationProfile()) => {
-    const value = cleanToken(label);
-    if (!value) {
-      return [];
-    }
-    const parts = value.split("-").filter(Boolean);
-    if (parts.length === 2) {
-      const from = profile.sectors.findIndex(
-        (sector) => sector.toLocaleLowerCase("cs-CZ") === parts[0].toLocaleLowerCase("cs-CZ")
-      );
-      const to = profile.sectors.findIndex(
-        (sector) => sector.toLocaleLowerCase("cs-CZ") === parts[1].toLocaleLowerCase("cs-CZ")
-      );
-      if (from !== -1 && to !== -1) {
-        const start = Math.min(from, to);
-        const end = Math.max(from, to);
-        return profile.sectors.slice(start, end + 1);
-      }
-    }
-    return [value];
-  };
-  var sectorsOverlap = (boardSector, departureSector, profile = getActiveStationProfile()) => {
-    const boardAtoms = sectorAtoms(boardSector, profile).map((sector) => sector.toLocaleLowerCase("cs-CZ"));
-    const departureAtoms = sectorAtoms(departureSector, profile).map((sector) => sector.toLocaleLowerCase("cs-CZ"));
-    return departureAtoms.some((sector) => boardAtoms.includes(sector));
-  };
-  var typeLabels = (type) => [
-    type.name,
-    type.text,
-    type.label,
-    ...type.aliases || []
-  ].map((value) => clean(value)).filter(Boolean);
-  var resolveProfileTrainType = (sourceType, operator = "", profile = getActiveStationProfile()) => {
-    const original = clean(sourceType);
-    if (!original) {
-      return "";
-    }
-    const types = profile.trainTypes.filter((type) => type.name);
-    const lower = original.toLocaleLowerCase("cs-CZ");
-    if (lower === "rj") {
-      const preferred = isRegioJetOperator(operator) ? "RJ" : isCDOperator(operator) ? "rj" : original === "RJ" ? "RJ" : "rj";
-      const operatorMatch = types.find((type) => type.name === preferred);
-      if (operatorMatch) {
-        return operatorMatch.name;
-      }
-    }
-    const match = types.find((type) => typeLabels(type).some(
-      (label) => label.toLocaleLowerCase("cs-CZ") === lower
-    ));
-    return match?.name || "";
-  };
+  // src/platform/displays.js
+  init_data();
 
-  // src/platform/lenses.js
-  var LENS_COLORS = Object.freeze({
-    green: Object.freeze({
-      label: "Zelen\xE1",
-      glass: "#245c4a",
-      light: "#35e995",
-      core: "#5af3aa"
-    }),
-    yellow: Object.freeze({
-      label: "\u017Dlut\xE1",
-      glass: "#6b4311",
-      light: "#ff9d1c",
-      core: "#ffc04a"
-    }),
-    red: Object.freeze({
-      label: "\u010Cerven\xE1",
-      glass: "#702528",
-      light: "#ff443c",
-      core: "#ff694f"
-    }),
-    blue: Object.freeze({
-      label: "Modr\xE1",
-      glass: "#123f78",
-      light: "#167ed9",
-      core: "#4aa8f2"
-    }),
-    coolWhite: Object.freeze({
-      label: "Studen\xE1 b\xEDl\xE1",
-      glass: "#74838b",
-      light: "#effaff",
-      core: "#d7f1f5"
-    })
-  });
-  var LENS_DEFAULTS = Object.freeze({
-    color: "green",
-    enabled: true,
-    blinking: true,
-    blinkInterval: 0.4,
-    blinkDelay: 0
-  });
-  var LENS_BLINK_INTERVAL_MIN = 0.1;
-  var LENS_BLINK_INTERVAL_MAX = 1.5;
-  var LENS_PREDEPARTURE_SECONDS_MIN = 0;
-  var LENS_PREDEPARTURE_SECONDS_MAX = 300;
-  var LENS_PREDEPARTURE_SECONDS_STEP = 10;
-  var LENS_PREDEPARTURE_DEFAULTS = Object.freeze({
-    enabled: true,
-    seconds: 90
-  });
-  var resolveBlinkInterval = (setting, fallback) => {
-    const value = Number.isFinite(Number(setting?.blinkInterval)) ? Number(setting.blinkInterval) : Number(setting?.blinkPeriod);
-    return Number.isFinite(value) ? Math.min(
-      LENS_BLINK_INTERVAL_MAX,
-      Math.max(LENS_BLINK_INTERVAL_MIN, value)
-    ) : fallback;
-  };
-  var resolveColor = (setting, fallback) => {
-    const candidates = [
-      setting?.color,
-      setting?.glassColor,
-      setting?.lightColor
-    ];
-    return candidates.find(
-      (value) => typeof value === "string" && LENS_COLORS[value]
-    ) || fallback;
-  };
-  var positiveModulo = (value, divisor) => (value % divisor + divisor) % divisor;
-  var lensBlinkEntries = /* @__PURE__ */ new Map();
-  var lensBlinkFrame = 0;
-  var prefersReducedMotion = () => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return false;
-    }
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  };
-  var lensBlinkOpacity = (phase) => phase < LENS_DEFAULTS.blinkInterval ? "0.95" : "0";
-  var paintLensBlinks = () => {
-    lensBlinkFrame = 0;
-    const now = Date.now();
-    for (const [light, entry] of lensBlinkEntries) {
-      if (!light.isConnected) {
-        lensBlinkEntries.delete(light);
-        continue;
-      }
-      const opacity = lensBlinkOpacity(getLensBlinkPhase({
-        now,
-        lensIndex: entry.lensIndex,
-        rowIndex: entry.rowIndex,
-        synchronizeRows: entry.synchronizeRows
-      }));
-      if (light.style.opacity !== opacity) {
-        light.style.opacity = opacity;
-      }
-    }
-    if (lensBlinkEntries.size > 0 && typeof window.requestAnimationFrame === "function") {
-      lensBlinkFrame = window.requestAnimationFrame(paintLensBlinks);
-    }
-  };
-  var syncLensBlink = (lens, light, {
-    now,
-    lensIndex,
-    rowIndex,
-    synchronizeRows,
-    active
-  }) => {
-    const canShareClock = active && !prefersReducedMotion() && typeof window !== "undefined" && typeof window.requestAnimationFrame === "function";
-    if (!canShareClock) {
-      lensBlinkEntries.delete(light);
-      light.style.opacity = "";
-      lens.classList.remove("is-blink-synced");
-      return;
-    }
-    lensBlinkEntries.set(light, {
-      lensIndex,
-      rowIndex,
-      synchronizeRows
-    });
-    lens.classList.add("is-blink-synced");
-    light.style.opacity = lensBlinkOpacity(getLensBlinkPhase({
-      now,
-      lensIndex,
-      rowIndex,
-      synchronizeRows
-    }));
-    if (!lensBlinkFrame) {
-      lensBlinkFrame = window.requestAnimationFrame(paintLensBlinks);
-    }
-  };
-  var getLensBlinkPhase = ({
-    now = Date.now(),
-    lensIndex = 0,
-    rowIndex = 0,
-    synchronizeRows = true
-  } = {}) => {
-    const interval = LENS_DEFAULTS.blinkInterval;
-    const period = interval * 2;
-    const globalPhase = positiveModulo(Number(now) / 1e3, period);
-    const lensOffset = Math.abs(Number(lensIndex) || 0) * interval;
-    const rowOffset = synchronizeRows ? 0 : Math.abs(Number(rowIndex) || 0) % 2 * interval;
-    return positiveModulo(globalPhase + lensOffset + rowOffset, period);
-  };
-  var normalizePreDeparture = (setting = {}) => {
-    const source = setting?.preDeparture || setting;
-    const enabled = typeof source?.enabled === "boolean" ? source.enabled : typeof setting?.preDepartureEnabled === "boolean" ? setting.preDepartureEnabled : LENS_PREDEPARTURE_DEFAULTS.enabled;
-    const rawSeconds = source?.seconds ?? setting?.preDepartureSeconds ?? LENS_PREDEPARTURE_DEFAULTS.seconds;
-    const numericSeconds = Number(rawSeconds);
-    const seconds = Number.isFinite(numericSeconds) ? Math.round(
-      Math.min(
-        LENS_PREDEPARTURE_SECONDS_MAX,
-        Math.max(LENS_PREDEPARTURE_SECONDS_MIN, numericSeconds)
-      ) / LENS_PREDEPARTURE_SECONDS_STEP
-    ) * LENS_PREDEPARTURE_SECONDS_STEP : LENS_PREDEPARTURE_DEFAULTS.seconds;
-    return { enabled, seconds };
-  };
-  var createDefaultLensState = (count = 2, overrides = {}) => {
-    const numericCount = Math.max(1, Math.floor(Number(count) || 2));
-    const sharedOverrides = { ...overrides };
-    const preDeparture = normalizePreDeparture(sharedOverrides);
-    const normalizedOverrides = {
-      ...sharedOverrides,
-      color: resolveColor(sharedOverrides, LENS_DEFAULTS.color)
-    };
-    delete normalizedOverrides.preDeparture;
-    delete normalizedOverrides.preDepartureEnabled;
-    delete normalizedOverrides.preDepartureSeconds;
-    delete normalizedOverrides.glassColor;
-    delete normalizedOverrides.lightColor;
-    delete normalizedOverrides.blinkPeriod;
-    delete normalizedOverrides.blinkInterval;
-    delete normalizedOverrides.synchronizeRows;
-    const blinkInterval = LENS_DEFAULTS.blinkInterval;
-    return {
-      lenses: Array.from({ length: numericCount }, (_, index) => ({
-        ...LENS_DEFAULTS,
-        ...normalizedOverrides,
-        blinkInterval,
-        blinkDelay: index * blinkInterval
-      })),
-      preDeparture,
-      synchronizeRows: sharedOverrides.synchronizeRows !== false
-    };
-  };
-  var createEmptyLensState = (count = 2) => createDefaultLensState(
-    count,
-    {
-      enabled: false,
-      preDeparture: {
-        enabled: false,
-        seconds: LENS_PREDEPARTURE_DEFAULTS.seconds
-      }
-    }
-  );
-  var clamp = (value, minimum, maximum, fallback) => {
-    const number = Number(value);
-    return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
-  };
-  var cloneLens = (setting, fallback, index) => ({
-    color: resolveColor(setting, fallback.color),
-    enabled: typeof setting?.enabled === "boolean" ? setting.enabled : fallback.enabled,
-    blinking: typeof setting?.blinking === "boolean" ? setting.blinking : fallback.blinking,
-    blinkInterval: resolveBlinkInterval(setting, fallback.blinkInterval),
-    blinkDelay: clamp(
-      setting?.blinkDelay,
-      0,
-      30,
-      fallback.blinkDelay
-    )
-  });
-  var synchronizeLensTiming = (lenses) => {
-    const blinkInterval = LENS_DEFAULTS.blinkInterval;
-    return lenses.map((lens, index) => ({
-      ...lens,
-      blinkInterval,
-      blinkDelay: index * blinkInterval
-    }));
-  };
-  var LensDisplay = class {
-    constructor(element, {
-      count = 2,
-      defaultState,
-      rowIndex = 0,
-      ...defaults
-    } = {}) {
-      if (!element) {
-        throw new TypeError("LensDisplay vy\u017Eaduje DOM element.");
-      }
-      this.element = element;
-      this.count = Math.max(1, Math.floor(Number(count) || 2));
-      this.rowIndex = Math.max(0, Math.floor(Number(rowIndex) || 0));
-      this.defaults = {
-        ...LENS_DEFAULTS,
-        ...defaults,
-        color: resolveColor(defaults, LENS_DEFAULTS.color),
-        blinkInterval: resolveBlinkInterval(
-          defaults,
-          LENS_DEFAULTS.blinkInterval
-        )
-      };
-      delete this.defaults.glassColor;
-      delete this.defaults.lightColor;
-      delete this.defaults.blinkPeriod;
-      const defaultOverrides = { ...defaults };
-      if (!Object.prototype.hasOwnProperty.call(defaults, "blinkDelay")) {
-        delete defaultOverrides.blinkDelay;
-      }
-      this.defaultState = defaultState || createDefaultLensState(this.count, defaultOverrides);
-      this.state = this.normalize(this.defaultState);
-      this.preDepartureActive = true;
-      this.render();
-    }
-    normalize(value) {
-      if (value === "" || value === null || value === void 0) {
-        return {
-          lenses: synchronizeLensTiming(
-            Array.from(
-              { length: this.count },
-              (_, index) => cloneLens(
-                {
-                  ...this.defaults,
-                  enabled: false,
-                  blinking: false
-                },
-                this.defaults,
-                index
-              )
-            )
-          ),
-          preDeparture: normalizePreDeparture({
-            enabled: false,
-            seconds: LENS_PREDEPARTURE_DEFAULTS.seconds
-          }),
-          synchronizeRows: true
-        };
-      }
-      const source = Array.isArray(value) ? { lenses: value } : value;
-      const values = Array.isArray(source?.lenses) ? source.lenses : [source];
-      return {
-        lenses: synchronizeLensTiming(
-          Array.from(
-            { length: this.count },
-            (_, index) => cloneLens(
-              values[index] || values[0] || {},
-              this.defaults,
-              index
-            )
-          )
-        ),
-        preDeparture: normalizePreDeparture(source),
-        synchronizeRows: source?.synchronizeRows !== false
-      };
-    }
-    renderLens(setting, index, now = Date.now()) {
-      const lens = document.createElement("span");
-      const color = LENS_COLORS[setting.color];
-      lens.className = "lens";
-      lens.dataset.lensIndex = String(index);
-      lens.setAttribute("aria-hidden", "true");
-      lens.style.setProperty("--lens-glass-color", color.glass);
-      lens.style.setProperty("--lens-light-color", color.light);
-      lens.style.setProperty("--lens-light-core-color", color.core);
-      lens.style.setProperty(
-        "--lens-blink-duration",
-        `${LENS_DEFAULTS.blinkInterval * 2}s`
-      );
-      lens.style.setProperty(
-        "--lens-blink-delay",
-        `${-getLensBlinkPhase({
-          now,
-          lensIndex: index,
-          rowIndex: this.rowIndex,
-          synchronizeRows: this.state.synchronizeRows
-        })}s`
-      );
-      const preDepartureActive = !this.state.preDeparture.enabled || this.preDepartureActive;
-      const blinking = setting.enabled && setting.blinking && preDepartureActive;
-      lens.classList.toggle(
-        "is-on",
-        setting.enabled && preDepartureActive
-      );
-      lens.classList.toggle("is-blinking", blinking);
-      const lightElement = document.createElement("span");
-      lightElement.className = "lens-light";
-      if (blinking && !prefersReducedMotion() && typeof window.requestAnimationFrame === "function") {
-        lens.classList.add("is-blink-synced");
-      }
-      lens.appendChild(lightElement);
-      syncLensBlink(lens, lightElement, {
-        now,
-        lensIndex: index,
-        rowIndex: this.rowIndex,
-        synchronizeRows: this.state.synchronizeRows,
-        active: blinking
-      });
-      return lens;
-    }
-    render() {
-      const now = Date.now();
-      this.element.replaceChildren(
-        ...this.state.lenses.map((setting, index) => this.renderLens(setting, index, now))
-      );
-      this.element.classList.add("lens-display");
-      this.element.setAttribute("role", "img");
-      this.element.setAttribute(
-        "aria-label",
-        `${this.state.lenses.length} signaliza\u010Dn\xEDch \u010Do\u010Dek`
-      );
-    }
-    set(value) {
-      this.state = this.normalize(value);
-      this.render();
-      return this.getValue();
-    }
-    setImmediate(value) {
-      return this.set(value);
-    }
-    setPreDepartureActive(isActive) {
-      const nextValue = Boolean(isActive);
-      if (nextValue === this.preDepartureActive && this.element.childElementCount === this.state.lenses.length) {
-        return this.preDepartureActive;
-      }
-      this.preDepartureActive = nextValue;
-      this.applyActivity();
-      return this.preDepartureActive;
-    }
-    applyActivity() {
-      const lenses = this.element.querySelectorAll(":scope > .lens");
-      if (lenses.length !== this.state.lenses.length) {
-        this.render();
-        return;
-      }
-      const now = Date.now();
-      const preDepartureActive = !this.state.preDeparture.enabled || this.preDepartureActive;
-      this.state.lenses.forEach((setting, index) => {
-        const lens = lenses[index];
-        const blinking = setting.enabled && setting.blinking && preDepartureActive;
-        const phase = getLensBlinkPhase({
-          now,
-          lensIndex: index,
-          rowIndex: this.rowIndex,
-          synchronizeRows: this.state.synchronizeRows
-        });
-        lens.style.setProperty(
-          "--lens-blink-duration",
-          `${LENS_DEFAULTS.blinkInterval * 2}s`
-        );
-        lens.style.setProperty("--lens-blink-delay", `${-phase}s`);
-        lens.classList.toggle(
-          "is-on",
-          setting.enabled && preDepartureActive
-        );
-        lens.classList.toggle("is-blinking", blinking);
-        const light = lens.querySelector(":scope > .lens-light");
-        if (light) {
-          syncLensBlink(lens, light, {
-            now,
-            lensIndex: index,
-            rowIndex: this.rowIndex,
-            synchronizeRows: this.state.synchronizeRows,
-            active: blinking
-          });
-        }
-      });
-    }
-    clear() {
-      return this.set("");
-    }
-    getValue() {
-      return {
-        lenses: this.state.lenses.map((setting) => ({ ...setting })),
-        preDeparture: { ...this.state.preDeparture },
-        synchronizeRows: this.state.synchronizeRows
-      };
-    }
-    isSettled() {
-      return true;
-    }
-    destroy() {
-      this.element.replaceChildren();
-      this.element.removeAttribute("aria-label");
-    }
-  };
+  // src/platform/departure-board.js
+  init_data();
+  init_station_profile();
+  init_lenses();
+
+  // src/platform/index.js
+  init_lenses();
+
+  // src/platform/runtime.js
+  init_data();
+  init_lenses();
 
   // src/platform/analog-clock.js
   var DEFAULT_CLOCK_OPTIONS = Object.freeze({
@@ -1428,6 +1848,7 @@
   });
 
   // src/platform/lighting-state.js
+  init_data();
   var clamp2 = (value, minimum, maximum, fallback) => {
     const numericValue = Number(value);
     return Number.isFinite(numericValue) ? Math.min(maximum, Math.max(minimum, numericValue)) : fallback;
@@ -1557,6 +1978,9 @@
       return this.getClockSettings();
     }
   };
+
+  // src/platform/night-lighting.js
+  init_data();
 
   // src/platform/storage.js
   var LocalStorageAdapter = class {
@@ -1983,7 +2407,11 @@
     }
   };
 
+  // src/platform/index.js
+  init_station_profile();
+
   // src/platform/board-identity.js
+  init_station_profile();
   var IDENTITY_FIELDS = Object.freeze([
     "platform",
     "track",
@@ -4598,6 +5026,8 @@
   };
 
   // src/platform/live-departures.js
+  init_data();
+  init_station_profile();
   var LIVE_SOURCE_ORIGIN = "https://provoz.spravazeleznic.cz";
   var LIVE_SOURCE_PATH = "/tabule/Pages/StationTable.aspx";
   var LIVE_STATION_DEFAULTS = Object.freeze({
@@ -5780,6 +6210,8 @@
   };
 
   // src/demos/stationProfileEditor.js
+  init_data();
+  init_station_profile();
   var lines = (values) => values.join("\n");
   var fieldValue = (row, name) => row.querySelector(`[data-field="${name}"]`)?.value || "";
   var textInput = (documentRef2, value, label, name) => {
@@ -10057,13 +10489,181 @@
   });
   setupManageBlockToggles();
   mountManageLayout(documentRef);
+  var MANAGE_SESSION_TOKEN_KEY = "pragotron.manage.session.v1";
+  var MANAGE_SESSION_EPOCH_KEY = "pragotron.manage.session.epoch.v1";
+  var MANAGE_SESSION_TOKEN_PATTERN = /^[A-Za-z0-9-]{16,80}$/;
+  var readManageSession = () => {
+    try {
+      const token = window.sessionStorage.getItem(MANAGE_SESSION_TOKEN_KEY) || "";
+      const epoch = Number(window.sessionStorage.getItem(MANAGE_SESSION_EPOCH_KEY));
+      if (!MANAGE_SESSION_TOKEN_PATTERN.test(token) || !Number.isInteger(epoch) || epoch < 1) {
+        return null;
+      }
+      return { token, epoch };
+    } catch {
+      return null;
+    }
+  };
+  var manageSession = readManageSession();
+  var manageSessionTimer = null;
+  var manageSessionDenied = false;
+  var manageSessionChannel = null;
+  var manageSessionEndpoint = () => {
+    const protocol = window.location.protocol;
+    if (protocol !== "http:" && protocol !== "https:") {
+      return "";
+    }
+    return `${window.location.origin}/api/manage/session`;
+  };
+  var postManageSession = (action, body) => {
+    const endpoint = manageSessionEndpoint();
+    if (!endpoint) {
+      return Promise.resolve(null);
+    }
+    return fetch(action === "release" ? `${endpoint}/release` : endpoint, {
+      method: "POST",
+      keepalive: action === "release",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(async (response) => {
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch {
+        payload = {};
+      }
+      return { status: response.status, payload };
+    }).catch(() => null);
+  };
+  var showManageSessionDenied = async (address) => {
+    manageSessionDenied = true;
+    const addressNode = documentRef.querySelector("#manageSessionAddress");
+    if (addressNode) {
+      addressNode.textContent = address || "nezn\xE1m\xE1 adresa";
+    }
+    documentRef.title = "Nejvy\u0161\u0161\xED pan \u017Eelezni\u010D\xE1\u0159 je ji\u017E p\u0159\xEDtomen. \u2013 PRAGOTRON";
+    documentRef.documentElement.classList.add("manage-session-denied");
+    documentRef.documentElement.classList.remove("manage-session-pending");
+    try {
+      const module = await Promise.resolve().then(() => (init_manageSessionDenied(), manageSessionDenied_exports));
+      module.mountManageSessionDenied(documentRef);
+    } catch {
+    }
+  };
+  var surrenderManageSession = (address) => {
+    if (manageSessionDenied) {
+      return;
+    }
+    manageSessionDenied = true;
+    window.clearInterval(manageSessionTimer);
+    manageSessionTimer = null;
+    try {
+      manageSessionChannel?.close();
+    } catch {
+    }
+    manageSessionChannel = null;
+    releaseScraperWatch();
+    window.pragotron?.destroy?.();
+    void showManageSessionDenied(address);
+  };
+  var announceManageSession = () => {
+    if (!manageSession || manageSessionDenied) {
+      return;
+    }
+    try {
+      manageSessionChannel?.postMessage({
+        token: manageSession.token,
+        epoch: manageSession.epoch
+      });
+    } catch {
+    }
+  };
+  var storeManageSessionEpoch = (epoch) => {
+    manageSession = {
+      token: manageSession?.token,
+      epoch
+    };
+    try {
+      window.sessionStorage.setItem(MANAGE_SESSION_EPOCH_KEY, String(epoch));
+    } catch {
+    }
+  };
+  var renewManageSession = async () => {
+    if (!manageSession || manageSessionDenied) {
+      return;
+    }
+    const result = await postManageSession("renew", {
+      token: manageSession.token,
+      epoch: manageSession.epoch
+    });
+    if (!result || result.status === 200) {
+      return;
+    }
+    if (result.status === 409 && result.payload?.expired) {
+      const claimed = await postManageSession("claim", {
+        token: manageSession.token
+      });
+      if (claimed?.status === 200 && Number.isInteger(claimed.payload?.epoch)) {
+        storeManageSessionEpoch(claimed.payload.epoch);
+        announceManageSession();
+        return;
+      }
+      if (claimed?.status === 409 && !claimed.payload?.expired) {
+        surrenderManageSession(claimed.payload?.address);
+      }
+      return;
+    }
+    if (result.status === 409) {
+      surrenderManageSession(result.payload?.address);
+    }
+  };
   window.addEventListener("pagehide", () => {
     releaseScraperWatch();
+    if (!manageSession || manageSessionDenied) {
+      return;
+    }
+    void postManageSession("release", {
+      token: manageSession.token,
+      epoch: manageSession.epoch
+    });
   });
   window.addEventListener("beforeunload", (event) => {
+    if (manageSessionDenied) {
+      return;
+    }
     event.preventDefault();
     event.returnValue = "Manage str\xE1nka mus\xED z\u016Fstat otev\u0159en\xE1. Obnoven\xED nebo zav\u0159en\xED p\u0159esko\u010D\xED animaci odjezdov\xE9 tabule a tabule p\u0159estanou dost\xE1vat data.";
   });
+  documentRef.addEventListener("visibilitychange", () => {
+    if (!documentRef.hidden) {
+      void renewManageSession();
+    }
+  });
+  if (manageSession) {
+    try {
+      manageSessionChannel = new BroadcastChannel(MANAGE_SESSION_TOKEN_KEY);
+      manageSessionChannel.addEventListener("message", (event) => {
+        const epoch = Number(event.data?.epoch);
+        if (event.data?.token === manageSession?.token && Number.isInteger(epoch) && epoch > manageSession.epoch) {
+          let address = "";
+          try {
+            address = window.sessionStorage.getItem(
+              "pragotron.manage.session.address.v1"
+            ) || "";
+          } catch {
+            address = "";
+          }
+          surrenderManageSession(address);
+        }
+      });
+    } catch {
+      manageSessionChannel = null;
+    }
+    announceManageSession();
+    manageSessionTimer = window.setInterval(() => {
+      void renewManageSession();
+    }, 2e4);
+  }
   if (!settingsUpdatedAt) {
     settingsUpdatedAt = Date.now();
     persistState();

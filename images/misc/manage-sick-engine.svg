@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 640" role="img" aria-labelledby="manageSickEngineTitle">
+  <title id="manageSickEngineTitle">Nemocná mašinka stojí v depu</title>
+  <rect width="900" height="640" fill="#8ecff0"/>
+  <rect y="518" width="900" height="122" fill="#e3dccf"/>
+  <g fill="none" stroke="#241c16" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M118 268 L450 78 L782 268 Z" fill="#de6e16"/>
+    <rect x="156" y="248" width="588" height="292" rx="8" fill="#f3912c"/>
+    <rect x="598" y="108" width="52" height="112" rx="4" fill="#8a5638"/>
+    <rect x="582" y="92" width="84" height="24" rx="4" fill="#6d412b"/>
+    <rect x="292" y="318" width="316" height="222" rx="12" fill="#17191f"/>
+    <path d="M292 318 L176 356 L168 540 L292 540 Z" fill="#ffb15e"/>
+    <path d="M304 348 L214 376 L208 508 L304 508 Z" fill="#f7c48a"/>
+    <path d="M608 318 L734 356 L744 540 L608 540 Z" fill="#ffb15e"/>
+    <path d="M596 348 L696 376 L704 508 L596 508 Z" fill="#f7c48a"/>
+    <circle cx="292" cy="360" r="7" fill="#f0c14b"/>
+    <circle cx="292" cy="500" r="7" fill="#f0c14b"/>
+    <circle cx="608" cy="360" r="7" fill="#f0c14b"/>
+    <circle cx="608" cy="500" r="7" fill="#f0c14b"/>
+    <circle cx="450" cy="418" r="92" fill="#ef7a28"/>
+    <circle cx="450" cy="424" r="72" fill="#ffc48a"/>
+    <rect x="430" y="308" width="40" height="58" rx="8" fill="#ef7a28"/>
+    <ellipse cx="488" cy="300" rx="26" ry="16" fill="#d5dde6"/>
+    <ellipse cx="520" cy="288" rx="16" ry="11" fill="#e7edf2"/>
+    <circle cx="450" cy="372" r="13" fill="#ffe08a"/>
+    <ellipse cx="418" cy="416" rx="18" ry="11" fill="#fffef8"/>
+    <ellipse cx="482" cy="416" rx="18" ry="11" fill="#fffef8"/>
+    <circle cx="420" cy="420" r="6" fill="#241c16" stroke="none"/>
+    <circle cx="484" cy="420" r="6" fill="#241c16" stroke="none"/>
+    <path d="M398 396 L436 406" fill="none"/>
+    <path d="M464 406 L502 396" fill="none"/>
+    <ellipse cx="404" cy="442" rx="9" ry="6" fill="#e88888" stroke="none"/>
+    <ellipse cx="496" cy="442" rx="9" ry="6" fill="#e88888" stroke="none"/>
+    <ellipse cx="446" cy="456" rx="11" ry="9" fill="#5a302c"/>
+    <g transform="rotate(-24 458 454)">
+      <rect x="452" y="446" width="86" height="16" rx="8" fill="#f7fbff"/>
+      <rect x="458" y="450" width="42" height="8" rx="4" fill="#e10600" stroke="none"/>
+      <circle cx="544" cy="454" r="13" fill="#e10600"/>
+      <circle cx="544" cy="454" r="6" fill="#ffd0d0" stroke="none"/>
+    </g>
+    <g transform="rotate(-18 392 392)">
+      <rect x="368" y="384" width="48" height="16" rx="4" fill="#f7f3ea"/>
+      <path d="M386 388 v8 M382 392 h8" fill="none" stroke="#d3122a" stroke-width="3"/>
+    </g>
+    <path d="M392 448 c0 7 7 9 7 15 a7 7 0 1 1 -14 0 c0 -6 7 -8 7 -15 z" fill="#b7e3f6"/>
+    <rect x="352" y="492" width="196" height="26" rx="6" fill="#6d3330"/>
+    <circle cx="386" cy="505" r="12" fill="#f0c84b"/>
+    <circle cx="514" cy="505" r="12" fill="#f0c84b"/>
+    <circle cx="378" cy="528" r="24" fill="#2b2b2b"/>
+    <circle cx="522" cy="528" r="24" fill="#2b2b2b"/>
+    <circle cx="378" cy="528" r="8" fill="#d9d3c6" stroke="none"/>
+    <circle cx="522" cy="528" r="8" fill="#d9d3c6" stroke="none"/>
+  </g>
+  <g fill="#cfc6b6" stroke="#241c16" stroke-width="4">
+    <rect x="280" y="540" width="16" height="36" rx="2"/>
+    <rect x="340" y="540" width="16" height="36" rx="2"/>
+    <rect x="400" y="540" width="16" height="36" rx="2"/>
+    <rect x="460" y="540" width="16" height="36" rx="2"/>
+    <rect x="520" y="540" width="16" height="36" rx="2"/>
+    <rect x="580" y="540" width="16" height="36" rx="2"/>
+  </g>
+  <g fill="none" stroke="#8d8578" stroke-width="5" stroke-linecap="round">
+    <path d="M250 552 H650"/>
+    <path d="M250 572 H650"/>
+  </g>
+</svg>

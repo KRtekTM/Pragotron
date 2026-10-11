@@ -1092,6 +1092,9 @@ stejném originu tedy fungují i bez serveru, včetně otevření přes `file://
 Stránky otevřené z `npm run serve` se navíc připojí na
 `/api/board-channel`. Server zprávy přepošle ostatním připojeným tabulím
 a manage, takže stejná registrace identity funguje i z jiného počítače.
+K serveru se smí připojit jen jedna manage stránka. Další otevření správce
+místo ovládání ukáže upozornění s adresou počítače, který už je připojený,
+a průvodce odkazem na odjezdovou nebo nástupištní tabuli.
 Stránka otevřená přes `file://` se k síti nepřipojí, dokud v adrese není
 `?hub=http://adresa-serveru:4787`. Port serveru je otevřený přenos bez
 přihlášení: na internetu ho zpřístupněte jen tam, kde tomu odpovídá síť.

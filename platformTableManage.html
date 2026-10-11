@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="cs">
+<html lang="cs" class="manage-session-pending">
 <head>
     <meta charset="UTF-8">
     <script>
@@ -24,6 +24,35 @@
 </head>
 <body>
     <script src="src/demos/platformTableManagePreload.js"></script>
+    <p class="manage-session-pending-note">Připojuji správce…</p>
+    <section class="manage-session-screen" aria-labelledby="manageSessionTitle">
+        <div class="manage-session-card">
+            <img
+                src="images/misc/manage-happy-engine.png"
+                alt="Šťastná mašinka stojí v noci před depem."
+                width="720"
+                height="512"
+            >
+            <div class="manage-session-copy">
+            <h1 id="manageSessionTitle">Nejvyšší pan železničář je již přítomen.</h1>
+            <p>
+                Správcovská stránka je již otevřená a připojená k Pragotron serveru
+                z adresy <strong id="manageSessionAddress">neznámá adresa</strong>,
+                proto se další připojit nemůže.
+            </p>
+            <div id="manageSessionGuide" class="manage-session-guide">
+                <p class="manage-session-guide-intro">
+                    Než se průvodce načte, tabule jde otevřít rovnou:
+                </p>
+                <p class="manage-session-fallback">
+                    <a href="departureBoard.html">Odjezdová tabule</a>
+                    <a href="platformTable.html">Nástupištní tabule</a>
+                </p>
+            </div>
+            <button type="button" id="manageSessionRetry">Zkusit správce znovu</button>
+            </div>
+        </div>
+    </section>
 
     <div id="manageHeader">
         <div class="manage-header-brand">

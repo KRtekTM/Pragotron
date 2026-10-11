@@ -21,6 +21,10 @@ import {
     parseLiveSourceUrl
 } from '../src/platform/live-departures.js';
 import { attachBoardChannel } from './board-channel-server.mjs';
+import {
+    createManageSession,
+    normalizeManageClientAddress
+} from './manage-session.mjs';
 
 dns.setDefaultResultOrder('ipv4first');
 
@@ -153,9 +157,32 @@ const scrapeLabel = (sourceUrl) => {
     return source.key ? `Key ${source.key}` : sourceUrl;
 };
 
-const logScrape = (message) => {
+const logLine = (message) => {
     const time = new Date().toLocaleTimeString('cs-CZ', { hour12: false });
     console.log(`[${time}] ${message}`);
+};
+
+const logScrape = (message) => {
+    logLine(message);
+};
+
+const manageSessions = createManageSession();
+
+const logManageSession = (result, requester) => {
+    if (result.event === 'claimed' || result.event === 'reclaimed') {
+        logLine(`Manage: připojeno z ${result.body.address}`);
+        return;
+    }
+    if (result.event === 'rejected') {
+        logLine(
+            `Manage: další připojení z ${requester} odmítnuto, `
+            + `drží ${result.body.address}`
+        );
+        return;
+    }
+    if (result.event === 'released') {
+        logLine(`Manage: odpojeno z ${result.body.address}`);
+    }
 };
 
 let scrapeWatch = null;
@@ -248,6 +275,32 @@ const readRequestJson = async (request) => {
         return {};
     }
     return JSON.parse(text);
+};
+
+const handleManageSession = async (request, response, release) => {
+    let body = {};
+    try {
+        body = await readRequestJson(request);
+    } catch (error) {
+        writeJson(response, 400, {
+            error: error instanceof Error
+                ? error.message
+                : 'Neplatný požadavek.'
+        });
+        return;
+    }
+
+    const address = normalizeManageClientAddress(request.socket?.remoteAddress);
+    const token = body.token;
+    const result = release
+        ? manageSessions.release({ token, epoch: body.epoch })
+        : Object.prototype.hasOwnProperty.call(body, 'epoch')
+            && body.epoch !== ''
+            && body.epoch != null
+            ? manageSessions.renew({ token, epoch: body.epoch })
+            : manageSessions.claim({ token, address });
+    logManageSession(result, address);
+    writeJson(response, result.status, result.body);
 };
 
 const getCachedLiveDepartures = async (sourceUrl, intervalMs) => {
@@ -425,6 +478,18 @@ const server = createServer(async (request, response) => {
                     : 'Sledování se nepodařilo spustit.'
             });
         }
+        return;
+    }
+
+    if (requestUrl.pathname === '/api/manage/session'
+        && request.method === 'POST') {
+        await handleManageSession(request, response, false);
+        return;
+    }
+
+    if (requestUrl.pathname === '/api/manage/session/release'
+        && request.method === 'POST') {
+        await handleManageSession(request, response, true);
         return;
     }
 

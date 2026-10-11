@@ -4578,13 +4578,200 @@ mountStationProfileEditor({
 });
 setupManageBlockToggles();
 mountManageLayout(documentRef);
+
+const MANAGE_SESSION_TOKEN_KEY = 'pragotron.manage.session.v1';
+const MANAGE_SESSION_EPOCH_KEY = 'pragotron.manage.session.epoch.v1';
+const MANAGE_SESSION_TOKEN_PATTERN = /^[A-Za-z0-9-]{16,80}$/;
+
+const readManageSession = () => {
+    try {
+        const token = window.sessionStorage.getItem(MANAGE_SESSION_TOKEN_KEY) || '';
+        const epoch = Number(window.sessionStorage.getItem(MANAGE_SESSION_EPOCH_KEY));
+        if (!MANAGE_SESSION_TOKEN_PATTERN.test(token)
+            || !Number.isInteger(epoch)
+            || epoch < 1) {
+            return null;
+        }
+        return { token, epoch };
+    } catch {
+        return null;
+    }
+};
+
+let manageSession = readManageSession();
+let manageSessionTimer = null;
+let manageSessionDenied = false;
+let manageSessionChannel = null;
+
+const manageSessionEndpoint = () => {
+    const protocol = window.location.protocol;
+    if (protocol !== 'http:' && protocol !== 'https:') {
+        return '';
+    }
+    return `${window.location.origin}/api/manage/session`;
+};
+
+const postManageSession = (action, body) => {
+    const endpoint = manageSessionEndpoint();
+    if (!endpoint) {
+        return Promise.resolve(null);
+    }
+    return fetch(action === 'release' ? `${endpoint}/release` : endpoint, {
+        method: 'POST',
+        keepalive: action === 'release',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    }).then(async (response) => {
+        let payload = {};
+        try {
+            payload = await response.json();
+        } catch {
+            payload = {};
+        }
+        return { status: response.status, payload };
+    }).catch(() => null);
+};
+
+const showManageSessionDenied = async (address) => {
+    manageSessionDenied = true;
+    const addressNode = documentRef.querySelector('#manageSessionAddress');
+    if (addressNode) {
+        addressNode.textContent = address || 'neznámá adresa';
+    }
+    documentRef.title = 'Nejvyšší pan železničář je již přítomen. – PRAGOTRON';
+    documentRef.documentElement.classList.add('manage-session-denied');
+    documentRef.documentElement.classList.remove('manage-session-pending');
+    try {
+        const module = await import('./manageSessionDenied.js');
+        module.mountManageSessionDenied(documentRef);
+    } catch {
+        // The static links in the warning stay usable.
+    }
+};
+
+const surrenderManageSession = (address) => {
+    if (manageSessionDenied) {
+        return;
+    }
+    manageSessionDenied = true;
+    window.clearInterval(manageSessionTimer);
+    manageSessionTimer = null;
+    try {
+        manageSessionChannel?.close();
+    } catch {
+        // The channel may already be closed.
+    }
+    manageSessionChannel = null;
+    releaseScraperWatch();
+    window.pragotron?.destroy?.();
+    void showManageSessionDenied(address);
+};
+
+const announceManageSession = () => {
+    if (!manageSession || manageSessionDenied) {
+        return;
+    }
+    try {
+        manageSessionChannel?.postMessage({
+            token: manageSession.token,
+            epoch: manageSession.epoch
+        });
+    } catch {
+        // Another tab can still notice on the next renew.
+    }
+};
+
+const storeManageSessionEpoch = (epoch) => {
+    manageSession = {
+        token: manageSession?.token,
+        epoch
+    };
+    try {
+        window.sessionStorage.setItem(MANAGE_SESSION_EPOCH_KEY, String(epoch));
+    } catch {
+        // The next renew will notice the lease is gone.
+    }
+};
+
+const renewManageSession = async () => {
+    if (!manageSession || manageSessionDenied) {
+        return;
+    }
+    const result = await postManageSession('renew', {
+        token: manageSession.token,
+        epoch: manageSession.epoch
+    });
+    if (!result || result.status === 200) {
+        return;
+    }
+    if (result.status === 409 && result.payload?.expired) {
+        const claimed = await postManageSession('claim', {
+            token: manageSession.token
+        });
+        if (claimed?.status === 200 && Number.isInteger(claimed.payload?.epoch)) {
+            storeManageSessionEpoch(claimed.payload.epoch);
+            announceManageSession();
+            return;
+        }
+        if (claimed?.status === 409 && !claimed.payload?.expired) {
+            surrenderManageSession(claimed.payload?.address);
+        }
+        return;
+    }
+    if (result.status === 409) {
+        surrenderManageSession(result.payload?.address);
+    }
+};
+
 window.addEventListener('pagehide', () => {
     releaseScraperWatch();
+    if (!manageSession || manageSessionDenied) {
+        return;
+    }
+    void postManageSession('release', {
+        token: manageSession.token,
+        epoch: manageSession.epoch
+    });
 });
 window.addEventListener('beforeunload', (event) => {
+    if (manageSessionDenied) {
+        return;
+    }
     event.preventDefault();
     event.returnValue = 'Manage stránka musí zůstat otevřená. Obnovení nebo zavření přeskočí animaci odjezdové tabule a tabule přestanou dostávat data.';
 });
+documentRef.addEventListener('visibilitychange', () => {
+    if (!documentRef.hidden) {
+        void renewManageSession();
+    }
+});
+if (manageSession) {
+    try {
+        manageSessionChannel = new BroadcastChannel(MANAGE_SESSION_TOKEN_KEY);
+        manageSessionChannel.addEventListener('message', (event) => {
+            const epoch = Number(event.data?.epoch);
+            if (event.data?.token === manageSession?.token
+                && Number.isInteger(epoch)
+                && epoch > manageSession.epoch) {
+                let address = '';
+                try {
+                    address = window.sessionStorage.getItem(
+                        'pragotron.manage.session.address.v1'
+                    ) || '';
+                } catch {
+                    address = '';
+                }
+                surrenderManageSession(address);
+            }
+        });
+    } catch {
+        manageSessionChannel = null;
+    }
+    announceManageSession();
+    manageSessionTimer = window.setInterval(() => {
+        void renewManageSession();
+    }, 20_000);
+}
 if (!settingsUpdatedAt) {
     settingsUpdatedAt = Date.now();
     persistState();
