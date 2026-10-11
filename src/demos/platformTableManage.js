@@ -66,6 +66,7 @@ import {
     SCRAPER_IDLE_ERROR,
     scraperControlUrl
 } from '../platform/index.js';
+import { mountManageLayout } from './manageLayout.js';
 import { mountStationProfileEditor } from './stationProfileEditor.js';
 
 const STORAGE_KEY = 'pragotron.platformTable.state.v2';
@@ -4576,6 +4577,7 @@ mountStationProfileEditor({
     }
 });
 setupManageBlockToggles();
+mountManageLayout(documentRef);
 window.addEventListener('pagehide', () => {
     releaseScraperWatch();
 });

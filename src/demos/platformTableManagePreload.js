@@ -27,6 +27,12 @@
         if (settings?.nightMode === true) {
             document.body.classList.add('manage-night-mode');
         }
+        if (window.localStorage.getItem('pragotron.manage.layout.v1')) {
+            document.documentElement.classList.add('manage-layout-pending');
+            window.setTimeout(() => {
+                document.documentElement.classList.remove('manage-layout-pending');
+            }, 4000);
+        }
     } catch {
         // A corrupted or unavailable preference must not block the form.
     }

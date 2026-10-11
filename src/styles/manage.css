@@ -91,23 +91,291 @@
     font-variant-numeric: tabular-nums;
 }
 
+.manage-layout-button {
+    flex: 0 0 auto;
+    height: 32px;
+    padding: 0 0.75rem;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.manage-layout-button:hover,
+.manage-layout-button[aria-pressed='true'] {
+    background: #fff;
+}
+
+.manage-layout-button:focus-visible {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 2px;
+}
+
+html.manage-layout-pending #manage {
+    visibility: hidden;
+}
+
+.manage-layout-bar {
+    position: sticky;
+    top: 0.6rem;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin: 0.85rem 20px 0;
+    padding: 0.75rem 0.9rem;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 0.9rem;
+    background: #1b1b1b;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+    color: #fff;
+}
+
+.manage-layout-bar[hidden] {
+    display: none;
+}
+
+.manage-layout-bar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+}
+
+.manage-layout-count,
+.manage-layout-bar-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 700;
+}
+
+.manage-layout-count button,
+.manage-layout-bar-actions button {
+    min-height: 2.1rem;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid #aaa;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+.manage-layout-count button {
+    min-width: 2.15rem;
+    padding-right: 0.45rem;
+    padding-left: 0.45rem;
+}
+
+.manage-layout-count button:hover,
+.manage-layout-bar-actions button:hover,
+.manage-layout-count button[aria-pressed='true'] {
+    background: #fff;
+}
+
+.manage-layout-count button[aria-pressed='true'] {
+    box-shadow: inset 0 0 0 2px var(--control-focus);
+}
+
+.manage-layout-count button:focus-visible,
+.manage-layout-bar-actions button:focus-visible,
+.manage-layout-splitter:focus-visible {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 2px;
+}
+
+.manage-layout-split {
+    display: flex;
+    flex: 1 1 16rem;
+    align-items: stretch;
+    min-width: min(100%, 16rem);
+    min-height: 2.2rem;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 0.55rem;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.manage-layout-split-part {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    padding: 0.15rem 0.35rem;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.manage-layout-splitter {
+    position: relative;
+    flex: 0 0 0.8rem;
+    padding: 0;
+    border: 0;
+    background: rgba(255, 255, 255, 0.1);
+    cursor: col-resize;
+    touch-action: none;
+}
+
+.manage-layout-splitter::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 0.95rem;
+    background: rgba(255, 255, 255, 0.75);
+    box-shadow:
+        -3px 0 0 rgba(255, 255, 255, 0.75),
+        3px 0 0 rgba(255, 255, 255, 0.75);
+    transform: translate(-50%, -50%);
+}
+
+.manage-layout-hint {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 0.82rem;
+}
+
 #manage {
     display: grid;
-    grid-template-columns: minmax(0, 0.4fr) minmax(22rem, 0.6fr);
+    grid-template-columns: var(--manage-columns, minmax(0, 2fr) minmax(0, 3fr));
     align-items: start;
     gap: 1rem;
     padding: 1.25rem 20px 2rem;
     color: #fff;
 }
 
-.manage-main-column,
-.manage-side-column {
+.manage-layout-column {
+    display: flex;
     min-width: 0;
+    flex-direction: column;
+    gap: 1rem;
 }
 
-.manage-side-column {
-    display: grid;
-    gap: 1rem;
+#manage .manage-layout-column > [data-layout-block] {
+    min-width: 0;
+    margin: 0;
+}
+
+.manage-layout-column-label {
+    display: none;
+}
+
+#manage.is-layout-editing .manage-layout-column {
+    min-height: 5.5rem;
+    padding: 0.55rem;
+    box-sizing: border-box;
+    border: 1px dashed rgba(255, 255, 255, 0.28);
+    border-radius: 1rem;
+}
+
+#manage.is-layout-editing .manage-layout-column.is-drop-target {
+    border-color: #9fd4ff;
+}
+
+#manage.is-layout-editing .manage-layout-column-label {
+    display: flex;
+    justify-content: space-between;
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+#manage.is-layout-editing .manage-layout-column:not(:has(> [data-layout-block]))::after {
+    content: 'Přetáhněte sem blok';
+    display: block;
+    padding: 0.85rem 0.2rem 0.35rem;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+#manage.is-layout-editing [data-layout-block] {
+    outline: 1px dashed rgba(255, 255, 255, 0.34);
+    outline-offset: 3px;
+}
+
+#manage.is-layout-editing [data-layout-block].is-layout-dragging {
+    opacity: 0.72;
+    outline: 2px solid #9fd4ff;
+}
+
+#manage.is-layout-dragging,
+body:has(#manage.is-layout-dragging) {
+    cursor: grabbing;
+    user-select: none;
+}
+
+.manage-layout-handle {
+    display: none;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 0.35rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    cursor: grab;
+    touch-action: none;
+}
+
+#manage.is-layout-editing .manage-layout-handle {
+    display: inline-flex;
+}
+
+#boardForm .manage-layout-handle,
+#boardForm .manage-layout-handle:hover,
+#manage .manage-layout-handle:hover {
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.14);
+    color: inherit;
+}
+
+.manage-layout-handle:focus-visible {
+    outline: 2px solid var(--control-focus);
+    outline-offset: 2px;
+}
+
+.manage-layout-grip {
+    width: 0.7rem;
+    height: 0.85rem;
+    background-image: radial-gradient(currentColor 1.15px, transparent 1.25px);
+    background-position: center;
+    background-repeat: repeat;
+    background-size: 0.35rem 0.28rem;
+}
+
+#manage.is-layout-editing .manage-block-heading:has(.manage-layout-handle) {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+#manage.is-layout-editing .manage-block-heading:has(.manage-layout-handle):not(.departures-panel-heading) {
+    margin-bottom: 0.7rem;
+}
+
+#manage.is-layout-editing .manage-block-heading:has(.manage-layout-handle) > legend {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    margin-bottom: 0;
 }
 
 #boardForm {
@@ -116,7 +384,7 @@
 }
 
 #stationProfilePanel {
-    margin: 0 0 1rem;
+    margin: 0;
     padding: 1rem;
     border: 1px solid rgba(255, 255, 255, 0.45);
     border-radius: 1rem;
@@ -378,7 +646,7 @@
 }
 
 #liveDeparturesPanel {
-    margin-top: 1rem;
+    margin: 0;
     padding: 1rem;
     border: 1px solid rgba(255, 255, 255, 0.45);
     border-radius: 1rem;
@@ -497,7 +765,7 @@
     color: #ff9b9b;
 }
 
-#manage .manage-side-column > .manage-panel {
+#manage .manage-layout-column > .manage-panel {
     max-width: none;
     margin: 0;
     padding: 1rem;
@@ -623,13 +891,6 @@
     font-size: 1rem;
 }
 
-.board-timing-panels {
-    display: grid;
-    gap: 0.65rem;
-    margin-top: 1rem;
-    align-items: stretch;
-}
-
 #boardForm .flap-timing-settings,
 #departureDelayOffsetPanel,
 #departureBoardLogoPanel {
@@ -669,10 +930,6 @@
 
 #departureDelayOffsetPanel .lamp-control-check {
     margin-bottom: 0.15rem;
-}
-
-#departureBoardLogoPanel {
-    margin-top: 1rem;
 }
 
 .board-logo-options {
@@ -1745,8 +2002,8 @@ body.manage-night-mode #manage #boardForm .lamp-settings,
 body.manage-night-mode #liveDeparturesPanel,
 #skrin.night-mode ~ #manage #stationProfilePanel,
 body.manage-night-mode #stationProfilePanel,
-#skrin.night-mode ~ #manage .manage-side-column > .manage-panel,
-body.manage-night-mode #manage .manage-side-column > .manage-panel {
+#skrin.night-mode ~ #manage .manage-layout-column > .manage-panel,
+body.manage-night-mode #manage .manage-layout-column > .manage-panel {
     border-color: #3f464d;
     background: #171a1e;
 }
@@ -1873,6 +2130,51 @@ body.manage-night-mode #stationProfilePanel .manage-block-toggle:hover {
     background: transparent;
     color: inherit;
     opacity: 1;
+}
+
+#skrin.night-mode ~ #manage .manage-layout-handle,
+#skrin.night-mode ~ #manage .manage-layout-handle:hover,
+#skrin.night-mode ~ #manage #boardForm .manage-layout-handle,
+#skrin.night-mode ~ #manage #boardForm .manage-layout-handle:hover,
+body.manage-night-mode #manage .manage-layout-handle,
+body.manage-night-mode #manage .manage-layout-handle:hover,
+body.manage-night-mode #manage #boardForm .manage-layout-handle,
+body.manage-night-mode #manage #boardForm .manage-layout-handle:hover,
+body.manage-night-mode #stationProfilePanel .manage-layout-handle,
+body.manage-night-mode #stationProfilePanel .manage-layout-handle:hover,
+body.manage-night-mode #liveDeparturesPanel .manage-layout-handle,
+body.manage-night-mode #liveDeparturesPanel .manage-layout-handle:hover {
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    opacity: 1;
+}
+
+body.manage-night-mode .manage-layout-bar,
+#skrin.night-mode ~ .manage-layout-bar {
+    border-color: #3f464d;
+    background: #171a1e;
+    color: #f0f2f4;
+}
+
+body.manage-night-mode .manage-layout-button,
+body.manage-night-mode .manage-layout-count button,
+body.manage-night-mode .manage-layout-bar-actions button,
+#skrin.night-mode ~ #manageHeader .manage-layout-button {
+    border-color: #626d77;
+    background: #30363d;
+    color: #f0f2f4;
+}
+
+body.manage-night-mode .manage-layout-button:hover,
+body.manage-night-mode .manage-layout-button[aria-pressed='true'],
+body.manage-night-mode .manage-layout-count button:hover,
+body.manage-night-mode .manage-layout-count button[aria-pressed='true'],
+body.manage-night-mode .manage-layout-bar-actions button:hover,
+#skrin.night-mode ~ #manageHeader .manage-layout-button:hover,
+#skrin.night-mode ~ #manageHeader .manage-layout-button[aria-pressed='true'] {
+    background: #424b54;
 }
 
 #skrin.night-mode ~ #manage #boardForm .lamp-settings-help,
@@ -2010,10 +2312,14 @@ body.manage-night-mode #manage #departuresTable th {
         padding-left: 10px;
     }
 
+    .manage-layout-bar {
+        margin-right: 10px;
+        margin-left: 10px;
+    }
+
     .board-form-grid,
     .lamp-controls,
     .lens-component-controls,
-    .board-timing-panels,
     .board-settings-dialog .flap-timing-controls,
     .station-profile-lists,
     .station-profile-style .board-form-grid,

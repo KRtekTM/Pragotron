@@ -38,6 +38,15 @@
             <img src="images/tabule/pragotronNapis2.svg" alt="PRAGOTRON" class="manage-header-logo" id="pragotron-napis">
         </div>
         <div class="manage-header-status">
+            <button
+                type="button"
+                id="manageLayoutButton"
+                class="manage-layout-button"
+                aria-pressed="false"
+                aria-controls="manageLayoutBar"
+            >
+                Úprava layoutu
+            </button>
             <span
                 id="manageHeaderStation"
                 class="manage-header-chip"
@@ -48,9 +57,25 @@
         </div>
     </div>
 
+    <div id="manageLayoutBar" class="manage-layout-bar" hidden>
+        <div class="manage-layout-bar-row">
+            <div class="manage-layout-count" role="group" aria-label="Počet sloupců">
+                <span>Sloupce</span>
+            </div>
+            <div id="manageLayoutSplit" class="manage-layout-split" aria-label="Šířky sloupců"></div>
+            <div class="manage-layout-bar-actions">
+                <button type="button" id="manageLayoutReset">Obnovit výchozí</button>
+                <button type="button" id="manageLayoutDone">Hotovo</button>
+            </div>
+        </div>
+        <p class="manage-layout-hint">
+            Přetáhněte blok za úchyt. Šipky na úchytu mění jeho místo.
+        </p>
+    </div>
+
     <div id="manage">
-        <div class="manage-main-column">
-            <fieldset id="stationProfilePanel" class="manage-panel">
+        <div class="manage-layout-column" data-layout-column>
+            <fieldset id="stationProfilePanel" class="manage-panel" data-layout-block>
                 <div><legend>Profil stanice</legend></div>
                 <p class="station-profile-help">
                     Nastavte, jaké hodnoty stanice používá. Profil pak uložte do souboru a příště ho jen načtěte.
@@ -143,7 +168,7 @@
                     <input id="stationProfileFile" type="file" accept="application/json,.json" hidden>
                 </div>
             </fieldset>
-            <form id="boardForm">
+            <form id="boardForm" data-layout-block>
             <fieldset id="departureEditorPanel">
                 <div><legend>Nastavení odjezdové tabule</legend></div>
                 <div class="board-form-grid">
@@ -282,7 +307,7 @@
             </fieldset>
             </form>
 
-            <fieldset id="liveDeparturesPanel" class="manage-panel live-departures-panel">
+            <fieldset id="liveDeparturesPanel" class="manage-panel live-departures-panel" data-layout-block>
                 <div><legend>Živé odjezdy</legend></div>
                 <p id="liveDeparturesDescription" class="live-departures-description">
                     Živé odjezdy · aktualizace každých 60 sekund.
@@ -332,7 +357,7 @@
                 <p id="liveDeparturesStatus" role="status" aria-live="polite"></p>
             </fieldset>
 
-            <fieldset id="departureBoardLogoPanel" class="flap-timing-settings">
+            <fieldset id="departureBoardLogoPanel" class="flap-timing-settings" data-layout-block>
                 <div><legend>Logo odjezdové tabule</legend></div>
                 <div class="board-logo-options" role="radiogroup" aria-label="Logo odjezdové tabule">
                     <label class="board-logo-option" for="departureBoardLogoCd">
@@ -413,24 +438,22 @@
                 </label>
             </fieldset>
 
-            <div class="board-timing-panels">
-                <fieldset id="departureDelayOffsetPanel" class="flap-timing-settings">
-                    <div><legend>Offset zpoždění odjezdu</legend></div>
-                    <label class="lamp-control-check" for="delayOffsetEnabled">
-                        <input id="delayOffsetEnabled" type="checkbox">
-                        Odečíst 5 minut
-                    </label>
-                    <small class="flap-timing-help">
-                        Zapnutý offset skryje zpoždění do 5 minut včetně
-                        a vyšší hodnoty zaokrouhlí na nižší položku katalogu.
-                        Vypnutím se od zpoždění nic neodečítá.
-                    </small>
-                </fieldset>
-            </div>
+            <fieldset id="departureDelayOffsetPanel" class="flap-timing-settings" data-layout-block>
+                <div><legend>Offset zpoždění odjezdu</legend></div>
+                <label class="lamp-control-check" for="delayOffsetEnabled">
+                    <input id="delayOffsetEnabled" type="checkbox">
+                    Odečíst 5 minut
+                </label>
+                <small class="flap-timing-help">
+                    Zapnutý offset skryje zpoždění do 5 minut včetně
+                    a vyšší hodnoty zaokrouhlí na nižší položku katalogu.
+                    Vypnutím se od zpoždění nic neodečítá.
+                </small>
+            </fieldset>
         </div>
 
-        <div class="manage-side-column">
-            <fieldset id="departuresPanel" class="manage-panel">
+        <div class="manage-layout-column" data-layout-column>
+            <fieldset id="departuresPanel" class="manage-panel" data-layout-block>
                 <div class="departures-panel-heading">
                     <legend>Odjezdy na tabulích</legend>
                     <button id="clearAllDeparturesButton" type="button" disabled>
@@ -463,14 +486,14 @@
                 </div>
             </fieldset>
 
-            <fieldset id="activeBoardsPanel" class="manage-panel">
+            <fieldset id="activeBoardsPanel" class="manage-panel" data-layout-block>
                 <div><legend>Připojené tabule</legend></div>
                 <div id="activeBoardsList" class="active-boards-list">
                     <p class="manage-empty-state">Zatím nebyla nalezena žádná tabule.</p>
                 </div>
             </fieldset>
 
-            <fieldset id="logPanel" class="manage-panel">
+            <fieldset id="logPanel" class="manage-panel" data-layout-block>
                 <div><legend>Záznam komunikace</legend></div>
                 <div id="logOutput" class="log-output" role="log" aria-live="off"></div>
             </fieldset>
