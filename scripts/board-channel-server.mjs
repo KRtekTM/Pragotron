@@ -35,19 +35,30 @@ const normalizeIp = (value) => {
     return mapped ? mapped[1] : text;
 };
 
+const QUIET_WHEN_CONGESTED = new Set([
+    'board:heartbeat',
+    'manage:discover',
+    'board:ready',
+    'departure-board:hello'
+]);
+
 const annotateRelay = (text, client) => {
     try {
         const parsed = JSON.parse(text);
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            return text;
+            return { text, type: '' };
         }
+        const type = typeof parsed.type === 'string' ? parsed.type : '';
         parsed.relay = {
             remoteAddress: client.remoteAddress || '',
             localAddress: client.localAddress || ''
         };
-        return JSON.stringify(parsed);
+        return {
+            text: JSON.stringify(parsed),
+            type
+        };
     } catch {
-        return text;
+        return { text, type: '' };
     }
 };
 
@@ -148,9 +159,10 @@ const createClient = (socket, onText) => {
 
     return {
         send(text) {
-            if (!socket.destroyed) {
-                socket.write(encodeServerText(text));
+            if (socket.destroyed || !socket.writable) {
+                return false;
             }
+            return socket.write(encodeServerText(text));
         },
         push(chunk) {
             if (!chunk?.length || socket.destroyed) {
@@ -193,6 +205,9 @@ export const attachBoardChannel = (server) => {
         const accept = createHash('sha1')
             .update(`${key}${WEBSOCKET_GUID}`)
             .digest('base64');
+        socket.setTimeout(0);
+        socket.setNoDelay(true);
+        socket.setKeepAlive(true, 30_000);
         socket.write(
             'HTTP/1.1 101 Switching Protocols\r\n'
             + 'Upgrade: websocket\r\n'
@@ -204,11 +219,24 @@ export const attachBoardChannel = (server) => {
         const client = createClient(socket, (text) => {
             const outbound = annotateRelay(text, client);
             clients.forEach((other) => {
-                if (other !== client) {
-                    other.send(outbound);
+                if (other === client || other.socket.destroyed) {
+                    return;
+                }
+                const buffered = other.socket.writableLength || 0;
+                if (buffered > 1024 * 1024) {
+                    return;
+                }
+                if (QUIET_WHEN_CONGESTED.has(outbound.type)
+                    && (other.congested || buffered > 256 * 1024)) {
+                    return;
+                }
+                if (!other.send(outbound.text)) {
+                    other.congested = true;
                 }
             });
         });
+        client.socket = socket;
+        client.congested = false;
         client.remoteAddress = normalizeIp(socket.remoteAddress);
         client.localAddress = normalizeIp(socket.localAddress);
         clients.add(client);
@@ -216,16 +244,24 @@ export const attachBoardChannel = (server) => {
             client.push(head);
         }
 
+        let removed = false;
         const remove = () => {
+            if (removed) {
+                return;
+            }
+            removed = true;
             clients.delete(client);
+            if (!socket.destroyed) {
+                socket.destroy();
+            }
         };
         socket.on('data', (chunk) => client.push(chunk));
+        socket.on('drain', () => {
+            client.congested = false;
+        });
         socket.on('close', remove);
         socket.on('end', remove);
-        socket.on('error', () => {
-            remove();
-            client.close();
-        });
+        socket.on('error', remove);
     });
 
     return {

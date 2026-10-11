@@ -237,6 +237,7 @@ const pendingActions = new Map();
 const pendingBackgroundActions = new Map();
 const pendingIdentificationActions = new Map();
 const activeBoards = new Map();
+const settingsSentToInstances = new Set();
 let departures = Array.isArray(savedState.departures)
     ? savedState.departures
     : [];
@@ -2331,6 +2332,22 @@ const syncBoardPresence = (boardPresence) => {
     boardPresence.syncPendingAt = Date.now();
 };
 
+const boardListView = (presence) => JSON.stringify({
+    page: presence.page,
+    boardId: presence.boardId,
+    instanceId: presence.instanceId,
+    identity: presence.identity,
+    configured: presence.configured,
+    rowCount: presence.rowCount,
+    connection: presence.connection,
+    userAgent: presence.userAgent,
+    audioMuted: presence.audioState?.muted === true,
+    audioUnlocked: presence.audioState?.unlocked === true,
+    audioVolume: presence.audioState?.volume ?? null,
+    identificationActive: presence.identificationActive === true,
+    identificationPending: presence.identificationPending === true
+});
+
 const updateBoardPresence = (message) => {
     const payload = message.payload || {};
     const page = payload.page || 'platformTable';
@@ -2404,8 +2421,13 @@ const updateBoardPresence = (message) => {
             ? payload.userAgent.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 400)
             : previous?.userAgent || ''
     };
+    const nextListView = boardListView(boardPresence);
+    const listChanged = nextListView !== previous?.listView;
+    boardPresence.listView = nextListView;
     activeBoards.set(key, boardPresence);
-    renderActiveBoards();
+    if (listChanged) {
+        renderActiveBoards();
+    }
     if (previousLensState !== JSON.stringify(boardPresence.lensState)
         || !previous) {
         renderDeparturesTable();
@@ -2421,11 +2443,12 @@ const pruneActiveBoards = () => {
     [...activeBoards.entries()].forEach(([key, boardPresence]) => {
         if (boardPresence.lastSeen < expiry) {
             activeBoards.delete(key);
+            settingsSentToInstances.delete(boardPresence.instanceId);
             removed = true;
         }
     });
-    renderActiveBoards();
     if (removed) {
+        renderActiveBoards();
         renderDeparturesTable();
     }
 };
@@ -2546,9 +2569,19 @@ transport.subscribe((message) => {
 
     if (message.type === 'board:ready'
         || message.type === 'board:heartbeat') {
+        const instanceId = message.payload?.instanceId || message.source;
+        const sendSettings = Boolean(instanceId)
+            && !settingsSentToInstances.has(instanceId);
+        if (sendSettings) {
+            settingsSentToInstances.add(instanceId);
+        }
         updateBoardPresence(message);
-        if (message.type === 'board:ready') {
-            transport.publish('board:settings', getLightingSettingsState());
+        if (sendSettings) {
+            transport.publish('board:settings', getLightingSettingsState(), {
+                target: {
+                    source: instanceId
+                }
+            });
         }
         return;
     }
@@ -3859,7 +3892,7 @@ setupManageBlockToggles();
 renderLiveControls();
 publishDiscovery();
 publishDepartureSnapshot();
-heartbeatTimer = window.setInterval(publishDiscovery, 4000);
+heartbeatTimer = window.setInterval(publishDiscovery, 30000);
 presenceTimer = window.setInterval(pruneActiveBoards, 4000);
 
 window.pragotron = {

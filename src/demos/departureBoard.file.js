@@ -3929,6 +3929,19 @@
     }
     return address;
   };
+  var loopbackHost = (host) => {
+    const text = String(host || "");
+    if (text === "localhost" || text.startsWith("localhost:")) {
+      return `127.0.0.1${text.slice("localhost".length)}`;
+    }
+    if (text === "::1" || text === "[::1]") {
+      return "127.0.0.1";
+    }
+    if (text.startsWith("[::1]:")) {
+      return `127.0.0.1${text.slice("[::1]".length)}`;
+    }
+    return text;
+  };
   var hubToChannelUrl = (hub, base) => {
     const url = new URL(hub, base);
     if (url.protocol === "https:" || url.protocol === "wss:") {
@@ -3937,6 +3950,9 @@
       url.protocol = "ws:";
     } else {
       return "";
+    }
+    if (url.hostname === "localhost" || url.hostname === "::1") {
+      url.hostname = "127.0.0.1";
     }
     url.username = "";
     url.password = "";
@@ -3963,7 +3979,7 @@
     }
     if (location.protocol === "http:" || location.protocol === "https:") {
       const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-      return `${wsProtocol}//${location.host}/api/board-channel`;
+      return `${wsProtocol}//${loopbackHost(location.host)}/api/board-channel`;
     }
     let storedHub = "";
     try {
@@ -4235,9 +4251,13 @@
       } catch {
       }
       this.sendToSocket(message);
-      try {
-        this.storage?.setItem(this.storageKey, JSON.stringify(message));
-      } catch {
+      const protocol = this.window?.location?.protocol;
+      const mirrorToStorage = !this.channel || protocol === "file:";
+      if (mirrorToStorage) {
+        try {
+          this.storage?.setItem(this.storageKey, JSON.stringify(message));
+        } catch {
+        }
       }
       return requestId;
     }
@@ -4640,6 +4660,7 @@
   var persistencePollTimer = null;
   var helloRetryTimer = null;
   var liveSnapshotReceived = false;
+  var manageSnapshotReceived = false;
   var identificationActive = false;
   var getSnapshotSignature = (values, timing) => JSON.stringify([values, timing]);
   var snapshotSignature = getSnapshotSignature(departures, boardTiming);
@@ -4939,6 +4960,7 @@
   transport.subscribe((message) => {
     if (message.type === "manage:departures") {
       liveSnapshotReceived = true;
+      manageSnapshotReceived = true;
       stopHelloRetry();
       applyDepartureSnapshot(
         recoverDepartures(
@@ -4956,7 +4978,9 @@
     }
     if (message.type === "manage:discover") {
       publishReady();
-      publishHello();
+      if (!manageSnapshotReceived) {
+        publishHello();
+      }
       return;
     }
     if (message.type === "board:command") {

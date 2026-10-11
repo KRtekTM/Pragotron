@@ -3423,6 +3423,19 @@
     }
     return address;
   };
+  var loopbackHost = (host) => {
+    const text = String(host || "");
+    if (text === "localhost" || text.startsWith("localhost:")) {
+      return `127.0.0.1${text.slice("localhost".length)}`;
+    }
+    if (text === "::1" || text === "[::1]") {
+      return "127.0.0.1";
+    }
+    if (text.startsWith("[::1]:")) {
+      return `127.0.0.1${text.slice("[::1]".length)}`;
+    }
+    return text;
+  };
   var hubToChannelUrl = (hub, base) => {
     const url = new URL(hub, base);
     if (url.protocol === "https:" || url.protocol === "wss:") {
@@ -3431,6 +3444,9 @@
       url.protocol = "ws:";
     } else {
       return "";
+    }
+    if (url.hostname === "localhost" || url.hostname === "::1") {
+      url.hostname = "127.0.0.1";
     }
     url.username = "";
     url.password = "";
@@ -3457,7 +3473,7 @@
     }
     if (location.protocol === "http:" || location.protocol === "https:") {
       const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
-      return `${wsProtocol}//${location.host}/api/board-channel`;
+      return `${wsProtocol}//${loopbackHost(location.host)}/api/board-channel`;
     }
     let storedHub = "";
     try {
@@ -3729,9 +3745,13 @@
       } catch {
       }
       this.sendToSocket(message);
-      try {
-        this.storage?.setItem(this.storageKey, JSON.stringify(message));
-      } catch {
+      const protocol = this.window?.location?.protocol;
+      const mirrorToStorage = !this.channel || protocol === "file:";
+      if (mirrorToStorage) {
+        try {
+          this.storage?.setItem(this.storageKey, JSON.stringify(message));
+        } catch {
+        }
       }
       return requestId;
     }

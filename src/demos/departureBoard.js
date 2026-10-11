@@ -402,6 +402,7 @@ let unsubscribeAudio = null;
 let persistencePollTimer = null;
 let helloRetryTimer = null;
 let liveSnapshotReceived = false;
+let manageSnapshotReceived = false;
 let identificationActive = false;
 
 const getSnapshotSignature = (values, timing) =>
@@ -767,6 +768,7 @@ const publishHeartbeat = () => {
 transport.subscribe((message) => {
     if (message.type === 'manage:departures') {
         liveSnapshotReceived = true;
+        manageSnapshotReceived = true;
         stopHelloRetry();
         applyDepartureSnapshot(
             recoverDepartures(
@@ -786,7 +788,9 @@ transport.subscribe((message) => {
 
     if (message.type === 'manage:discover') {
         publishReady();
-        publishHello();
+        if (!manageSnapshotReceived) {
+            publishHello();
+        }
         return;
     }
 

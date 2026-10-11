@@ -2,6 +2,13 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
+    <script>
+        if (location.hostname === 'localhost' || location.hostname === '::1') {
+            var next = new URL(location.href);
+            next.hostname = '127.0.0.1';
+            location.replace(next.href);
+        }
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Ovládání odjezdové tabule Pragotron">
     <title>PRAGOTRON – manage</title>

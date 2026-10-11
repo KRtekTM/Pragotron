@@ -55,10 +55,14 @@ http://127.0.0.1:4787/platformTable.html?platform=1&track=6a&sector=Jih
 ```
 
 `localhost` a `127.0.0.1` jsou pro prohlížeč různé originy. Na `npm run serve`
-to nevadí, protože tabule a manage se propojí přes server. Na Windows
-stejně otevírejte `127.0.0.1`, ne `localhost`, jinak může stránka skončit
-chybou `ERR_NO_BUFFER_SPACE`. Prostý statický server bez tohoto kanálu
-propojí jen taby stejného originu ve stejném prohlížeči.
+to nevadí, protože tabule a manage se propojí přes server. Stránky
+manage, odjezdové a nástupištní tabule se z `localhost` samy přesměrují
+na `127.0.0.1`. Na Windows jinak prohlížeč otevírá i IPv6 sockety na `::1`
+a vyčerpá systémové síťové buffery (`ERR_NO_BUFFER_SPACE`), až přestanou
+fungovat i ostatní weby. Discovery tabule se ptá jednou za 30 sekund a
+celý seznam odjezdů se posílá znovu jen dokud ho tabule nemá, ne při
+každém heartbeatu. Prostý statický server bez tohoto kanálu propojí jen
+taby stejného originu ve stejném prohlížeči.
 
 Potom otevřete:
 

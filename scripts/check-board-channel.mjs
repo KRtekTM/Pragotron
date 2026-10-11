@@ -32,6 +32,17 @@ assertEqual(
 );
 
 assertEqual(
+    'localhost channel stays on ipv4',
+    resolveBoardChannelUrl({
+        protocol: 'http:',
+        host: 'localhost:4787',
+        search: '',
+        href: 'http://localhost:4787/platformTableManage.html'
+    }),
+    'ws://127.0.0.1:4787/api/board-channel'
+);
+
+assertEqual(
     'explicit hub',
     resolveBoardChannelUrl({
         protocol: 'file:',

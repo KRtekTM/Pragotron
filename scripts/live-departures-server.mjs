@@ -21,9 +21,37 @@ import { attachBoardChannel } from './board-channel-server.mjs';
 
 dns.setDefaultResultOrder('ipv4first');
 
+const ipv4Agents = {
+    'http:': new http.Agent({
+        keepAlive: true,
+        maxSockets: 2,
+        family: 4
+    }),
+    'https:': new https.Agent({
+        keepAlive: true,
+        maxSockets: 2,
+        family: 4
+    })
+};
+const ipv4AddressCache = new Map();
+
+const resolveIpv4 = async (hostname) => {
+    const cached = ipv4AddressCache.get(hostname);
+    if (cached && Date.now() - cached.at < 10 * 60 * 1000) {
+        return cached.address;
+    }
+
+    const { address } = await lookup(hostname, { family: 4 });
+    ipv4AddressCache.set(hostname, {
+        address,
+        at: Date.now()
+    });
+    return address;
+};
+
 const fetchIpv4 = async (url, options = {}) => {
     const target = new URL(url);
-    const { address } = await lookup(target.hostname, { family: 4 });
+    const address = await resolveIpv4(target.hostname);
     const client = target.protocol === 'https:' ? https : http;
     const headers = {
         ...(options.headers || {}),
@@ -31,6 +59,14 @@ const fetchIpv4 = async (url, options = {}) => {
     };
 
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (handler, value) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            handler(value);
+        };
         const request = client.request({
             protocol: target.protocol,
             hostname: address,
@@ -39,14 +75,25 @@ const fetchIpv4 = async (url, options = {}) => {
             path: `${target.pathname}${target.search}`,
             method: options.method || 'GET',
             headers,
+            agent: ipv4Agents[target.protocol] || ipv4Agents['https:'],
             family: 4,
             timeout: 20_000
         }, (response) => {
             const chunks = [];
+            response.on('error', (error) => {
+                response.destroy();
+                finish(reject, error);
+            });
+            response.on('aborted', () => {
+                response.destroy();
+                finish(reject, new Error(
+                    'Spojení se zdrojovou tabulí bylo přerušeno.'
+                ));
+            });
             response.on('data', (chunk) => chunks.push(chunk));
             response.on('end', () => {
                 const body = Buffer.concat(chunks);
-                resolve({
+                finish(resolve, {
                     ok: response.statusCode >= 200 && response.statusCode < 300,
                     status: response.statusCode,
                     text: async () => body.toString('utf8'),
@@ -57,7 +104,7 @@ const fetchIpv4 = async (url, options = {}) => {
         request.on('timeout', () => {
             request.destroy(new Error('Vypršel čas spojení se zdrojovou tabulí.'));
         });
-        request.on('error', reject);
+        request.on('error', (error) => finish(reject, error));
         request.end();
     });
 };
@@ -160,10 +207,16 @@ const serveStaticFile = async (requestPath, response) => {
 
     try {
         const content = await readFile(filePath);
+        const extension = extname(filePath).toLowerCase();
+        const revalidate = extension === '.html'
+            || extension === '.js'
+            || extension === '.mjs'
+            || extension === '.css';
         response.writeHead(200, {
-            'Cache-Control': 'no-store',
-            'Content-Type': MIME_TYPES[extname(filePath).toLowerCase()]
-                || 'application/octet-stream'
+            'Cache-Control': revalidate
+                ? 'no-cache'
+                : 'public, max-age=3600',
+            'Content-Type': MIME_TYPES[extension] || 'application/octet-stream'
         });
         response.end(content);
     } catch {
@@ -256,6 +309,8 @@ const server = createServer(async (request, response) => {
 });
 
 attachBoardChannel(server);
+server.headersTimeout = 66_000;
+server.keepAliveTimeout = 65_000;
 
 const portsToTry = Number.isInteger(requestedPort) && requestedPort > 0
     ? [requestedPort]
