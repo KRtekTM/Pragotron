@@ -560,10 +560,6 @@ const printStartupBanner = ({ localBase, addresses, network }) => {
         ['Nástupištní', `${localBase}/platformTable.html?platform=1&track=6a`]
     ];
     const notes = [];
-    if (localBase.startsWith('http://127.0.0.1:')) {
-        notes.push('Otevírejte 127.0.0.1, ne localhost.');
-        notes.push('Na Windows localhost končí chybou ERR_NO_BUFFER_SPACE.');
-    }
     if (network) {
         addresses.forEach((address) => {
             notes.push(
