@@ -337,7 +337,7 @@ const liveDeparturesDescription = documentRef.querySelector(
 const livePollIntervalInput = documentRef.querySelector('#livePollInterval');
 const livePollIntervalValue = documentRef.querySelector('#livePollIntervalValue');
 const submitButton = boardForm.querySelector('button[type="submit"]');
-const MANAGE_DOCUMENT_TITLE = documentRef.title || 'PRAGOTRON – manage';
+const MANAGE_DOCUMENT_TITLE = documentRef.title || 'PRAGOTRON – Správce';
 
 const lighting = new LightingSettings({
     initialLamps: savedSettings?.lamps || {},

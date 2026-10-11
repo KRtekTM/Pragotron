@@ -6455,7 +6455,7 @@
   var livePollIntervalInput = documentRef.querySelector("#livePollInterval");
   var livePollIntervalValue = documentRef.querySelector("#livePollIntervalValue");
   var submitButton = boardForm.querySelector('button[type="submit"]');
-  var MANAGE_DOCUMENT_TITLE = documentRef.title || "PRAGOTRON \u2013 manage";
+  var MANAGE_DOCUMENT_TITLE = documentRef.title || "PRAGOTRON \u2013 Spr\xE1vce";
   var lighting = new LightingSettings({
     initialLamps: savedSettings?.lamps || {},
     initialClock: savedSettings?.clockLight || NIGHT_CLOCK_DEFAULTS

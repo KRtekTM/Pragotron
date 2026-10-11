@@ -1170,7 +1170,7 @@ uvést vlastní pole typů `text`, `url`, `number` nebo `select`. Po aktivaci
 manage stahuje odjezdy přes zadanou adresu. Interval je 30–300 sekund po 30 sekundách, výchozí je
 60 sekund a ukládá se s ostatním nastavením manage. Dokud jsou live odjezdy
 zapnuté a je známý název stanice, title stránky je
-`Název stanice – PRAGOTRON – manage`. Když má parametr `showStation`,
+`Název stanice – PRAGOTRON – Správce`. Když má parametr `showStation`,
 vedle jeho popisku parser doplní název stanice z `LStationName` jako odkaz
 na hodnotu toho pole. Nový snapshot:
 
