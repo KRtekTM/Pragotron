@@ -45,7 +45,7 @@
         if (addressNode) {
             addressNode.textContent = address || 'neznámá adresa';
         }
-        document.title = 'Nejvyšší pan železničář je již přítomen. – PRAGOTRON';
+        document.title = 'Nejvyšší pan železničář je přítomen. – PRAGOTRON';
         document.documentElement.classList.add('manage-session-denied');
         document.documentElement.classList.remove('manage-session-pending');
         try {

@@ -4623,7 +4623,7 @@ const showManageSessionDenied = async (address) => {
     if (addressNode) {
         addressNode.textContent = address || 'neznámá adresa';
     }
-    documentRef.title = 'Nejvyšší pan železničář je již přítomen. – PRAGOTRON';
+    documentRef.title = 'Nejvyšší pan železničář je přítomen. – PRAGOTRON';
     documentRef.documentElement.classList.add('manage-session-denied');
     documentRef.documentElement.classList.remove('manage-session-pending');
     try {
