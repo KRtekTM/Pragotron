@@ -29,6 +29,7 @@ import {
     getDepartureSortTimestamp,
     getEffectiveDepartureDate,
     formatStationName,
+    resolveDepartureStations,
     matchProfileValue,
     profileSectorValues,
     resolveProfileTrainType,
@@ -713,9 +714,6 @@ const normalizeDeparture = (value) => {
     const trainNumber = normalizeTrainNumber(
         source.trainNumber ?? desiredState.trainNumber
     );
-    const stations = Array.isArray(source.stations)
-        ? source.stations
-        : [];
 
     const isLive = source.source === 'live'
         || Boolean(source.liveKey);
@@ -743,20 +741,7 @@ const normalizeDeparture = (value) => {
         dateKey: isLive ? String(source.dateKey || '') : '',
         sourceTrainNumber,
         target,
-        stations: [
-            formatStationName(
-                stations[0]
-                    || source.stationOne
-                    || desiredState.stations?.[0]
-                    || ''
-            ),
-            formatStationName(
-                stations[1]
-                    || source.stationTwo
-                    || desiredState.stations?.[1]
-                    || ''
-            )
-        ],
+        stations: resolveDepartureStations(source, desiredState),
         train,
         trainNumber,
         operator,

@@ -181,6 +181,24 @@
     }
     return `${stripTrailingVowels(filled)}.`;
   };
+  var resolveDepartureStations = (source, desiredState = null) => {
+    const desired = desiredState && typeof desiredState === "object" ? desiredState : {};
+    const desiredStations = Array.isArray(desired.stations) ? desired.stations : [];
+    const fields = ["stationOne", "stationTwo"];
+    return fields.map((field, index) => {
+      let raw = "";
+      if (Array.isArray(source?.stations) && Object.prototype.hasOwnProperty.call(source.stations, index)) {
+        raw = source.stations[index] ?? "";
+      } else if (source && Object.prototype.hasOwnProperty.call(source, field)) {
+        raw = source[field] ?? "";
+      } else if (Object.prototype.hasOwnProperty.call(desiredStations, index)) {
+        raw = desiredStations[index] ?? "";
+      } else {
+        raw = desired[field] ?? "";
+      }
+      return formatStationName(raw);
+    });
+  };
   var STATION_FLIP_DURATION = 190;
   var FLAP_TIMING_VARIATION_MS = 0;
   var FLAP_TIMING_DURATION_MIN = 50;
@@ -3657,14 +3675,7 @@
         track,
         sector
       ])),
-      stations: [
-        formatStationName(
-          source.stations?.[0] || source.stationOne || ""
-        ),
-        formatStationName(
-          source.stations?.[1] || source.stationTwo || ""
-        )
-      ],
+      stations: resolveDepartureStations(source),
       train: resolveProfileTrainType(source.train, source.operator),
       trainNumber: /^\d{1,4}$/.test(String(source.trainNumber || "")) ? String(source.trainNumber) : "",
       delay: parsedDelay === null ? "" : parsedDelay,
@@ -5248,10 +5259,7 @@
         ...desiredState,
         ...departure,
         id: departure?.id || desired?.target && getBoardIdentityKey(desired.target),
-        stations: [
-          departure?.stations?.[0] || departure?.stationOne || desiredState.stations?.[0] || desiredState.stationOne || "",
-          departure?.stations?.[1] || departure?.stationTwo || desiredState.stations?.[1] || desiredState.stationTwo || ""
-        ],
+        stations: resolveDepartureStations(departure, desiredState),
         target,
         departureTime: departure?.departureTime || desiredState.departureTime,
         train: departure?.train || desiredState.train || "",

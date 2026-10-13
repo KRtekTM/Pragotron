@@ -34,6 +34,7 @@ export {
     STATION_FLAP_SEQUENCE,
     findTrainType,
     formatStationName,
+    resolveDepartureStations,
     resolveCanonicalTrainType,
     TRAIN_NUMBER_FLAP_CARDS,
     TRAIN_NUMBER_CARD_STYLES,

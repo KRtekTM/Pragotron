@@ -15,7 +15,7 @@
   };
 
   // src/platform/data.js
-  var STATION_CHARACTER_COUNT, STATION_FLAP_SEQUENCE, STATION_NAME_VOWELS, stationNameChars, stationNameLength, sliceStationName, abbreviateStationConnectors, fillStationName, stripTrailingVowels, nextKeptLetter, formatStationName, STATION_FLIP_DURATION, FLAP_TIMING_VARIATION_MS, FLAP_TIMING_DURATION_MIN, FLAP_TIMING_DURATION_MAX, FLAP_TIMING_VARIATION_MIN, FLAP_TIMING_VARIATION_MAX, FLAP_TIMING_DEFAULTS, DEPARTURE_FLAP_TIMING_DEFAULTS, PLATFORM_FLAP_TIMING_DEFAULTS, DEPARTURE_BOARD_ROW_COUNT_DEFAULT, DEPARTURE_BOARD_ROW_COUNT_MIN, DEPARTURE_BOARD_ROW_COUNT_MAX, normalizeDepartureBoardRowCount, DEPARTURE_BOARD_LOGO_CUSTOM_ID, DEPARTURE_BOARD_LOGO_DEFAULT, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH, DEPARTURE_BOARD_LOGO_PRESETS, normalizeDepartureBoardLogoId, normalizeCustomBoardLogoSvg, getDepartureBoardLogoLabel, getDepartureBoardLogoSrc, TRAIN_TYPE_IMAGE_FILE_NAMES, TRAIN_TYPE_IMAGE_CUSTOM, trainTypeImageLabel, TRAIN_TYPE_IMAGE_FILES, TRAIN_TYPE_IMAGE_FILE_SET, trainTypeImageSrc, normalizeTrainTypeSource, trainTypeImageUrl, trainTypeImageChoice, clampInteger, normalizeFlapTiming, DELAY_VALUES, DELAY_DISPLAY_THRESHOLD, DELAY_OFFSET_DEFAULT, RECENT_DEPARTURE_GRACE_MS, DEPARTURE_HOLD_RELEASE_MS, minutesSinceClock, normalizeDelayOffset, parseDelayMinutes, getDisplayedDelay, getEffectiveDepartureDate, getDepartureSortTimestamp, compareDeparturesByTime, TRAIN_TYPES, DEPARTURE_TRACK_VALUES, DEPARTURE_PLATFORM_VALUES, DEPARTURE_SECTOR_VALUES, TRAIN_NUMBER_CARD_STYLES, createTrainNumberCard, createTrainNumberDigitCards, TRAIN_NUMBER_FLAP_CARDS, NIGHT_FADE_MODES, NIGHT_LIGHT_BASE_DEFAULTS, NIGHT_LIGHT_DEFAULTS, NIGHT_CLOCK_DEFAULTS, createEmptyBoardState;
+  var STATION_CHARACTER_COUNT, STATION_FLAP_SEQUENCE, STATION_NAME_VOWELS, stationNameChars, stationNameLength, sliceStationName, abbreviateStationConnectors, fillStationName, stripTrailingVowels, nextKeptLetter, formatStationName, resolveDepartureStations, STATION_FLIP_DURATION, FLAP_TIMING_VARIATION_MS, FLAP_TIMING_DURATION_MIN, FLAP_TIMING_DURATION_MAX, FLAP_TIMING_VARIATION_MIN, FLAP_TIMING_VARIATION_MAX, FLAP_TIMING_DEFAULTS, DEPARTURE_FLAP_TIMING_DEFAULTS, PLATFORM_FLAP_TIMING_DEFAULTS, DEPARTURE_BOARD_ROW_COUNT_DEFAULT, DEPARTURE_BOARD_ROW_COUNT_MIN, DEPARTURE_BOARD_ROW_COUNT_MAX, normalizeDepartureBoardRowCount, DEPARTURE_BOARD_LOGO_CUSTOM_ID, DEPARTURE_BOARD_LOGO_DEFAULT, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH, DEPARTURE_BOARD_LOGO_PRESETS, normalizeDepartureBoardLogoId, normalizeCustomBoardLogoSvg, getDepartureBoardLogoLabel, getDepartureBoardLogoSrc, TRAIN_TYPE_IMAGE_FILE_NAMES, TRAIN_TYPE_IMAGE_CUSTOM, trainTypeImageLabel, TRAIN_TYPE_IMAGE_FILES, TRAIN_TYPE_IMAGE_FILE_SET, trainTypeImageSrc, normalizeTrainTypeSource, trainTypeImageUrl, trainTypeImageChoice, clampInteger, normalizeFlapTiming, DELAY_VALUES, DELAY_DISPLAY_THRESHOLD, DELAY_OFFSET_DEFAULT, RECENT_DEPARTURE_GRACE_MS, DEPARTURE_HOLD_RELEASE_MS, minutesSinceClock, normalizeDelayOffset, parseDelayMinutes, getDisplayedDelay, getEffectiveDepartureDate, getDepartureSortTimestamp, compareDeparturesByTime, TRAIN_TYPES, DEPARTURE_TRACK_VALUES, DEPARTURE_PLATFORM_VALUES, DEPARTURE_SECTOR_VALUES, TRAIN_NUMBER_CARD_STYLES, createTrainNumberCard, createTrainNumberDigitCards, TRAIN_NUMBER_FLAP_CARDS, NIGHT_FADE_MODES, NIGHT_LIGHT_BASE_DEFAULTS, NIGHT_LIGHT_DEFAULTS, NIGHT_CLOCK_DEFAULTS, createEmptyBoardState;
   var init_data = __esm({
     "src/platform/data.js"() {
       STATION_CHARACTER_COUNT = 14;
@@ -198,6 +198,24 @@
           return stationNameLength(combined) <= maxLength ? combined : sliceStationName(combined, 0, maxLength);
         }
         return `${stripTrailingVowels(filled)}.`;
+      };
+      resolveDepartureStations = (source, desiredState = null) => {
+        const desired = desiredState && typeof desiredState === "object" ? desiredState : {};
+        const desiredStations = Array.isArray(desired.stations) ? desired.stations : [];
+        const fields = ["stationOne", "stationTwo"];
+        return fields.map((field, index) => {
+          let raw = "";
+          if (Array.isArray(source?.stations) && Object.prototype.hasOwnProperty.call(source.stations, index)) {
+            raw = source.stations[index] ?? "";
+          } else if (source && Object.prototype.hasOwnProperty.call(source, field)) {
+            raw = source[field] ?? "";
+          } else if (Object.prototype.hasOwnProperty.call(desiredStations, index)) {
+            raw = desiredStations[index] ?? "";
+          } else {
+            raw = desired[field] ?? "";
+          }
+          return formatStationName(raw);
+        });
       };
       STATION_FLIP_DURATION = 190;
       FLAP_TIMING_VARIATION_MS = 0;
@@ -7468,7 +7486,6 @@
     const trainNumber = normalizeTrainNumber(
       source.trainNumber ?? desiredState.trainNumber
     );
-    const stations = Array.isArray(source.stations) ? source.stations : [];
     const isLive = source.source === "live" || Boolean(source.liveKey);
     const liveKey = isLive ? String(source.liveKey || source.id || "") : "";
     const manualId = String(source.id || "").trim() || (target.platform && target.track ? getBoardIdentityKey(target) : `manual:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`);
@@ -7481,14 +7498,7 @@
       dateKey: isLive ? String(source.dateKey || "") : "",
       sourceTrainNumber,
       target,
-      stations: [
-        formatStationName(
-          stations[0] || source.stationOne || desiredState.stations?.[0] || ""
-        ),
-        formatStationName(
-          stations[1] || source.stationTwo || desiredState.stations?.[1] || ""
-        )
-      ],
+      stations: resolveDepartureStations(source, desiredState),
       train,
       trainNumber,
       operator,

@@ -1193,8 +1193,9 @@ na hodnotu toho pole. Nový snapshot:
   regiojet; klapka na tabuli bere přesnou shodu `rj`/`RJ`, ne jen malá písmena;
   parser bere kód i bez mezery (`nj456`); Intercity, SuperCity mají bílé pozadí a logo, railjet červené
   `#D80300`, regiojet žluté `#F1B504` a NightJet modré `#1e3c69`,
-- rozliší odjezdy podle dne a čísla vlaku, takže změna zpoždění nebo
-  doplnění nástupiště/koleje/sektoru aktualizuje stejný záznam,
+- rozliší odjezdy podle dne a čísla vlaku, takže změna zpoždění, stanic
+  nebo nástupiště/koleje/sektoru aktualizuje stejný záznam; prázdný sloupec
+  Přes starou ruční hodnotu smaže,
 - odebere živé záznamy, které už ve zdrojové tabuli nejsou.
 
 Změna nástupiště, koleje nebo sektoru proto upraví stejný řádek podle

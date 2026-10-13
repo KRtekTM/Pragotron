@@ -130,6 +130,37 @@ export const formatStationName = (
     return `${stripTrailingVowels(filled)}.`;
 };
 
+export const resolveDepartureStations = (source, desiredState = null) => {
+    const desired = desiredState && typeof desiredState === 'object'
+        ? desiredState
+        : {};
+    const desiredStations = Array.isArray(desired.stations)
+        ? desired.stations
+        : [];
+    const fields = ['stationOne', 'stationTwo'];
+
+    return fields.map((field, index) => {
+        let raw = '';
+        if (Array.isArray(source?.stations)
+            && Object.prototype.hasOwnProperty.call(source.stations, index)) {
+            raw = source.stations[index] ?? '';
+        } else if (
+            source
+            && Object.prototype.hasOwnProperty.call(source, field)
+        ) {
+            raw = source[field] ?? '';
+        } else if (
+            Object.prototype.hasOwnProperty.call(desiredStations, index)
+        ) {
+            raw = desiredStations[index] ?? '';
+        } else {
+            raw = desired[field] ?? '';
+        }
+
+        return formatStationName(raw);
+    });
+};
+
 export const STATION_FLIP_DURATION = 190;
 export const FLAP_TIMING_VARIATION_MS = 0;
 

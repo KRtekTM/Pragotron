@@ -3,7 +3,7 @@ import {
     DELAY_OFFSET_DEFAULT,
     FLAP_TIMING_DEFAULTS,
     compareDeparturesByTime,
-    formatStationName,
+    resolveDepartureStations,
     normalizeDelayOffset,
     normalizeDepartureBoardRowCount,
     normalizeFlapTiming,
@@ -181,18 +181,7 @@ const normalizeDeparture = (value) => {
             track,
             sector
         ])),
-        stations: [
-            formatStationName(
-                source.stations?.[0]
-                    || source.stationOne
-                    || ''
-            ),
-            formatStationName(
-                source.stations?.[1]
-                    || source.stationTwo
-                    || ''
-            )
-        ],
+        stations: resolveDepartureStations(source),
         train: resolveProfileTrainType(source.train, source.operator),
         trainNumber: /^\d{1,4}$/.test(String(source.trainNumber || ''))
             ? String(source.trainNumber)

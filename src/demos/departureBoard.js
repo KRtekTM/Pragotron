@@ -15,6 +15,7 @@ import {
     normalizeDepartureBoardLogoId,
     normalizeDepartureBoardRowCount,
     normalizeFlapTiming,
+    resolveDepartureStations,
     DEPARTURE_FLAP_TIMING_DEFAULTS,
     resolveBoardFlapTiming,
     DEPARTURE_BOARD_ROW_COUNT_MAX,
@@ -280,18 +281,7 @@ const recoverDepartures = (
             ...departure,
             id: departure?.id
                 || desired?.target && getBoardIdentityKey(desired.target),
-            stations: [
-                departure?.stations?.[0]
-                    || departure?.stationOne
-                    || desiredState.stations?.[0]
-                    || desiredState.stationOne
-                    || '',
-                departure?.stations?.[1]
-                    || departure?.stationTwo
-                    || desiredState.stations?.[1]
-                    || desiredState.stationTwo
-                    || ''
-            ],
+            stations: resolveDepartureStations(departure, desiredState),
             target,
             departureTime: departure?.departureTime
                 || desiredState.departureTime,
