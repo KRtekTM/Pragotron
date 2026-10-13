@@ -696,17 +696,18 @@ HTML řádek musí obsahovat sloty s atributem `data-departure-slot`:
 číslice vpravo a používá fyzický katalog karet:
 
 - prázdná karta a `0–9` s výchozím pozadím,
-- `0–9` s bílým pozadím a černým textem pro Intercity, Eurocity, IC, EC
-  a SuperCity,
-- `0–9` s modrým pozadím pro `Sp` a NightJet (`nj`),
-- `0–9` s červeným pozadím pro `R`, railjet (`rj`), regiojet (`RJ`), `Ex`,
-  `ČEDOK` a `ROH`.
+- `0–9` s červeným pozadím a bílým textem pro `R`, `Mim. R`, `Ex`,
+  `Ex lůžk.`, `ČEDOK` a `ROH`,
+- `0–9` s modrým pozadím pro `Sp`, EuroNight a NightJet (`nj`),
+- `0–9` s bílým pozadím a červeným textem pro Intercity, Eurocity,
+  SuperCity, railjet (`rj`) a RegioJet (`RJ`).
 
 `CatalogFlapDisplay` je vhodný pro hodnoty, které nejsou běžný text. PoC jej
-využívá pro kolej (`'', 1, 2, 3, 4, 5, 6, 6a, 11a`) a sektor
-(`'', Sever, Jih`). Katalog je vždy cyklický a komponenta postupuje pouze
-dopředu; při změně z `5` na `4` proto projde přes `6`, `7`, `8`, `9`, prázdnou
-kartu, `0`, …, `4`. Stejné pravidlo musí dodržovat každý nový katalog.
+využívá pro kolej a sektor z profilu stanice. Výchozí Brno hlavní nádraží
+je v `stanice/brno-hlavni-nadrazi.json`. Katalog je vždy cyklický a
+komponenta postupuje pouze dopředu; při změně z `5` na `4` proto projde
+přes `6`, `7`, `8`, `9`, prázdnou kartu, `0`, …, `4`. Stejné pravidlo musí
+dodržovat každý nový katalog.
 
 `departureBoard.html` a `src/demos/departureBoard.js` jsou hotový příklad
 zapojení. Přes `BoardTransport` poslouchají zprávy `manage:departures` a

@@ -15,7 +15,7 @@
   };
 
   // src/platform/data.js
-  var STATION_CHARACTER_COUNT, STATION_FLAP_SEQUENCE, STATION_NAME_VOWELS, stationNameChars, stationNameLength, sliceStationName, abbreviateStationConnectors, fillStationName, stripTrailingVowels, nextKeptLetter, formatStationName, STATION_FLIP_DURATION, FLAP_TIMING_VARIATION_MS, FLAP_TIMING_DURATION_MIN, FLAP_TIMING_DURATION_MAX, FLAP_TIMING_VARIATION_MIN, FLAP_TIMING_VARIATION_MAX, FLAP_TIMING_DEFAULTS, DEPARTURE_FLAP_TIMING_DEFAULTS, PLATFORM_FLAP_TIMING_DEFAULTS, DEPARTURE_BOARD_ROW_COUNT_DEFAULT, DEPARTURE_BOARD_ROW_COUNT_MIN, DEPARTURE_BOARD_ROW_COUNT_MAX, normalizeDepartureBoardRowCount, DEPARTURE_BOARD_LOGO_CUSTOM_ID, DEPARTURE_BOARD_LOGO_DEFAULT, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH, DEPARTURE_BOARD_LOGO_PRESETS, normalizeDepartureBoardLogoId, normalizeCustomBoardLogoSvg, getDepartureBoardLogoLabel, getDepartureBoardLogoSrc, TRAIN_TYPE_IMAGE_FILE_NAMES, TRAIN_TYPE_IMAGE_CUSTOM, trainTypeImageLabel, TRAIN_TYPE_IMAGE_FILES, TRAIN_TYPE_IMAGE_FILE_SET, trainTypeImageSrc, normalizeTrainTypeSource, trainTypeImageUrl, trainTypeImageChoice, clampInteger, normalizeFlapTiming, DELAY_VALUES, DELAY_DISPLAY_THRESHOLD, DELAY_OFFSET_DEFAULT, RECENT_DEPARTURE_GRACE_MS, DEPARTURE_HOLD_RELEASE_MS, minutesSinceClock, normalizeDelayOffset, parseDelayMinutes, getDisplayedDelay, getEffectiveDepartureDate, getDepartureSortTimestamp, compareDeparturesByTime, TRAIN_TYPES, DEPARTURE_TRACK_VALUES, DEPARTURE_PLATFORM_VALUES, DEPARTURE_SECTOR_VALUES, TRAIN_NUMBER_CARD_STYLES, createTrainNumberCard, createTrainNumberDigitCards, TRAIN_NUMBER_FLAP_CARDS, getTrainNumberCardStyle, NIGHT_FADE_MODES, NIGHT_LIGHT_BASE_DEFAULTS, NIGHT_LIGHT_DEFAULTS, NIGHT_CLOCK_DEFAULTS, createEmptyBoardState;
+  var STATION_CHARACTER_COUNT, STATION_FLAP_SEQUENCE, STATION_NAME_VOWELS, stationNameChars, stationNameLength, sliceStationName, abbreviateStationConnectors, fillStationName, stripTrailingVowels, nextKeptLetter, formatStationName, STATION_FLIP_DURATION, FLAP_TIMING_VARIATION_MS, FLAP_TIMING_DURATION_MIN, FLAP_TIMING_DURATION_MAX, FLAP_TIMING_VARIATION_MIN, FLAP_TIMING_VARIATION_MAX, FLAP_TIMING_DEFAULTS, DEPARTURE_FLAP_TIMING_DEFAULTS, PLATFORM_FLAP_TIMING_DEFAULTS, DEPARTURE_BOARD_ROW_COUNT_DEFAULT, DEPARTURE_BOARD_ROW_COUNT_MIN, DEPARTURE_BOARD_ROW_COUNT_MAX, normalizeDepartureBoardRowCount, DEPARTURE_BOARD_LOGO_CUSTOM_ID, DEPARTURE_BOARD_LOGO_DEFAULT, DEPARTURE_BOARD_LOGO_SVG_MAX_LENGTH, DEPARTURE_BOARD_LOGO_PRESETS, normalizeDepartureBoardLogoId, normalizeCustomBoardLogoSvg, getDepartureBoardLogoLabel, getDepartureBoardLogoSrc, TRAIN_TYPE_IMAGE_FILE_NAMES, TRAIN_TYPE_IMAGE_CUSTOM, trainTypeImageLabel, TRAIN_TYPE_IMAGE_FILES, TRAIN_TYPE_IMAGE_FILE_SET, trainTypeImageSrc, normalizeTrainTypeSource, trainTypeImageUrl, trainTypeImageChoice, clampInteger, normalizeFlapTiming, DELAY_VALUES, DELAY_DISPLAY_THRESHOLD, DELAY_OFFSET_DEFAULT, RECENT_DEPARTURE_GRACE_MS, DEPARTURE_HOLD_RELEASE_MS, minutesSinceClock, normalizeDelayOffset, parseDelayMinutes, getDisplayedDelay, getEffectiveDepartureDate, getDepartureSortTimestamp, compareDeparturesByTime, TRAIN_TYPES, DEPARTURE_TRACK_VALUES, DEPARTURE_PLATFORM_VALUES, DEPARTURE_SECTOR_VALUES, TRAIN_NUMBER_CARD_STYLES, createTrainNumberCard, createTrainNumberDigitCards, TRAIN_NUMBER_FLAP_CARDS, NIGHT_FADE_MODES, NIGHT_LIGHT_BASE_DEFAULTS, NIGHT_LIGHT_DEFAULTS, NIGHT_CLOCK_DEFAULTS, createEmptyBoardState;
   var init_data = __esm({
     "src/platform/data.js"() {
       STATION_CHARACTER_COUNT = 14;
@@ -666,20 +666,6 @@
         ...createTrainNumberDigitCards("sp"),
         ...createTrainNumberDigitCards("red")
       ]);
-      getTrainNumberCardStyle = (train) => {
-        const name = String(train ?? "");
-        const normalized = name.toLocaleLowerCase("cs-CZ");
-        if (name === "Intercity" || name === "Eurocity" || name === "IC" || name === "EC" || name === "SuperCity" || normalized === "sc") {
-          return "intercity";
-        }
-        if (name === "Sp" || normalized === "nj" || normalized === "nightjet") {
-          return "sp";
-        }
-        if (name === "R" || name === "R miest." || name === "Mim. R" || name === "Ex" || name.startsWith("Ex ") || name === "\u010CEDOK" || name === "ROH" || normalized === "rj" || normalized === "railjet" || normalized === "regiojet") {
-          return "red";
-        }
-        return "default";
-      };
       NIGHT_FADE_MODES = Object.freeze([
         { value: "none", label: "Bez pohas\xEDn\xE1n\xED (st\xE1l\xFD svit)" },
         { value: "soft", label: "Jemn\xE9 kol\xEDs\xE1n\xED" },
@@ -714,10 +700,317 @@
     }
   });
 
+  // stanice/brno-hlavni-nadrazi.json
+  var brno_hlavni_nadrazi_default;
+  var init_brno_hlavni_nadrazi = __esm({
+    "stanice/brno-hlavni-nadrazi.json"() {
+      brno_hlavni_nadrazi_default = {
+        version: 1,
+        name: "Brno hlavn\xED n\xE1dra\u017E\xED",
+        platforms: [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ],
+        tracks: [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9",
+          "10",
+          "11",
+          "12",
+          "13",
+          "6a",
+          "11a",
+          "701"
+        ],
+        sectors: [
+          "A",
+          "B",
+          "C",
+          "D",
+          "E"
+        ],
+        sectorRanges: [
+          "A-B",
+          "A-C",
+          "A-D",
+          "B-C",
+          "B-D",
+          "B-E",
+          "C-D",
+          "C-E",
+          "D-E"
+        ],
+        numberStyles: [
+          {
+            id: "default",
+            label: "default",
+            background: "var(--flap-background)",
+            foreground: "var(--flap-foreground)"
+          },
+          {
+            id: "red",
+            label: "red",
+            background: "#D80300",
+            foreground: "#fff"
+          },
+          {
+            id: "sp",
+            label: "sp",
+            background: "#1e3c69",
+            foreground: "#fff"
+          },
+          {
+            id: "intercity",
+            label: "intercity",
+            background: "#fff",
+            foreground: "#D80300"
+          }
+        ],
+        trainTypes: [
+          {
+            name: "",
+            text: "",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "var(--flap-background)",
+            foreground: "var(--flap-foreground)",
+            numberStyle: "default",
+            aliases: []
+          },
+          {
+            name: "Os",
+            text: "Os",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "var(--flap-background)",
+            foreground: "#fff",
+            numberStyle: "default",
+            aliases: []
+          },
+          {
+            name: "Mim. Os",
+            text: "Mim. Os",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "var(--flap-background)",
+            foreground: "#fff",
+            numberStyle: "default",
+            aliases: []
+          },
+          {
+            name: "R",
+            text: "R",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "#D80300",
+            foreground: "#fff",
+            numberStyle: "red",
+            aliases: []
+          },
+          {
+            name: "Mim. R",
+            text: "Mim. R",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "#D80300",
+            foreground: "#fff",
+            numberStyle: "red",
+            aliases: []
+          },
+          {
+            name: "Ex",
+            text: "Ex",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "#D80300",
+            foreground: "#fff",
+            numberStyle: "red",
+            aliases: []
+          },
+          {
+            name: "Ex l\u016F\u017Ek.",
+            text: "Ex",
+            suffix: "l\u016F\u017Ek.",
+            source: "",
+            label: "",
+            background: "#D80300",
+            foreground: "#fff",
+            numberStyle: "red",
+            aliases: []
+          },
+          {
+            name: "Sp",
+            text: "Sp",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "#1e3c69",
+            foreground: "#fff",
+            numberStyle: "sp",
+            aliases: []
+          },
+          {
+            name: "EuroNight",
+            text: "EN",
+            suffix: "",
+            source: "",
+            label: "EuroNight (EN)",
+            background: "#1e3c69",
+            foreground: "#fff",
+            numberStyle: "sp",
+            aliases: [
+              "EN"
+            ]
+          },
+          {
+            name: "Intercity",
+            text: "",
+            suffix: "",
+            source: "images/typy-vlaku/intercity.svg",
+            label: "Intercity (IC)",
+            background: "#fff",
+            foreground: "#CC3333",
+            numberStyle: "intercity",
+            aliases: [
+              "IC"
+            ]
+          },
+          {
+            name: "Eurocity",
+            text: "",
+            suffix: "",
+            source: "images/typy-vlaku/EuroCity_Logo.svg",
+            label: "Eurocity (EC)",
+            background: "#fff",
+            foreground: "#000",
+            numberStyle: "intercity",
+            aliases: [
+              "EC"
+            ]
+          },
+          {
+            name: "SuperCity",
+            text: "",
+            suffix: "",
+            source: "images/typy-vlaku/supercity.svg",
+            label: "SuperCity (SC)",
+            background: "#fff",
+            foreground: "#F1B504",
+            numberStyle: "intercity",
+            aliases: [
+              "SC"
+            ]
+          },
+          {
+            name: "rj",
+            text: "",
+            suffix: "",
+            source: "images/typy-vlaku/Railjet_logo.svg",
+            label: "Railjet (rj)",
+            background: "#fff",
+            foreground: "#D80300",
+            numberStyle: "intercity",
+            aliases: [
+              "railjet"
+            ]
+          },
+          {
+            name: "nj",
+            text: "",
+            suffix: "",
+            source: "images/typy-vlaku/nightjet.svg",
+            label: "NightJet (nj)",
+            background: "#1e3c69",
+            foreground: "#fff",
+            numberStyle: "sp",
+            aliases: [
+              "NightJet"
+            ]
+          },
+          {
+            name: "ODKLON",
+            text: "ODKLON",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "#FFD800",
+            foreground: "#000",
+            numberStyle: "default",
+            aliases: []
+          },
+          {
+            name: "RJ",
+            text: "",
+            suffix: "",
+            source: "images/typy-vlaku/regiojet.svg",
+            label: "RegioJet (RJ)",
+            background: "#F1B504",
+            foreground: "#000",
+            numberStyle: "intercity",
+            aliases: [
+              "regiojet"
+            ]
+          },
+          {
+            name: "Z\xC1JEZD",
+            text: "Z\xC1JEZD",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "var(--flap-background)",
+            foreground: "#fff",
+            numberStyle: "default",
+            aliases: []
+          },
+          {
+            name: "\u010CEDOK",
+            text: "\u010CEDOK",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "#D80300",
+            foreground: "#fff",
+            numberStyle: "red",
+            aliases: []
+          },
+          {
+            name: "ROH",
+            text: "ROH",
+            suffix: "",
+            source: "",
+            label: "",
+            background: "#D80300",
+            foreground: "#fff",
+            numberStyle: "red",
+            aliases: []
+          }
+        ]
+      };
+    }
+  });
+
   // src/platform/station-profile.js
-  var STATION_PROFILE_STORAGE_KEY, STATION_PROFILE_VERSION, MAX_LIST, MAX_TYPES, MAX_STYLES, MAX_TEXT, DEFAULT_ALIASES, clean, cleanToken, uniqueTokens, linesFrom, isCssColor, colorOr, slug, normalizeOperatorKey, isRegioJetOperator, isCDOperator, blankTrainType, createDefaultStationProfile, normalizeTrainType, normalizeStationProfile, activeProfile, storage, readStoredStationProfile, getActiveStationProfile, setActiveStationProfile, profileSectorValues, matchProfileValue, sectorAtoms, sectorsOverlap, typeLabels, resolveProfileTrainType;
+  var STATION_PROFILE_STORAGE_KEY, STATION_PROFILE_VERSION, MAX_LIST, MAX_TYPES, MAX_STYLES, MAX_TEXT, clean, cleanToken, uniqueTokens, linesFrom, isCssColor, colorOr, slug, normalizeOperatorKey, isRegioJetOperator, isCDOperator, blankTrainType, createDefaultStationProfile, normalizeTrainType, normalizeStationProfile, activeProfile, storage, readStoredStationProfile, getActiveStationProfile, setActiveStationProfile, profileSectorValues, matchProfileValue, sectorAtoms, sectorsOverlap, typeLabels, resolveProfileTrainType;
   var init_station_profile = __esm({
     "src/platform/station-profile.js"() {
+      init_brno_hlavni_nadrazi();
       init_data();
       STATION_PROFILE_STORAGE_KEY = "pragotron.stationProfile.v1";
       STATION_PROFILE_VERSION = 1;
@@ -725,15 +1018,6 @@
       MAX_TYPES = 40;
       MAX_STYLES = 12;
       MAX_TEXT = 32;
-      DEFAULT_ALIASES = Object.freeze({
-        Intercity: ["IC", "ic", "intercity"],
-        Eurocity: ["EC", "ec", "eurocity"],
-        SuperCity: ["SC", "sc", "supercity"],
-        EuroNight: ["EN", "en", "euronight"],
-        nj: ["NJ", "NightJet", "Nightjet", "nightjet"],
-        rj: ["railjet", "Railjet"],
-        RJ: ["regiojet", "RegioJet"]
-      });
       clean = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
       cleanToken = (value) => clean(value).replace(/[–—−]/g, "-").replace(/\s*-\s*/g, "-").slice(0, MAX_TEXT);
       uniqueTokens = (values, limit = MAX_LIST) => {
@@ -785,45 +1069,7 @@
         numberStyle: "default",
         aliases: []
       });
-      createDefaultStationProfile = () => {
-        const numberStyles = Object.entries(TRAIN_NUMBER_CARD_STYLES).map(
-          ([id, style]) => ({
-            id,
-            label: id,
-            background: style.background,
-            foreground: style.foreground
-          })
-        );
-        const knownStyles = new Set(numberStyles.map((style) => style.id));
-        const sectors = DEPARTURE_SECTOR_VALUES.filter(Boolean);
-        const atomic = sectors.filter((value) => !value.includes("-"));
-        return {
-          version: STATION_PROFILE_VERSION,
-          name: "Brno hlavn\xED n\xE1dra\u017E\xED",
-          platforms: DEPARTURE_PLATFORM_VALUES.filter(Boolean),
-          tracks: DEPARTURE_TRACK_VALUES.filter(Boolean),
-          sectors: atomic,
-          sectorRanges: sectors.filter((value) => value.includes("-")),
-          numberStyles,
-          trainTypes: [
-            blankTrainType(),
-            ...TRAIN_TYPES.filter((type) => type.name).map((type) => {
-              const numberStyle = getTrainNumberCardStyle(type.name);
-              return {
-                name: type.name,
-                text: type.text || "",
-                suffix: type.suffix || "",
-                source: type.source || "",
-                label: type.label || "",
-                background: type.background,
-                foreground: type.foreground,
-                numberStyle: knownStyles.has(numberStyle) ? numberStyle : "default",
-                aliases: [...DEFAULT_ALIASES[type.name] || []]
-              };
-            })
-          ]
-        };
-      };
+      createDefaultStationProfile = () => normalizeStationProfile(brno_hlavni_nadrazi_default);
       normalizeTrainType = (value, styles) => {
         const source = value && typeof value === "object" ? value : {};
         const name = cleanToken(source.name);
@@ -849,7 +1095,7 @@
         if (!source) {
           return null;
         }
-        const fallbackStyles = createDefaultStationProfile().numberStyles;
+        const fallbackStyles = Array.isArray(brno_hlavni_nadrazi_default.numberStyles) ? brno_hlavni_nadrazi_default.numberStyles : [];
         const numberStyles = [];
         const seenStyles = /* @__PURE__ */ new Set();
         (Array.isArray(source.numberStyles) ? source.numberStyles : fallbackStyles).forEach((style) => {

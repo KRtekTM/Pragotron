@@ -1,3 +1,4 @@
+import brnoFile from '../stanice/brno-hlavni-nadrazi.json' with { type: 'json' };
 import { trainTypeImageUrl } from '../src/platform/data.js';
 import {
     createDefaultStationProfile,
@@ -67,6 +68,52 @@ assert(
         === 'images/typy-vlaku/regiojet.svg',
     'výchozí RJ používá obrázek z images/typy-vlaku'
 );
+const namedTypes = (profile) => profile.trainTypes.filter((type) => type.name);
+const fileTypes = brnoFile.trainTypes.filter((type) => type.name);
+assert(brno.name === brnoFile.name, 'název výchozího profilu je ze souboru stanice');
+assert(
+    brno.platforms.join('\n') === brnoFile.platforms.join('\n'),
+    'nástupiště výchozího profilu jsou ze souboru stanice'
+);
+assert(
+    brno.tracks.join('\n') === brnoFile.tracks.join('\n'),
+    'koleje výchozího profilu jsou ze souboru stanice'
+);
+assert(
+    brno.sectors.join('\n') === brnoFile.sectors.join('\n'),
+    'sektory výchozího profilu jsou ze souboru stanice'
+);
+assert(
+    brno.sectorRanges.join('\n') === brnoFile.sectorRanges.join('\n'),
+    'rozsahy sektorů výchozího profilu jsou ze souboru stanice'
+);
+assert(
+    brno.numberStyles.map((style) =>
+        `${style.id}|${style.background}|${style.foreground}`
+    ).join('\n') === brnoFile.numberStyles.map((style) =>
+        `${style.id}|${style.background}|${style.foreground}`
+    ).join('\n'),
+    'styly čísel výchozího profilu jsou ze souboru stanice'
+);
+assert(
+    namedTypes(brno).map((type) => type.name).join('\n')
+        === fileTypes.map((type) => type.name).join('\n'),
+    'typy vlaků výchozího profilu jsou ze souboru stanice'
+);
+fileTypes.forEach((type) => {
+    const actual = namedTypes(brno).find((item) => item.name === type.name);
+    ['text', 'suffix', 'source', 'label', 'background', 'foreground', 'numberStyle']
+        .forEach((key) => {
+            assert(
+                actual?.[key] === (type[key] || ''),
+                `${type.name}.${key} má odpovídat souboru stanice`
+            );
+        });
+    assert(
+        (actual?.aliases || []).join('\n') === (type.aliases || []).join('\n'),
+        `${type.name}.aliases mají odpovídat souboru stanice`
+    );
+});
 assert(resolveProfileTrainType('IC') === 'Intercity', 'IC je Intercity');
 assert(resolveProfileTrainType('RJ', 'RJET') === 'RJ', 'RJ a RJET je RegioJet');
 assert(resolveProfileTrainType('rj', 'ČD') === 'rj', 'rj a ČD je railjet');

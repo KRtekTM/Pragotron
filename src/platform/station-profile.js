@@ -1,12 +1,5 @@
-import {
-    DEPARTURE_PLATFORM_VALUES,
-    DEPARTURE_SECTOR_VALUES,
-    DEPARTURE_TRACK_VALUES,
-    TRAIN_NUMBER_CARD_STYLES,
-    TRAIN_TYPES,
-    getTrainNumberCardStyle,
-    normalizeTrainTypeSource
-} from './data.js';
+import brnoHlavniNadrazi from '../../stanice/brno-hlavni-nadrazi.json' with { type: 'json' };
+import { normalizeTrainTypeSource } from './data.js';
 
 export const STATION_PROFILE_STORAGE_KEY = 'pragotron.stationProfile.v1';
 export const STATION_PROFILE_VERSION = 1;
@@ -15,16 +8,6 @@ const MAX_LIST = 80;
 const MAX_TYPES = 40;
 const MAX_STYLES = 12;
 const MAX_TEXT = 32;
-
-const DEFAULT_ALIASES = Object.freeze({
-    Intercity: ['IC', 'ic', 'intercity'],
-    Eurocity: ['EC', 'ec', 'eurocity'],
-    SuperCity: ['SC', 'sc', 'supercity'],
-    EuroNight: ['EN', 'en', 'euronight'],
-    nj: ['NJ', 'NightJet', 'Nightjet', 'nightjet'],
-    rj: ['railjet', 'Railjet'],
-    RJ: ['regiojet', 'RegioJet']
-});
 
 const clean = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
 
@@ -108,48 +91,9 @@ const blankTrainType = () => ({
     aliases: []
 });
 
-export const createDefaultStationProfile = () => {
-    const numberStyles = Object.entries(TRAIN_NUMBER_CARD_STYLES).map(
-        ([id, style]) => ({
-            id,
-            label: id,
-            background: style.background,
-            foreground: style.foreground
-        })
-    );
-    const knownStyles = new Set(numberStyles.map((style) => style.id));
-    const sectors = DEPARTURE_SECTOR_VALUES.filter(Boolean);
-    const atomic = sectors.filter((value) => !value.includes('-'));
-
-    return {
-        version: STATION_PROFILE_VERSION,
-        name: 'Brno hlavní nádraží',
-        platforms: DEPARTURE_PLATFORM_VALUES.filter(Boolean),
-        tracks: DEPARTURE_TRACK_VALUES.filter(Boolean),
-        sectors: atomic,
-        sectorRanges: sectors.filter((value) => value.includes('-')),
-        numberStyles,
-        trainTypes: [
-            blankTrainType(),
-            ...TRAIN_TYPES.filter((type) => type.name).map((type) => {
-                const numberStyle = getTrainNumberCardStyle(type.name);
-                return {
-                    name: type.name,
-                    text: type.text || '',
-                    suffix: type.suffix || '',
-                    source: type.source || '',
-                    label: type.label || '',
-                    background: type.background,
-                    foreground: type.foreground,
-                    numberStyle: knownStyles.has(numberStyle)
-                        ? numberStyle
-                        : 'default',
-                    aliases: [...(DEFAULT_ALIASES[type.name] || [])]
-                };
-            })
-        ]
-    };
-};
+export const createDefaultStationProfile = () => (
+    normalizeStationProfile(brnoHlavniNadrazi)
+);
 
 const normalizeTrainType = (value, styles) => {
     const source = value && typeof value === 'object' ? value : {};
@@ -183,7 +127,9 @@ export const normalizeStationProfile = (value) => {
         return null;
     }
 
-    const fallbackStyles = createDefaultStationProfile().numberStyles;
+    const fallbackStyles = Array.isArray(brnoHlavniNadrazi.numberStyles)
+        ? brnoHlavniNadrazi.numberStyles
+        : [];
     const numberStyles = [];
     const seenStyles = new Set();
     (Array.isArray(source.numberStyles) ? source.numberStyles : fallbackStyles)

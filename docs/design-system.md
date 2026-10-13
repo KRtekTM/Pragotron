@@ -68,11 +68,10 @@ v pořadí podle času odjezdu, maximálně v osmi řádcích. Změny jsou řaze
 celých řádcích a při uvolnění řádku shora mají jednosekundovou pauzu před
 posunem.
 
-Pro kolej a sektor se používají katalogy `DEPARTURE_TRACK_VALUES` a
-`DEPARTURE_SECTOR_VALUES`. Číslo vlaku používá `TRAIN_NUMBER_FLAP_CARDS`;
-výběr barevné sekvence vychází z typu vlaku. Katalogové komponenty stejně jako
-standardní split-flap postupují výhradně dopředným směrem podle fyzického
-pořadí karet.
+Pro kolej, sektor a barvu čísla vlaku se používá profil stanice. Výchozí
+Brno hlavní nádraží je v `stanice/brno-hlavni-nadrazi.json`. Katalogové
+komponenty stejně jako standardní split-flap postupují výhradně dopředným
+směrem podle fyzického pořadí karet.
 
 Při vložení stejného `platform/track/sector` do manage se aktualizuje jeden
 existující odjezd, takže se aktualizuje i řádek odjezdové tabule místo

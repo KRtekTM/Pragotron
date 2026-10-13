@@ -1,0 +1,299 @@
+{
+  "version": 1,
+  "name": "Brno hlavní nádraží",
+  "platforms": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
+  ],
+  "tracks": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "6a",
+    "11a",
+    "701"
+  ],
+  "sectors": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "sectorRanges": [
+    "A-B",
+    "A-C",
+    "A-D",
+    "B-C",
+    "B-D",
+    "B-E",
+    "C-D",
+    "C-E",
+    "D-E"
+  ],
+  "numberStyles": [
+    {
+      "id": "default",
+      "label": "default",
+      "background": "var(--flap-background)",
+      "foreground": "var(--flap-foreground)"
+    },
+    {
+      "id": "red",
+      "label": "red",
+      "background": "#D80300",
+      "foreground": "#fff"
+    },
+    {
+      "id": "sp",
+      "label": "sp",
+      "background": "#1e3c69",
+      "foreground": "#fff"
+    },
+    {
+      "id": "intercity",
+      "label": "intercity",
+      "background": "#fff",
+      "foreground": "#D80300"
+    }
+  ],
+  "trainTypes": [
+    {
+      "name": "",
+      "text": "",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "var(--flap-background)",
+      "foreground": "var(--flap-foreground)",
+      "numberStyle": "default",
+      "aliases": []
+    },
+    {
+      "name": "Os",
+      "text": "Os",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "var(--flap-background)",
+      "foreground": "#fff",
+      "numberStyle": "default",
+      "aliases": []
+    },
+    {
+      "name": "Mim. Os",
+      "text": "Mim. Os",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "var(--flap-background)",
+      "foreground": "#fff",
+      "numberStyle": "default",
+      "aliases": []
+    },
+    {
+      "name": "R",
+      "text": "R",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "#D80300",
+      "foreground": "#fff",
+      "numberStyle": "red",
+      "aliases": []
+    },
+    {
+      "name": "Mim. R",
+      "text": "Mim. R",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "#D80300",
+      "foreground": "#fff",
+      "numberStyle": "red",
+      "aliases": []
+    },
+    {
+      "name": "Ex",
+      "text": "Ex",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "#D80300",
+      "foreground": "#fff",
+      "numberStyle": "red",
+      "aliases": []
+    },
+    {
+      "name": "Ex lůžk.",
+      "text": "Ex",
+      "suffix": "lůžk.",
+      "source": "",
+      "label": "",
+      "background": "#D80300",
+      "foreground": "#fff",
+      "numberStyle": "red",
+      "aliases": []
+    },
+    {
+      "name": "Sp",
+      "text": "Sp",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "#1e3c69",
+      "foreground": "#fff",
+      "numberStyle": "sp",
+      "aliases": []
+    },
+    {
+      "name": "EuroNight",
+      "text": "EN",
+      "suffix": "",
+      "source": "",
+      "label": "EuroNight (EN)",
+      "background": "#1e3c69",
+      "foreground": "#fff",
+      "numberStyle": "sp",
+      "aliases": [
+        "EN"
+      ]
+    },
+    {
+      "name": "Intercity",
+      "text": "",
+      "suffix": "",
+      "source": "images/typy-vlaku/intercity.svg",
+      "label": "Intercity (IC)",
+      "background": "#fff",
+      "foreground": "#CC3333",
+      "numberStyle": "intercity",
+      "aliases": [
+        "IC"
+      ]
+    },
+    {
+      "name": "Eurocity",
+      "text": "",
+      "suffix": "",
+      "source": "images/typy-vlaku/EuroCity_Logo.svg",
+      "label": "Eurocity (EC)",
+      "background": "#fff",
+      "foreground": "#000",
+      "numberStyle": "intercity",
+      "aliases": [
+        "EC"
+      ]
+    },
+    {
+      "name": "SuperCity",
+      "text": "",
+      "suffix": "",
+      "source": "images/typy-vlaku/supercity.svg",
+      "label": "SuperCity (SC)",
+      "background": "#fff",
+      "foreground": "#F1B504",
+      "numberStyle": "intercity",
+      "aliases": [
+        "SC"
+      ]
+    },
+    {
+      "name": "rj",
+      "text": "",
+      "suffix": "",
+      "source": "images/typy-vlaku/Railjet_logo.svg",
+      "label": "Railjet (rj)",
+      "background": "#fff",
+      "foreground": "#D80300",
+      "numberStyle": "intercity",
+      "aliases": [
+        "railjet"
+      ]
+    },
+    {
+      "name": "nj",
+      "text": "",
+      "suffix": "",
+      "source": "images/typy-vlaku/nightjet.svg",
+      "label": "NightJet (nj)",
+      "background": "#1e3c69",
+      "foreground": "#fff",
+      "numberStyle": "sp",
+      "aliases": [
+        "NightJet"
+      ]
+    },
+    {
+      "name": "ODKLON",
+      "text": "ODKLON",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "#FFD800",
+      "foreground": "#000",
+      "numberStyle": "default",
+      "aliases": []
+    },
+    {
+      "name": "RJ",
+      "text": "",
+      "suffix": "",
+      "source": "images/typy-vlaku/regiojet.svg",
+      "label": "RegioJet (RJ)",
+      "background": "#F1B504",
+      "foreground": "#000",
+      "numberStyle": "intercity",
+      "aliases": [
+        "regiojet"
+      ]
+    },
+    {
+      "name": "ZÁJEZD",
+      "text": "ZÁJEZD",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "var(--flap-background)",
+      "foreground": "#fff",
+      "numberStyle": "default",
+      "aliases": []
+    },
+    {
+      "name": "ČEDOK",
+      "text": "ČEDOK",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "#D80300",
+      "foreground": "#fff",
+      "numberStyle": "red",
+      "aliases": []
+    },
+    {
+      "name": "ROH",
+      "text": "ROH",
+      "suffix": "",
+      "source": "",
+      "label": "",
+      "background": "#D80300",
+      "foreground": "#fff",
+      "numberStyle": "red",
+      "aliases": []
+    }
+  ]
+}
