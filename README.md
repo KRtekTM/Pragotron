@@ -16,6 +16,10 @@ jiného, co dává smysl poskládat na klapky.
 
 ![Nástupištní tabule](images/misc/preview-platformTable.png)
 
+Odjezdová tabule v chodu. Kliknutím se video spustí na YouTube:
+
+[![Odjezdová tabule v chodu](https://img.youtube.com/vi/E9L6u2Y4CKs/hqdefault.jpg)](https://www.youtube.com/watch?v=E9L6u2Y4CKs)
+
 Veřejné API je `src/platform/index.js`. Návod na komponenty, šablony a vlastní
 registr je v [docs/framework-usage.md](docs/framework-usage.md), tokeny a
 pravidla vzhledu v [docs/design-system.md](docs/design-system.md).
