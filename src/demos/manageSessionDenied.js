@@ -70,10 +70,11 @@ const loadCatalog = () => {
         volume: {
             label: 'Hlasitost',
             boards: ['departure', 'platform'],
-            options: numberOptions(0, 100).map((option) => ({
-                value: option.value,
-                label: `${option.value} %`
-            })),
+            range: {
+                min: 0,
+                max: 100,
+                step: 1
+            },
             fallback: '100'
         },
         lenses: {
@@ -87,7 +88,9 @@ const loadCatalog = () => {
 
     return Object.fromEntries(
         Object.entries(definitions).filter(([, definition]) =>
-            definition.lenses || definition.options.length > 0)
+            definition.lenses
+            || definition.range
+            || definition.options.length > 0)
     );
 };
 
@@ -120,7 +123,13 @@ export const mountManageSessionDenied = (documentRef = document) => {
     let kind = 'departure';
 
     const pageName = () => (
-        kind === 'platform' ? 'platformTable.html' : 'departureBoard.html'
+        kind === 'platform'
+            ? 'platformTable.html'
+            : kind === 'analogClock'
+                ? 'analogClock.html'
+                : kind === 'analogClockRound'
+                    ? 'analogClockRound.html'
+                    : 'departureBoard.html'
     );
 
     const availableKeys = () => PARAM_ORDER.filter((key) => {
@@ -149,7 +158,7 @@ export const mountManageSessionDenied = (documentRef = document) => {
 
     const intro = document.createElement('p');
     intro.className = 'manage-session-guide-intro';
-    intro.textContent = 'Odtud jde otevřít odjezdovou nebo nástupištní tabuli. Parametr přidáte ze seznamu a hodnotu vyberete z možností, které tabule bere.';
+    intro.textContent = 'Odtud jde otevřít odjezdovou, nástupištní nebo analogovou tabuli. Parametr přidáte ze seznamu a hodnotu vyberete z možností, které tabule bere.';
     guide.append(intro);
 
     const choiceHeading = document.createElement('h2');
@@ -159,11 +168,8 @@ export const mountManageSessionDenied = (documentRef = document) => {
     choices.setAttribute('role', 'radiogroup');
     choices.setAttribute('aria-label', 'Která tabule');
 
-    const addChoice = (value, label, preview) => {
+    const addChoice = (value, label, preview = '') => {
         const choice = document.createElement('label');
-        const previewImage = document.createElement('img');
-        previewImage.src = preview;
-        previewImage.alt = '';
         const caption = document.createElement('span');
         caption.className = 'manage-session-choice-caption';
         const input = document.createElement('input');
@@ -188,7 +194,16 @@ export const mountManageSessionDenied = (documentRef = document) => {
             renderLink();
         });
         caption.append(input, text);
-        choice.append(previewImage, caption);
+        if (preview) {
+            const previewImage = document.createElement('img');
+            previewImage.src = preview;
+            previewImage.alt = '';
+            if (value === 'analogClock' || value === 'analogClockRound') {
+                previewImage.className = 'clock';
+            }
+            choice.append(previewImage);
+        }
+        choice.append(caption);
         choices.append(choice);
     };
     addChoice(
@@ -200,6 +215,16 @@ export const mountManageSessionDenied = (documentRef = document) => {
         'platform',
         'Nástupištní tabule',
         'images/misc/preview-platformTable.png'
+    );
+    addChoice(
+        'analogClock',
+        'Analogové hodiny',
+        'images/misc/preview-analogClock.png'
+    );
+    addChoice(
+        'analogClockRound',
+        'Kulaté analogové hodiny',
+        'images/misc/preview-analogClockRound.png'
     );
 
     const paramHeading = document.createElement('h2');
@@ -325,6 +350,29 @@ export const mountManageSessionDenied = (documentRef = document) => {
                 secondSelect.addEventListener('change', writeLenses);
                 fields.append(firstSelect, secondSelect);
                 row.append(label, fields, remove);
+            } else if (definition.range) {
+                const range = document.createElement('input');
+                range.type = 'range';
+                range.min = String(definition.range.min);
+                range.max = String(definition.range.max);
+                range.step = String(definition.range.step);
+                range.value = String(
+                    selected.has(key)
+                        ? selected.get(key)
+                        : definition.fallback
+                );
+                range.setAttribute('aria-label', definition.label);
+                const output = document.createElement('output');
+                output.textContent = `${range.value} %`;
+                range.addEventListener('input', () => {
+                    selected.set(key, range.value);
+                    output.textContent = `${range.value} %`;
+                    renderLink();
+                });
+                const field = document.createElement('div');
+                field.className = 'manage-session-range';
+                field.append(range, output);
+                row.append(label, field, remove);
             } else {
                 const select = createSelect(
                     definition.options,
@@ -355,7 +403,11 @@ export const mountManageSessionDenied = (documentRef = document) => {
         openLink.href = href;
         openLink.textContent = kind === 'platform'
             ? 'Otevřít nástupištní tabuli'
-            : 'Otevřít odjezdovou tabuli';
+            : kind === 'analogClock'
+                ? 'Otevřít analogové hodiny'
+                : kind === 'analogClockRound'
+                    ? 'Otevřít kulaté hodiny'
+                    : 'Otevřít odjezdovou tabuli';
     };
 
     addSelect.addEventListener('change', () => {
@@ -367,10 +419,12 @@ export const mountManageSessionDenied = (documentRef = document) => {
         if (!definition || selected.has(key)) {
             return;
         }
-        const fallback = definition.options.some((option) =>
-            option.value === definition.fallback)
+        const fallback = definition.range
             ? definition.fallback
-            : (definition.options[0]?.value || definition.fallback);
+            : definition.options.some((option) =>
+                option.value === definition.fallback)
+                ? definition.fallback
+                : (definition.options[0]?.value || definition.fallback);
         selected.set(key, fallback);
         addSelect.value = '';
         renderParams();

@@ -11,6 +11,14 @@
 
     <link href="images/tabule/pragotron.svg" rel="icon" type="image/svg+xml" />
 
+    <script type="importmap">
+        {
+            "imports": {
+                "sunrise-sunset-js": "./node_modules/sunrise-sunset-js/dist/index.js"
+            }
+        }
+    </script>
+
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
     <script language="javascript" type="text/javascript" src="js/jquery.thooClock.js"></script>
 
@@ -60,6 +68,13 @@
                 },
                 secondHandEnabled: false
             });
+
+            if (location.protocol === 'http:' || location.protocol === 'https:') {
+                var client = document.createElement('script');
+                client.type = 'module';
+                client.src = 'src/demos/analogClockClient.js';
+                document.body.appendChild(client);
+            }
     
         });
     </script>

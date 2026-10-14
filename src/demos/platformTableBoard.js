@@ -1,5 +1,11 @@
 import {
     AnalogClock,
+    createSlaveClock,
+    hasSourceClock,
+    setSourceClock,
+    sourceDelay,
+    sourceNow,
+    sourcePace,
     BoardTransport,
     getBoardIdentityKey,
     identitiesMatch,
@@ -192,7 +198,7 @@ const setLensPreDepartureActive = (isActive) => {
 const getEffectiveDeparture = (state) => getEffectiveDepartureDate(
     state?.departureTime,
     state?.delay,
-    new Date(),
+    sourceNow(),
     delayOffset
 );
 
@@ -217,7 +223,12 @@ const scheduleLensActivation = (state) => {
     }
 
     const activationTime = departure.getTime() - preDeparture.seconds * 1000;
-    if (activationTime <= Date.now()) {
+    const delay = sourceDelay(activationTime);
+    if (delay === null) {
+        setLensPreDepartureActive(false);
+        return;
+    }
+    if (delay === 0) {
         setLensPreDepartureActive(true);
         return;
     }
@@ -232,7 +243,7 @@ const scheduleLensActivation = (state) => {
         lensActivationTimer = null;
         setLensPreDepartureActive(true);
         publishHeartbeat();
-    }, activationTime - Date.now());
+    }, delay);
 };
 
 const cloneLensState = (value) => {
@@ -330,8 +341,14 @@ const nightLighting = new NightLighting({
     clockBlock: documentRef.querySelector('#clockBlock')
 }).mount();
 
+const platformSlaveClock = createSlaveClock({
+    hasSourceClock,
+    sourceNow,
+    sourcePace
+});
 const analogClock = new AnalogClock(
-    documentRef.querySelector('#pragotronAnalogClock')
+    documentRef.querySelector('#pragotronAnalogClock'),
+    { now: () => platformSlaveClock.now() }
 );
 
 try {
@@ -718,6 +735,13 @@ const handleCommand = async (message) => {
 };
 
 transport.subscribe((message) => {
+    if (message.type === 'manage:departures'
+        && Object.prototype.hasOwnProperty.call(message.payload || {}, 'clock')) {
+        setSourceClock(message.payload.clock);
+        scheduleLensActivation(currentDisplayState);
+        return;
+    }
+
     if (message.type === 'station-profile') {
         applyStationProfile(
             message.payload?.stationProfile || message.payload

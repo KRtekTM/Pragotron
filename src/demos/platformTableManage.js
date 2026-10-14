@@ -30,6 +30,13 @@ import {
     getEffectiveDepartureDate,
     formatStationName,
     resolveDepartureStations,
+    hasSourceClock,
+    setSourceClock,
+    sourceClockSnapshot,
+    sourceDelay,
+    sourceNow,
+    sourcePace,
+    subscribeSourceClock,
     matchProfileValue,
     profileSectorValues,
     resolveProfileTrainType,
@@ -85,6 +92,7 @@ if (!currentState && legacyState) {
     });
 }
 const savedSettings = savedState.settings || savedState;
+setSourceClock(savedState.clock);
 if (savedState.stationProfile) {
     setActiveStationProfile(savedState.stationProfile);
 }
@@ -329,6 +337,9 @@ const liveApiUrlInput = documentRef.querySelector('#liveApiUrl');
 const liveScraperParametersRoot = documentRef.querySelector(
     '#liveScraperParameters'
 );
+const liveScraperParametersDetails = documentRef.querySelector(
+    '#liveScraperParametersDetails'
+);
 const liveToggleButton = documentRef.querySelector('#liveToggleButton');
 const liveDeparturesState = documentRef.querySelector('#liveDeparturesState');
 const liveDeparturesStatus = documentRef.querySelector('#liveDeparturesStatus');
@@ -451,6 +462,7 @@ const settingsSentToInstances = new Set();
 let departures = Array.isArray(savedState.departures)
     ? savedState.departures
     : [];
+const hasPersistedDepartures = Array.isArray(savedState.departures);
 let formDepartureId = '';
 let formDepartureLocked = false;
 let desiredStates = savedState.desired
@@ -787,7 +799,8 @@ const persistState = () => {
         revision: nextRevision,
         globalResetRevision,
         sort: sortState,
-        stationProfile: getActiveStationProfile()
+        stationProfile: getActiveStationProfile(),
+        clock: sourceClockSnapshot()
     });
 };
 
@@ -814,7 +827,8 @@ const publishDepartureSnapshot = () => {
                 }
                 : createDefaultLensState()
         })),
-        revision: nextRevision
+        revision: nextRevision,
+        clock: sourceClockSnapshot()
     });
 };
 
@@ -937,9 +951,20 @@ const formatDepartureTime = (departureTime) => {
 const isDepartureBoardPresence = (boardPresence) =>
     boardPresence?.page === 'departureBoard';
 
+const isClockBoardPresence = (boardPresence) =>
+    boardPresence?.page === 'analogClock'
+    || boardPresence?.page === 'analogClockRound';
+
+const clockBoardLabel = (boardPresence) => (
+    boardPresence?.page === 'analogClockRound'
+        ? 'Kulaté hodiny'
+        : 'Analogové hodiny'
+);
+
 const findMatchingBoards = (target) => [...activeBoards.values()]
     .filter((boardPresence) =>
         !isDepartureBoardPresence(boardPresence)
+        && !isClockBoardPresence(boardPresence)
         && identitiesMatch(boardPresence.identity, target)
     );
 
@@ -957,7 +982,7 @@ const getPreDepartureActivationTime = (departure) => {
     const departureDate = getEffectiveDepartureDate(
         departure?.departureTime,
         departure?.delay,
-        new Date(),
+        sourceNow(),
         delayOffset
     );
     if (!departureDate) {
@@ -968,7 +993,7 @@ const getPreDepartureActivationTime = (departure) => {
         - Number(preDeparture.seconds || 0) * 1000;
 };
 
-const getPreDepartureActive = (departure, now = Date.now()) => {
+const getPreDepartureActive = (departure, now = sourceNow().getTime()) => {
     const activationTime = getPreDepartureActivationTime(departure);
     return activationTime === null || now >= activationTime;
 };
@@ -982,20 +1007,23 @@ const clearLensActivationTimer = () => {
 
 const scheduleLensActivation = () => {
     clearLensActivationTimer();
-    const now = Date.now();
+    const now = sourceNow().getTime();
     const nextActivation = departures
         .map(getPreDepartureActivationTime)
         .filter((value) => value !== null && value > now)
         .sort((first, second) => first - second)[0];
+    const delay = nextActivation === undefined
+        ? null
+        : sourceDelay(nextActivation);
 
-    if (nextActivation === undefined) {
+    if (delay === null) {
         return;
     }
 
     lensActivationTimer = window.setTimeout(() => {
         lensActivationTimer = null;
         renderDeparturesTable();
-    }, Math.max(0, nextActivation - now) + 10);
+    }, delay + 10);
 };
 
 const getLensPresentation = (
@@ -1005,14 +1033,17 @@ const getLensPresentation = (
 ) => {
     const settings = departure.lenses?.lenses || [];
     const synchronizeRows = departure.lenses?.synchronizeRows !== false;
-    const preDepartureActive = getPreDepartureActive(departure, now);
+    const preDepartureActive = getPreDepartureActive(
+        departure,
+        sourceNow().getTime()
+    );
 
     return settings.map((setting, index) => {
         const on = setting.enabled && preDepartureActive;
         const color = LENS_COLORS.yellow; //LENS_COLORS[setting.color] || LENS_COLORS.green;
         const blinkInterval = LENS_DEFAULTS.blinkInterval;
         const animationPhase = getLensBlinkPhase({
-            now,
+            now: Date.now(),
             lensIndex: index,
             rowIndex,
             synchronizeRows
@@ -1032,7 +1063,7 @@ const renderDeparturesTable = () => {
         return;
     }
 
-    const now = new Date();
+    const now = sourceNow();
     const rows = [...departures].sort((first, second) => {
         const getValue = (departure) => {
             switch (sortState.key) {
@@ -1260,12 +1291,22 @@ const renderActiveBoards = () => {
     activeBoardRenderDeferred = false;
 
     activeBoardsList.replaceChildren();
+    const boardSortLabel = (boardPresence) => {
+        if (isClockBoardPresence(boardPresence)) {
+            return clockBoardLabel(boardPresence);
+        }
+        if (isDepartureBoardPresence(boardPresence)) {
+            return 'Odjezdová tabule';
+        }
+        if (boardPresence.configured === false) {
+            return 'Tabule bez identity';
+        }
+        return formatBoardIdentity(boardPresence.identity);
+    };
     const values = [...activeBoards.values()]
         .sort((first, second) =>
-            formatBoardIdentity(first.identity).localeCompare(
-                formatBoardIdentity(second.identity),
-                'cs'
-            ));
+            boardSortLabel(first).localeCompare(boardSortLabel(second), 'cs')
+        );
 
     if (values.length === 0) {
         const empty = documentRef.createElement('p');
@@ -1277,15 +1318,21 @@ const renderActiveBoards = () => {
 
     values.forEach((boardPresence) => {
         const isDepartureBoard = isDepartureBoardPresence(boardPresence);
+        const isClockBoard = isClockBoardPresence(boardPresence);
         const item = documentRef.createElement('div');
         item.className = 'active-board-item';
         item.classList.toggle('is-departure-board', isDepartureBoard);
+        item.classList.toggle('is-clock-board', isClockBoard);
         item.classList.toggle(
             'is-unconfigured',
-            !isDepartureBoard && boardPresence.configured === false
+            !isDepartureBoard
+                && !isClockBoard
+                && boardPresence.configured === false
         );
         const identity = documentRef.createElement('strong');
-        identity.textContent = isDepartureBoard
+        identity.textContent = isClockBoard
+            ? clockBoardLabel(boardPresence)
+            : isDepartureBoard
             ? 'Odjezdová tabule'
             : boardPresence.configured === false
             ? 'Tabule bez identity'
@@ -1293,10 +1340,13 @@ const renderActiveBoards = () => {
         const details = documentRef.createElement('span');
         details.className = 'active-board-details';
         const instanceLine = documentRef.createElement('span');
-        instanceLine.append(documentRef.createTextNode(
-            `${isDepartureBoard
+        const instanceKind = isClockBoard
+            ? 'hodiny'
+            : isDepartureBoard
                 ? `${boardPresence.rowCount || DEPARTURE_BOARD_ROW_COUNT_DEFAULT} řádků`
-                : 'nástupištní tabule'} · instance `
+                : 'nástupištní tabule';
+        instanceLine.append(documentRef.createTextNode(
+            `${instanceKind} · instance `
         ));
         const clientId = documentRef.createElement('span');
         clientId.className = 'active-board-client';
@@ -1326,6 +1376,7 @@ const renderActiveBoards = () => {
         const status = documentRef.createElement('span');
         status.className = 'active-board-status';
         status.textContent = !isDepartureBoard
+            && !isClockBoard
             && boardPresence.configured === false
             ? 'Není nakonfigurovaná'
             : 'Online';
@@ -1355,8 +1406,16 @@ const renderActiveBoards = () => {
         settingsButton.className = 'board-settings-button';
         settingsButton.dataset.boardInstanceId = boardPresence.instanceId;
         settingsButton.replaceChildren(createGearIcon());
-        settingsButton.setAttribute('aria-label', 'Nastavení tabule');
-        settingsButton.title = 'Nastavení tabule';
+        if (isClockBoard) {
+            settingsButton.disabled = true;
+            settingsButton.classList.add('is-readonly');
+            settingsButton.setAttribute('aria-disabled', 'true');
+            settingsButton.setAttribute('aria-label', 'Hodiny nemají nastavení');
+            settingsButton.title = 'Hodiny nemají nastavení';
+        } else {
+            settingsButton.setAttribute('aria-label', 'Nastavení tabule');
+            settingsButton.title = 'Nastavení tabule';
+        }
         const identifyButton = documentRef.createElement('button');
         identifyButton.type = 'button';
         identifyButton.className = 'identify-board-button';
@@ -1421,11 +1480,24 @@ const renderActiveBoards = () => {
             }
         });
         volumeControl.append(volumeText, volumeRange, volumeOutput);
-        actions.append(volumeControl, muteButton, settingsButton);
+        if (!isClockBoard) {
+            actions.append(volumeControl, muteButton, settingsButton);
+        }
         const heading = documentRef.createElement('div');
         heading.className = 'active-board-heading';
-        heading.append(identifyButton, identity);
-        item.append(heading, details, status, audioStatus, actions, connectionLine);
+        if (isClockBoard) {
+            heading.append(identity);
+        } else {
+            heading.append(identifyButton, identity);
+        }
+        item.append(heading, details, status);
+        if (!isClockBoard) {
+            item.append(audioStatus);
+        }
+        if (!isClockBoard) {
+            item.append(actions);
+        }
+        item.append(connectionLine);
         activeBoardsList.appendChild(item);
     });
 };
@@ -1999,7 +2071,10 @@ const appendFlapTimingControl = (boardPresence) => {
 };
 
 const openBoardSettings = (boardPresence) => {
-    if (!boardSettingsDialog || !boardSettingsBody || !boardPresence) {
+    if (!boardSettingsDialog
+        || !boardSettingsBody
+        || !boardPresence
+        || isClockBoardPresence(boardPresence)) {
         return;
     }
 
@@ -2140,6 +2215,9 @@ const openBoardSettings = (boardPresence) => {
 activeBoardsList?.addEventListener('click', (event) => {
     const settingsButton = event.target.closest('.board-settings-button');
     if (settingsButton) {
+        if (settingsButton.disabled) {
+            return;
+        }
         openBoardSettings(findBoardPresence(settingsButton.dataset.boardInstanceId));
         return;
     }
@@ -2562,7 +2640,7 @@ const getDesiredStateForBoard = (identity) => {
         desired.action === 'apply-board' && desired.state?.departureTime
     );
     if (applies.length > 0) {
-        const now = new Date();
+        const now = sourceNow();
         applies.sort((first, second) => compareDeparturesByTime(
             {
                 ...first.state,
@@ -2643,9 +2721,14 @@ const updateBoardPresence = (message) => {
     const payload = message.payload || {};
     const page = payload.page || 'platformTable';
     const isDepartureBoard = page === 'departureBoard';
+    const isClockBoard = page === 'analogClock' || page === 'analogClockRound';
     const identity = normalizeBoardIdentity(payload.identity);
     const boardId = payload.boardId
-        || (isDepartureBoard ? 'departure-board' : getBoardIdentityKey(identity));
+        || (isDepartureBoard
+            ? 'departure-board'
+            : isClockBoard
+                ? page
+                : getBoardIdentityKey(identity));
     const instanceId = payload.instanceId || message.source;
     const key = `${page}:${boardId}:${instanceId}`;
     const oldEntry = [...activeBoards.entries()].find(
@@ -2664,7 +2747,7 @@ const updateBoardPresence = (message) => {
         boardId,
         instanceId,
         identity,
-        configured: isDepartureBoard || (
+        configured: isDepartureBoard || isClockBoard || (
             payload.configured !== false
             && Boolean(identity.platform && identity.track)
         ),
@@ -2724,7 +2807,7 @@ const updateBoardPresence = (message) => {
         || !previous) {
         renderDeparturesTable();
     }
-    if (!isDepartureBoard) {
+    if (!isDepartureBoard && !isClockBoard) {
         syncBoardPresence(boardPresence);
     }
 };
@@ -2881,6 +2964,16 @@ transport.subscribe((message) => {
                     source: instanceId
                 }
             });
+            if (message.payload?.page === 'analogClock'
+                || message.payload?.page === 'analogClockRound') {
+                transport.publish('manage:clock', {
+                    clock: sourceClockSnapshot()
+                }, {
+                    target: {
+                        source: instanceId
+                    }
+                });
+            }
         }
         updateBoardPresence(message);
         return;
@@ -3024,6 +3117,7 @@ const sendBoardAction = (
             : [...activeBoards.values()]
                 .filter((boardPresence) =>
                     !isDepartureBoardPresence(boardPresence)
+                    && !isClockBoardPresence(boardPresence)
                 )
                 .map(
                 (boardPresence) => boardPresence.instanceId
@@ -3220,7 +3314,7 @@ const nearestDepartureForTarget = (target) => {
         return null;
     }
 
-    const now = new Date();
+    const now = sourceNow();
     return departures
         .filter((departure) =>
             isConfiguredTarget(departure.target)
@@ -3799,7 +3893,12 @@ const pollLiveDepartures = async () => {
             return;
         }
 
+        const hadClock = hasSourceClock();
+        setSourceClock(payload.clock);
         const result = await reconcileLiveDepartures(payload.departures);
+        if (!result.changed && (payload.clock || hadClock)) {
+            publishDepartureSnapshot();
+        }
         const fetchedAt = payload.fetchedAt
             ? new Date(payload.fetchedAt).toLocaleTimeString('cs-CZ')
             : new Date().toLocaleTimeString('cs-CZ');
@@ -3836,6 +3935,9 @@ const pollLiveDepartures = async () => {
 const startLivePolling = () => {
     stopLivePolling();
     liveDeparturesEnabled = true;
+    if (liveScraperParametersDetails) {
+        liveScraperParametersDetails.open = false;
+    }
     renderLiveControls();
     persistState();
     setLiveStatus('Načítám aktuální odjezdy…');
@@ -3865,8 +3967,10 @@ const stopLiveDepartures = () => {
     stopLivePolling();
     liveDeparturesEnabled = false;
     releaseScraperWatch();
+    setSourceClock(null);
     renderLiveControls();
     persistState();
+    publishDepartureSnapshot();
     setLiveStatus('Live odjezdy byly zastaveny.');
 };
 
@@ -3900,42 +4004,44 @@ departures.forEach((departure) => {
     }
 });
 
-// Recover active departures that are present in the desired-state registry
-// but missing from an older/incomplete departures collection.
-Object.values(desiredStates).forEach((desired) => {
-    if (desired?.action !== 'apply-board'
-        || !desired.target
-        || !desired.state?.departureTime) {
-        return;
-    }
+// Recover active departures only for older states that did not have a
+// departures collection. An explicit empty collection is authoritative.
+if (!hasPersistedDepartures) {
+    Object.values(desiredStates).forEach((desired) => {
+        if (desired?.action !== 'apply-board'
+            || !desired.target
+            || !desired.state?.departureTime) {
+            return;
+        }
 
-    const identity = getBoardIdentityKey(desired.target);
-    const alreadyLoaded = departures.some((departure) =>
-        departure.id === identity
-        || getBoardIdentityKey(departure.target) === identity
-    );
-    if (alreadyLoaded) {
-        return;
-    }
-
-    const recovered = normalizeDeparture({
-        id: identity,
-        target: desired.target,
-        ...desired.state,
-        revision: desired.revision,
-        updatedAt: desired.updatedAt
-    });
-    if (recovered.target.platform
-        && recovered.target.track
-        && recovered.departureTime) {
-        departures.push(recovered);
-        nextRevision = Math.max(
-            nextRevision,
-            Number(recovered.revision) || 0
+        const identity = getBoardIdentityKey(desired.target);
+        const alreadyLoaded = departures.some((departure) =>
+            departure.id === identity
+            || getBoardIdentityKey(departure.target) === identity
         );
-        desiredStatesRepaired = true;
-    }
-});
+        if (alreadyLoaded) {
+            return;
+        }
+
+        const recovered = normalizeDeparture({
+            id: identity,
+            target: desired.target,
+            ...desired.state,
+            revision: desired.revision,
+            updatedAt: desired.updatedAt
+        });
+        if (recovered.target.platform
+            && recovered.target.track
+            && recovered.departureTime) {
+            departures.push(recovered);
+            nextRevision = Math.max(
+                nextRevision,
+                Number(recovered.revision) || 0
+            );
+            desiredStatesRepaired = true;
+        }
+    });
+}
 
 const startupBoardCommands = syncAllTargetBoards();
 if (startupBoardCommands.length > 0) {
@@ -4160,24 +4266,33 @@ const formatManageClock = (date) =>
     + `${padClockPart(date.getMinutes())}:`
     + `${padClockPart(date.getSeconds())}`;
 
-const renderManageClock = (date = new Date()) => {
+const renderManageClock = (date = sourceNow()) => {
     if (!manageHeaderClock) {
         return;
     }
 
     manageHeaderClock.textContent = formatManageClock(date);
     manageHeaderClock.dateTime = date.toISOString();
+    manageHeaderClock.title = hasSourceClock() ? 'Čas ze zdroje' : '';
 };
 
 let manageClockTimer = null;
-let syncedNearestMinute = new Date().getHours() * 60 + new Date().getMinutes();
+const sourceMinuteKey = (date) => [
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes()
+].join('-');
+let syncedNearestMinute = sourceMinuteKey(sourceNow());
 const syncNearestBoardsForClock = () => {
-    const now = new Date();
-    const minute = now.getHours() * 60 + now.getMinutes();
+    const now = sourceNow();
+    const minute = sourceMinuteKey(now);
     if (minute === syncedNearestMinute) {
         return;
     }
     syncedNearestMinute = minute;
+    renderDeparturesTable();
     const commands = syncAllTargetBoards();
     if (commands.length === 0) {
         return;
@@ -4194,14 +4309,23 @@ const syncNearestBoardsForClock = () => {
     });
 };
 const scheduleManageClock = () => {
-    const now = new Date();
+    const now = sourceNow();
     renderManageClock(now);
     syncNearestBoardsForClock();
+    const pace = hasSourceClock() ? Math.max(sourcePace(), 0) : 1;
+    const delay = pace === 1
+        ? 1000 - now.getMilliseconds()
+        : Math.min(1000, Math.max(50, 1000 / Math.max(pace, 0.25)));
     manageClockTimer = window.setTimeout(
         scheduleManageClock,
-        1000 - now.getMilliseconds()
+        Math.max(20, delay)
     );
 };
+
+subscribeSourceClock(() => {
+    renderDeparturesTable();
+    scheduleLensActivation();
+});
 
 scheduleManageClock();
 

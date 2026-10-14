@@ -684,6 +684,20 @@ body:has(#manage.is-layout-dragging) {
     margin: 0 0 0.85rem;
 }
 
+.live-scraper-parameters {
+    margin: 0 0 0.85rem;
+}
+
+.live-scraper-parameters summary {
+    margin-bottom: 0.65rem;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.live-scraper-parameters:not([open]) summary {
+    margin-bottom: 0;
+}
+
 .live-source-heading {
     display: flex;
     flex-wrap: wrap;
@@ -1459,6 +1473,11 @@ body:has(#manage.is-layout-dragging) {
     opacity: 0.48;
 }
 
+.active-board-actions button.is-readonly:disabled {
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .board-settings-icon {
     display: block;
     width: 1.2rem;
@@ -2103,7 +2122,9 @@ body.manage-night-mode #manage #boardForm .board-form-field textarea,
 body.manage-night-mode #manage #boardForm .lamp-control-select select,
 body.manage-night-mode #manage #boardForm .lens-settings select,
 #skrin.night-mode ~ #manage #liveDeparturesPanel input,
+#skrin.night-mode ~ #manage #liveDeparturesPanel select,
 body.manage-night-mode #liveDeparturesPanel input,
+body.manage-night-mode #liveDeparturesPanel select,
 #skrin.night-mode ~ #manage #departureBoardLogoSvg,
 body.manage-night-mode #departureBoardLogoSvg,
 #skrin.night-mode ~ #manage #stationProfilePanel input,
@@ -2464,6 +2485,7 @@ html.manage-session-denied .manage-session-screen {
 .manage-session-guide {
     margin-top: 1.6rem;
     text-align: left;
+    margin-bottom: 2.0rem;
 }
 
 .manage-session-guide h2 {
@@ -2528,6 +2550,10 @@ html.manage-session-denied .manage-session-screen {
     border-radius: 0.25rem;
 }
 
+.manage-session-choices img.clock {
+    width: 75px;
+}
+
 .manage-session-choice-caption {
     display: flex;
     align-items: center;
@@ -2576,6 +2602,20 @@ html.manage-session-denied .manage-session-screen {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.45rem;
+}
+
+.manage-session-range {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    align-items: center;
+}
+
+.manage-session-range output {
+    min-width: 3.5rem;
+    color: #fff;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 .manage-session-guide select,
@@ -2633,7 +2673,7 @@ html.manage-session-denied .manage-session-screen {
 }
 
 #manageSessionRetry {
-    margin-top: 1.4rem;
+    display: none;
 }
 
 @media (max-width: 800px) {

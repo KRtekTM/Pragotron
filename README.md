@@ -66,7 +66,15 @@ Jiný zdroj je jiná adresa ve správci. Ten si z ní nejdřív vezme popis:
   pak správce posílá jako query parametry. `interval` je rezervovaný.
 - `GET {adresa}` vrátí `{ "departures": [ ... ] }`. To je jediný tvar, který
   správce čeká. Co je před ním, je věc scraperu: web, sériová linka modelu,
-  letištní API, soubor, cokoliv.
+  letištní API, soubor, cokoliv. Volitelný objekt `clock` s poli `time`
+(okamžik ISO) a `pace` (kolik simulovaných milisekund uplyne za jednu
+skutečnou) přebírají hodiny, řazení i „teď“ na tabulích. Podružné hodiny
+si vteřiny měří samy: na 59. vteřině čekají na impuls minuty, a když impuls
+přijde dřív, přesmýknou minutu hned. Bez `clock` zůstává čas počítače, což
+je správně pro živou tabuli Správy železnic. Noční režim podle slunce se
+tím neřídí. `analogClock.html` a `analogClockRound.html` otevřené jako
+soubor ukazují čas počítače; přes server se připojí jako další tabule a
+čas převezmou.
 - `POST {adresa}/watch` a `POST {adresa}/stop` jsou volitelné. Když je schéma
   uvede, zdroj může v klidu nic nestahovat a pracovat jen po dobu, kdy správce
   sledování zapne.
@@ -129,6 +137,22 @@ Ve správci zapněte **Spustit live odjezdy**. Výchozí zdroj je Brno hlavní
 nádraží (`StationTable.aspx?Key=455`). Interval stahování je 30–300 sekund,
 výchozí minuta.
 
+Když je živá tabule řídká, dejte do adresy scraperu simulátor na tomtéž
+serveru:
+
+```text
+http://127.0.0.1:4787/api/departure-simulator
+```
+
+Správce si k němu načte parametry: počet odjezdů, rozestup v simulovaných
+minutách, čas `HH:MM`, zrychlení, jak dlouho vlak po odjezdu zůstane, semeno
+sestavy, zpoždění, sloupec Přes a jestli má nástupiště. Prázdný čas a
+zrychlení 1 nechají hodiny počítače. Vyplněný čas je nastaví a stejná hodnota
+je pak nechá běžet; zrychlení 0 je zastaví, 60 je jedna simulovaná minuta za
+sekundu. Hodiny běží mezi dotazy samy. Seznam vlaků se mění až s dalším
+stažením, takže při velkém zrychlení zkraťte interval. Stejné semeno drží
+stejné vlaky. Simulátor nestahuje Správu železnic a nemusí se zvlášť zapínat.
+
 ### Parametry adresy tabule
 
 | Parametr | Stránka | Význam |
@@ -153,7 +177,8 @@ původu se domluví i bez serveru, ale pro běžnou práci je `npm run serve`.
 departureBoard.html          odjezdová tabule
 platformTable.html           nástupištní tabule
 platformTableManage.html     správce
-analogClock.html             samostatné hodiny
+analogClock.html             hranaté analogové hodiny
+analogClockRound.html        kulaté analogové hodiny
 src/platform/                framework a veřejné API (index.js)
 src/demos/                   ukázkový správce, tabule a záložní balíčky
 src/styles/                  CSS ukázky a společné tokeny
@@ -175,6 +200,9 @@ node scripts/check-station-profile.mjs
 node scripts/check-station-names.mjs
 node scripts/check-train-types.mjs
 node scripts/check-departure-date.mjs
+node scripts/check-departure-simulator.mjs
+node scripts/check-source-clock.mjs
+node scripts/check-slave-clock.mjs
 node scripts/check-board-channel.mjs
 node scripts/check-audio-stretch.mjs
 ```

@@ -112,6 +112,7 @@
 
             el.sweepingMinutes = settings.sweepingMinutes;
             el.sweepingSeconds = settings.sweepingSeconds;
+            el.now = typeof settings.now === 'function' ? settings.now : null;
 
             el.secondHandEnabled = settings.secondHandEnabled;
             el.showMinuteLines = settings.showMinuteLines;
@@ -702,6 +703,13 @@
             }
 
             function getCorrectedDate(){
+                if(typeof el.now === 'function'){
+                    var customNow = el.now();
+                    if(customNow instanceof Date && !isNaN(customNow.getTime())){
+                        return customNow;
+                    }
+                }
+
                 var theDate = new Date();
 
                 if(el.timeCorrection){

@@ -98,6 +98,17 @@ export {
     cloneLampSetting
 } from './lighting-state.js';
 export { NightLighting } from './night-lighting.js';
+export {
+    hasSourceClock,
+    normalizeSourceClock,
+    setSourceClock,
+    sourceClockSnapshot,
+    sourceDelay,
+    sourceNow,
+    sourcePace,
+    subscribeSourceClock
+} from './source-clock.js';
+export { createSlaveClock } from './slave-clock.js';
 export { LocalStorageAdapter } from './storage.js';
 export {
     BOARD_TRANSPORT_CHANNEL,

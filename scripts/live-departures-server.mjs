@@ -22,6 +22,11 @@ import {
 } from '../src/platform/live-departures.js';
 import { attachBoardChannel } from './board-channel-server.mjs';
 import {
+    DEPARTURE_SIMULATOR_PATH,
+    departureSimulatorSchema,
+    simulateDepartures
+} from './departure-simulator.mjs';
+import {
     createManageSession,
     normalizeManageClientAddress
 } from './manage-session.mjs';
@@ -523,6 +528,28 @@ const server = createServer(async (request, response) => {
         return;
     }
 
+    if (requestUrl.pathname === `${DEPARTURE_SIMULATOR_PATH}/schema`) {
+        writeJson(response, 200, normalizeScraperSchema(
+            departureSimulatorSchema()
+        ));
+        return;
+    }
+
+    if (requestUrl.pathname === DEPARTURE_SIMULATOR_PATH) {
+        const query = Object.fromEntries(requestUrl.searchParams);
+        const payload = simulateDepartures(query, new Date());
+        const clockLabel = payload.clock
+            ? `${new Date(payload.clock.time).toLocaleTimeString('cs-CZ')} `
+                + `×${payload.clock.pace}`
+            : 'počítač';
+        logLine(
+            `Simulátor: ${payload.departures.length} odjezdů, `
+            + `čas ${clockLabel}, semeno ${payload.simulator.seed}`
+        );
+        writeJson(response, 200, payload);
+        return;
+    }
+
     if (requestUrl.pathname === '/api/live-departures') {
         if (!scrapeWatch || Date.now() > scrapeWatch.expiresAt) {
             if (scrapeWatch) {
@@ -622,7 +649,10 @@ const printStartupBanner = ({ localBase, addresses, network }) => {
         ['Server', `${localBase}/`],
         ['Manage', `${localBase}/platformTableManage.html`],
         ['Odjezdová', `${localBase}/departureBoard.html`],
-        ['Nástupištní', `${localBase}/platformTable.html?platform=1&track=6a`]
+        ['Nástupištní', `${localBase}/platformTable.html?platform=1&track=6a`],
+        ['Analogové hodiny', `${localBase}/analogClock.html`],
+        ['Kulaté hodiny', `${localBase}/analogClockRound.html`],
+        ['Simulátor', `${localBase}${DEPARTURE_SIMULATOR_PATH}`]
     ];
     const notes = [];
     if (network) {

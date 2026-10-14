@@ -20,6 +20,7 @@ import {
     trainNumberStyleId
 } from './station-profile.js';
 import { nextFlapDeadline, scheduleFlapStepAt } from './flap-clock.js';
+import { sourceNow } from './source-clock.js';
 import {
     DelayFlapDisplay,
     DepartureTimeDisplay,
@@ -995,7 +996,7 @@ export class DepartureBoardDisplay {
     update(departures, { immediate = false } = {}) {
         const nextRows = sortDepartures(
             Array.isArray(departures) ? departures : [],
-            new Date(),
+            sourceNow(),
             this.applyDelayOffset
         ).slice(0, this.rows.length);
         const paddedRows = [

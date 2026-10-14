@@ -23,7 +23,14 @@ import {
     parseLensColors,
     readInitialLensColors,
     readStoredStationProfile,
-    setActiveStationProfile
+    setActiveStationProfile,
+    createSlaveClock,
+    hasSourceClock,
+    setSourceClock,
+    sourceDelay,
+    sourceNow,
+    sourcePace,
+    subscribeSourceClock
 } from '../platform/index.js';
 
 const STORAGE_KEY = 'pragotron.platformTable.state.v2';
@@ -188,21 +195,29 @@ const boardClock = clockRoot
         includeBlank: false
     })
     : null;
+const boardSlaveClock = createSlaveClock({
+    hasSourceClock,
+    sourceNow,
+    sourcePace
+});
 let boardClockTimer = null;
 let lastBoardClockStamp = '';
+let lastSortedMinute = '';
+let refreshRowsForClock = () => {};
 
 const tickBoardClock = (immediate = false) => {
     if (!boardClock) {
         return;
     }
 
-    const now = new Date();
+    const now = boardSlaveClock.now();
     const stamp = `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
     if (stamp === lastBoardClockStamp) {
         return;
     }
 
     lastBoardClockStamp = stamp;
+    refreshRowsForClock(now);
     if (immediate) {
         boardClock.setImmediate(now.getHours(), now.getMinutes(), now.getSeconds());
         return;
@@ -213,8 +228,17 @@ const tickBoardClock = (immediate = false) => {
 
 const scheduleBoardClock = (immediate = false) => {
     tickBoardClock(immediate);
-    const now = new Date();
-    const delay = 1000 - now.getMilliseconds();
+    const pace = hasSourceClock() ? Math.max(sourcePace(), 0) : 1;
+    const real = new Date();
+    let delay = pace === 1
+        ? 1000 - real.getMilliseconds()
+        : Math.min(1000, Math.max(50, 1000 / Math.max(pace, 0.25)));
+    if (hasSourceClock() && pace > 0) {
+        const master = sourceNow();
+        const intoMinute = (master.getSeconds() * 1000)
+            + master.getMilliseconds();
+        delay = Math.min(delay, Math.max(20, (60_000 - intoMinute) / pace));
+    }
     boardClockTimer = window.setTimeout(
         () => scheduleBoardClock(false),
         Math.max(20, delay)
@@ -249,7 +273,7 @@ const transport = new BoardTransport();
 const recoverDepartures = (
     values,
     desiredStates = savedDesiredStates,
-    { includeMissing = true } = {}
+    { includeMissing = false } = {}
 ) => {
     const candidates = desiredStates
         && typeof desiredStates === 'object'
@@ -355,7 +379,11 @@ const getCurrentDesiredStates = () => {
         : savedDesiredStates;
 };
 
-const persistedDepartures = recoverDepartures(savedState.departures);
+const persistedDepartures = recoverDepartures(
+    savedState.departures,
+    savedDesiredStates,
+    { includeMissing: false }
+);
 const persistedRevision = Number(savedState.revision) || 0;
 let departures = [];
 let boardTiming = initialTiming;
@@ -405,7 +433,7 @@ const getPreDepartureActivationTime = (departure) => {
     const departureDate = getEffectiveDepartureDate(
         departure?.departureTime,
         departure?.delay,
-        new Date(),
+        sourceNow(),
         delayOffset
     );
     if (!departureDate) {
@@ -416,13 +444,13 @@ const getPreDepartureActivationTime = (departure) => {
         - Number(preDeparture.seconds || 0) * 1000;
 };
 
-const getPreDepartureActive = (departure, now = Date.now()) => {
+const getPreDepartureActive = (departure, now = sourceNow().getTime()) => {
     const activationTime = getPreDepartureActivationTime(departure);
     return activationTime === null || now >= activationTime;
 };
 
 const getDisplayDepartures = () => {
-    const now = Date.now();
+    const now = sourceNow().getTime();
     return departures.map((departure) => ({
         ...departure,
         preDepartureActive: getPreDepartureActive(departure, now)
@@ -436,13 +464,16 @@ const scheduleLensActivation = () => {
         return;
     }
 
-    const now = Date.now();
+    const now = sourceNow().getTime();
     const nextActivation = departures
         .map(getPreDepartureActivationTime)
         .filter((value) => value !== null && value > now)
         .sort((first, second) => first - second)[0];
+    const delay = nextActivation === undefined
+        ? null
+        : sourceDelay(nextActivation);
 
-    if (nextActivation === undefined) {
+    if (delay === null) {
         return;
     }
 
@@ -450,13 +481,36 @@ const scheduleLensActivation = () => {
         lensActivationTimer = null;
         display.update(getDisplayDepartures());
         scheduleLensActivation();
-    }, Math.max(0, nextActivation - now) + 10);
+    }, delay + 10);
 };
 
 const updateDisplay = ({ immediate = false } = {}) => {
     display.update(getDisplayDepartures(), { immediate });
     scheduleLensActivation();
 };
+
+refreshRowsForClock = (now) => {
+    const minuteKey = [
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        now.getHours(),
+        now.getMinutes()
+    ].join('-');
+    if (minuteKey === lastSortedMinute) {
+        return;
+    }
+
+    lastSortedMinute = minuteKey;
+    updateDisplay();
+};
+
+subscribeSourceClock(() => {
+    window.clearTimeout(boardClockTimer);
+    lastBoardClockStamp = '';
+    lastSortedMinute = '';
+    scheduleBoardClock(true);
+});
 
 const applyRowCount = (value) => {
     const previous = display.rows.length;
@@ -514,10 +568,16 @@ const applyBoardSettings = (settings = {}) => {
 const applyDepartureSnapshot = (
     nextDepartures,
     nextRevision,
-    { immediate = false, timing = null } = {}
+    {
+        immediate = false,
+        timing = null,
+        allowRevisionReset = false
+    } = {}
 ) => {
     const numericRevision = Number(nextRevision) || 0;
-    if (numericRevision < revision) {
+    // A manager snapshot may start its revision sequence over after the
+    // previous local cache was removed, so it can still replace old data.
+    if (!allowRevisionReset && numericRevision < revision) {
         return false;
     }
 
@@ -754,13 +814,17 @@ transport.subscribe((message) => {
         liveSnapshotReceived = true;
         manageSnapshotReceived = true;
         stopHelloRetry();
+        if (Object.prototype.hasOwnProperty.call(message.payload || {}, 'clock')) {
+            setSourceClock(message.payload.clock);
+        }
         applyDepartureSnapshot(
             recoverDepartures(
                 message.payload?.departures,
                 getCurrentDesiredStates(),
                 { includeMissing: false }
             ),
-            message.payload?.revision
+            message.payload?.revision,
+            { allowRevisionReset: true }
         );
         return;
     }
@@ -792,13 +856,18 @@ const storageHandler = (event) => {
     try {
         const nextState = JSON.parse(event.newValue);
         liveSnapshotReceived = true;
+        if (Object.prototype.hasOwnProperty.call(nextState, 'clock')) {
+            setSourceClock(nextState.clock);
+        }
         applyBoardSettings(nextState.settings || nextState);
         applyDepartureSnapshot(
             recoverDepartures(
                 nextState.departures,
-                nextState.desired || savedDesiredStates
+                nextState.desired || savedDesiredStates,
+                { includeMissing: false }
             ),
-            nextState.revision
+            nextState.revision,
+            { allowRevisionReset: true }
         );
     } catch {
         // Ignore malformed persistence updates.
@@ -816,13 +885,18 @@ const pollPersistedState = () => {
     }
 
     liveSnapshotReceived = true;
+    if (Object.prototype.hasOwnProperty.call(nextState, 'clock')) {
+        setSourceClock(nextState.clock);
+    }
     applyBoardSettings(nextState.settings || nextState);
     applyDepartureSnapshot(
         recoverDepartures(
             nextState.departures,
-            nextState.desired || savedDesiredStates
+            nextState.desired || savedDesiredStates,
+            { includeMissing: false }
         ),
-        nextState.revision
+        nextState.revision,
+        { allowRevisionReset: true }
     );
 };
 

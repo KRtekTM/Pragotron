@@ -1172,7 +1172,24 @@ manage spustí živé odjezdy právě přes něj, a po `POST {adresa}/stop` nebo
 po vypršení sledování zase skončí. Jiný endpoint se tímto scraperem
 nespouští. Jiný scraper, třeba z modelového kolejiště, může ve schématu
 uvést vlastní pole typů `text`, `url`, `number` nebo `select`. Po aktivaci
-manage stahuje odjezdy přes zadanou adresu. Interval je 30–300 sekund po 30 sekundách, výchozí je
+manage stahuje odjezdy přes zadanou adresu. Odpověď smí navíc obsahovat
+`clock: { "time": "<ISO>", "pace": <číslo> }`. `time` je simulovaný okamžik
+v čase odpovědi a `pace` říká, jak rychle od té chvíle plyne, dokud
+nepřijde další snímek: 1 je skutečná rychlost, 0 čas zastaví. Bez `clock`
+zůstávají hodiny, řazení odjezdů i předstih čoček na čase počítače.
+Podružné hodiny si vteřiny pouštějí samy. Impuls ze zdroje rozhoduje jen
+minutu: na 59. vteřině čekají, a když impuls přijde dřív, přesmýknou hned.
+`analogClock.html` a `analogClockRound.html` jako soubor ukazují čas
+počítače. Otevřené přes server se hlásí mezi připojené tabule, převezmou
+čas a tlačítko jejich nastavení je neaktivní. Noční
+režim podle slunce se zdrojem času neřídí. Stejný server nabízí i simulátor
+`/api/departure-simulator`. Do adresy scraperu se zadá celá URL, například
+`http://127.0.0.1:4787/api/departure-simulator`. Nečte tabuli Správy železnic.
+Parametry ve schématu řídí počet, rozestup v simulovaných minutách, čas
+`HH:MM`, zrychlení 0–60, držení po odjezdu, semeno, zpoždění, sloupec
+Přes a umístění na nástupiště. Prázdný čas se zrychlením 1 čas nepřebírá.
+Vyplněný čas hodiny nastaví a stejná hodnota je nechá běžet dál; změna
+zrychlení naváže na právě simulovaný okamžik. Interval je 30–300 sekund po 30 sekundách, výchozí je
 60 sekund a ukládá se s ostatním nastavením manage. Dokud jsou live odjezdy
 zapnuté a je známý název stanice, title stránky je
 `Název stanice – PRAGOTRON – Správce`. Když má parametr `showStation`,

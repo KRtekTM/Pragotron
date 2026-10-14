@@ -47,6 +47,8 @@
                 <p class="manage-session-fallback">
                     <a href="departureBoard.html">Odjezdová tabule</a>
                     <a href="platformTable.html">Nástupištní tabule</a>
+                    <a href="analogClock.html">Analogové hodiny</a>
+                    <a href="analogClockRound.html">Kulaté hodiny</a>
                 </p>
             </div>
             <button type="button" id="manageSessionRetry">Zkusit správce znovu</button>
@@ -365,7 +367,10 @@
                         z <code>/schema</code> na stejné adrese.
                     </small>
                 </label>
-                <div id="liveScraperParameters"></div>
+                <details id="liveScraperParametersDetails" class="live-scraper-parameters" open>
+                    <summary>Parametry scraperu</summary>
+                    <div id="liveScraperParameters"></div>
+                </details>
                 <label class="board-form-field" for="livePollInterval">
                     Interval aktualizace
                     <span class="live-poll-interval">
