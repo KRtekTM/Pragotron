@@ -145,9 +145,13 @@ export {
     saveBoardIdentity
 } from './board-identity.js';
 export {
+    BRNO_SUN_LOCATION,
     BRATISLAVA_SUN_LOCATION,
+    DEFAULT_SUN_TIMES,
+    SUN_SCHEDULE_MODES,
     SunSchedule,
-    calculateSunSchedule
+    calculateSunSchedule,
+    normalizeSunScheduleSettings
 } from './sun-schedule.js';
 export {
     LIVE_POLL_INTERVAL_MAX_MS,

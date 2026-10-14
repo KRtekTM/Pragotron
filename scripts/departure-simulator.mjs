@@ -108,7 +108,7 @@ const resolveSimulatorClock = (options, realNow) => {
         };
     }
 
-    const timeKey = setMs === null ? '' : options.time;
+    const timeKey = `${options.run}|${setMs === null ? '' : options.time}`;
     if (!clockAnchor || clockAnchor.timeKey !== timeKey) {
         clockAnchor = {
             timeKey,
@@ -146,15 +146,43 @@ const localDateKey = (date) => {
 
 const readOptions = (query = {}) => ({
     count: clampInt(query.count, 1, 24, 12),
-    spacing: clampInt(query.spacing, 1, 20, 5),
+    spacingMin: clampInt(
+        query.spacingMin ?? query.spacing,
+        1,
+        60,
+        5
+    ),
+    spacingMax: clampInt(
+        query.spacingMax ?? query.spacing,
+        1,
+        60,
+        5
+    ),
     pace: clampInt(query.pace, 0, 60, 1),
     keep: clampInt(query.keep, 0, 10, 8),
     time: String(query.time ?? '').trim().slice(0, 40),
+    run: String(query.run ?? '').trim().slice(0, 80),
     seed: String(query.seed ?? 'brno').trim().slice(0, 40) || 'brno',
     delay: oneOf(query.delay, ['none', 'steady', 'growing', 'mixed'], 'mixed'),
     via: oneOf(query.via, ['none', 'some', 'all'], 'some'),
     place: oneOf(query.place, ['full', 'open', 'mixed', 'blank'], 'full')
 });
+
+const randomUnit = (seed, index, kind) => (
+    hashString(`${seed}:${kind}:${index}`) / 0x100000000
+);
+
+const randomInteger = (seed, index, kind, minimum, maximum) => (
+    minimum + Math.floor(randomUnit(seed, index, kind) * (maximum - minimum + 1))
+);
+
+const nextSpacing = (options, seed, index) => randomInteger(
+    seed,
+    index,
+    'spacing',
+    Math.min(options.spacingMin, options.spacingMax),
+    Math.max(options.spacingMin, options.spacingMax)
+);
 
 const delayFor = (mode, index, nowMs) => {
     if (mode === 'none') {
@@ -243,14 +271,24 @@ export const departureSimulatorSchema = () => ({
             help: 'Kolik odjezdů se vrátí, od 1 do 24.'
         },
         {
-            id: 'spacing',
-            label: 'Rozestup',
+            id: 'spacingMin',
+            label: 'Rozestup minimum',
             type: 'number',
             min: 1,
-            max: 20,
+            max: 60,
             step: 1,
             default: '5',
-            help: 'Minuty simulovaného času mezi pravidelnými odjezdy.'
+            help: 'Nejkratší náhodný rozestup mezi odjezdy v minutách.'
+        },
+        {
+            id: 'spacingMax',
+            label: 'Rozestup maximum',
+            type: 'number',
+            min: 1,
+            max: 60,
+            step: 1,
+            default: '5',
+            help: 'Nejdelší náhodný rozestup mezi odjezdy v minutách.'
         },
         {
             id: 'time',
@@ -280,8 +318,8 @@ export const departureSimulatorSchema = () => ({
             max: 10,
             step: 1,
             default: '8',
-            help: 'Minuty, po které vlak po pravidelném odjezdu zůstane. '
-                + 'Nejvýše 10, pak by ho tabule řadila na další den.'
+            help: 'Vlak po odjezdu zůstane náhodně 0 až tolik minut. '
+                + 'Nejvýše 10 minut.'
         },
         {
             id: 'seed',
@@ -336,30 +374,39 @@ export const departureSimulatorSchema = () => ({
 export const simulateDepartures = (query = {}, now = new Date()) => {
     const options = readOptions(query);
     const clock = resolveSimulatorClock(options, now);
-    const spacingMs = options.spacing * 60_000;
-    const keepMs = options.keep * 60_000;
     const nowMs = clock.now.getTime();
-    const firstIndex = Math.ceil((nowMs - keepMs) / spacingMs);
     const usedNumbers = new Set();
     const departures = [];
+    const firstDay = new Date(clock.now.getTime());
+    firstDay.setHours(0, 0, 0, 0);
+    let scheduledMs = firstDay.getTime();
+    let index = 0;
 
-    for (let offset = 0; offset < options.count; offset += 1) {
-        const index = firstIndex + offset;
-        const scheduledMs = index * spacingMs;
+    while (departures.length < options.count && index < 3000) {
         const scheduled = new Date(scheduledMs);
-        const train = TRAINS[
-            hashString(`${options.seed}:train:${index}`) % TRAINS.length
-        ];
-        let number = 1000 + (
-            hashString(`${options.seed}:num:${index}`) % 9000
+        const heldMinutes = randomInteger(
+            options.seed,
+            index,
+            'keep',
+            0,
+            options.keep
         );
-        while (usedNumbers.has(number)) {
-            number = 1000 + ((number - 999) % 9000);
-        }
-        usedNumbers.add(number);
-        const trainNumber = String(number);
-        const liveKey = `sim:${options.seed}:${index}`;
-        departures.push({
+        const stillVisible = scheduledMs > nowMs
+            || nowMs - scheduledMs <= heldMinutes * 60_000;
+        if (stillVisible) {
+            const train = TRAINS[
+            hashString(`${options.seed}:train:${index}`) % TRAINS.length
+            ];
+            let number = 1000 + (
+            hashString(`${options.seed}:num:${index}`) % 9000
+            );
+            while (usedNumbers.has(number)) {
+                number = 1000 + ((number - 999) % 9000);
+            }
+            usedNumbers.add(number);
+            const trainNumber = String(number);
+            const liveKey = `sim:${options.seed}:${index}`;
+            departures.push({
             id: `live:${liveKey}`,
             liveKey,
             source: 'live',
@@ -376,7 +423,10 @@ export const simulateDepartures = (query = {}, now = new Date()) => {
                 minutes: scheduled.getMinutes()
             },
             target: targetFor(options.place, index)
-        });
+            });
+        }
+        scheduledMs += nextSpacing(options, options.seed, index) * 60_000;
+        index += 1;
     }
 
     const payload = {

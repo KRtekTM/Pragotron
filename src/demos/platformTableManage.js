@@ -72,7 +72,12 @@ import {
     parseLiveSourceUrl,
     postScraperControl,
     SCRAPER_IDLE_ERROR,
-    scraperControlUrl
+    scraperControlUrl,
+    BRNO_SUN_LOCATION,
+    DEFAULT_SUN_TIMES,
+    SUN_SCHEDULE_MODES,
+    calculateSunSchedule,
+    normalizeSunScheduleSettings
 } from '../platform/index.js';
 import { mountManageLayout } from './manageLayout.js';
 import { mountStationProfileEditor } from './stationProfileEditor.js';
@@ -324,6 +329,22 @@ const boardFormStatus = documentRef.querySelector('#boardFormStatus');
 const lensControls = documentRef.querySelector('#lensControls');
 const nightModeButton = documentRef.querySelector('#nightModeButton');
 const autoNightModeInput = documentRef.querySelector('#autoNightMode');
+const sunScheduleSettingsButton = documentRef.querySelector(
+    '#sunScheduleSettingsButton'
+);
+const sunScheduleDialog = documentRef.querySelector('#sunScheduleDialog');
+const sunScheduleForm = documentRef.querySelector('#sunScheduleForm');
+const sunScheduleTimes = documentRef.querySelector('#sunScheduleTimes');
+const sunScheduleLocation = documentRef.querySelector('#sunScheduleLocation');
+const sunScheduleLocationLabel = documentRef.querySelector(
+    '#sunScheduleLocationLabel'
+);
+const sunScheduleCoordinates = documentRef.querySelector(
+    '#sunScheduleCoordinates'
+);
+const sunScheduleMap = documentRef.querySelector('#sunScheduleMap');
+const sunriseTimeInput = documentRef.querySelector('#sunriseTime');
+const sunsetTimeInput = documentRef.querySelector('#sunsetTime');
 const startButton = documentRef.querySelector('#startButton');
 const resetAllSettingsButton = documentRef.querySelector('#resetAllSettings');
 const clearAllDeparturesButton = documentRef.querySelector(
@@ -362,6 +383,13 @@ const lensDisplay = new LensDisplay(documentRef.createElement('div'), {
 
 let nightMode = savedSettings?.nightMode === true;
 let autoNightMode = savedSettings?.autoNightMode === true;
+let sunScheduleSettings = normalizeSunScheduleSettings(
+    savedSettings?.sunSchedule || {
+        mode: SUN_SCHEDULE_MODES.LOCATION,
+        location: BRNO_SUN_LOCATION,
+        times: DEFAULT_SUN_TIMES
+    }
+);
 let flapTiming = normalizeFlapTiming(savedSettings?.flapTiming);
 let delayOffset = normalizeDelayOffset(
     savedSettings?.delayOffset ?? DELAY_OFFSET_DEFAULT
@@ -586,6 +614,11 @@ const getLightingSettingsState = () => {
     return {
         nightMode,
         autoNightMode,
+        sunSchedule: {
+            ...sunScheduleSettings,
+            location: { ...sunScheduleSettings.location },
+            times: { ...sunScheduleSettings.times }
+        },
         delayOffset,
         departureBoardLogo: newerLogo?.departureBoardLogo ?? departureBoardLogo,
         departureBoardLogoSvg: newerLogo?.departureBoardLogoSvg
@@ -2532,8 +2565,312 @@ const setNightMode = (isNight, { persist = true, publish = true } = {}) => {
     }
 };
 
+const clampSunLatitude = (value) => Math.max(-85, Math.min(85, value));
+const wrapSunLongitude = (value) => ((value + 180) % 360 + 360) % 360 - 180;
+const SUN_MAP_MIN_ZOOM = 2;
+const SUN_MAP_MAX_ZOOM = 6;
+const SUN_MAP_TILE_SIZE = 256;
+let sunMapZoom = 3;
+let sunMapViewCenter = null;
+let sunMapDrag = null;
+let sunMapSuppressClick = false;
+
+const sunMapWorldSize = (zoom = sunMapZoom) => (
+    SUN_MAP_TILE_SIZE * (2 ** zoom)
+);
+const sunMapX = (longitude, zoom = sunMapZoom) => (
+    (wrapSunLongitude(longitude) + 180) / 360 * sunMapWorldSize(zoom)
+);
+const sunMapY = (latitude, zoom = sunMapZoom) => {
+    const radians = clampSunLatitude(latitude) * Math.PI / 180;
+    return (1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2
+        * sunMapWorldSize(zoom);
+};
+const sunMapLongitude = (x, zoom = sunMapZoom) => wrapSunLongitude(
+    x / sunMapWorldSize(zoom) * 360 - 180
+);
+const sunMapLatitude = (y, zoom = sunMapZoom) => 180 / Math.PI * Math.atan(
+    Math.sinh(Math.PI * (1 - 2 * y / sunMapWorldSize(zoom)))
+);
+
+let dialogSunSettings = normalizeSunScheduleSettings(sunScheduleSettings);
+
+const renderSunMap = () => {
+    if (!sunScheduleMap) {
+        return;
+    }
+
+    const width = sunScheduleMap.clientWidth || 560;
+    const height = sunScheduleMap.clientHeight || 300;
+    const world = sunMapWorldSize();
+    const viewCenter = sunMapViewCenter || dialogSunSettings.location;
+    const centerX = sunMapX(viewCenter.longitude);
+    const centerY = sunMapY(viewCenter.latitude);
+    const left = centerX - width / 2;
+    const top = centerY - height / 2;
+    const controls = sunScheduleMap.querySelector('.sun-schedule-map-controls');
+    sunScheduleMap.replaceChildren();
+
+    for (let tileX = Math.floor(left / SUN_MAP_TILE_SIZE) - 1;
+        tileX <= Math.floor((left + width) / SUN_MAP_TILE_SIZE) + 1;
+        tileX += 1) {
+        for (let tileY = Math.floor(top / SUN_MAP_TILE_SIZE) - 1;
+            tileY <= Math.floor((top + height) / SUN_MAP_TILE_SIZE) + 1;
+            tileY += 1) {
+            if (tileY < 0 || tileY >= world / SUN_MAP_TILE_SIZE) {
+                continue;
+            }
+            const image = documentRef.createElement('img');
+            const wrappedX = ((tileX % (world / SUN_MAP_TILE_SIZE))
+                + world / SUN_MAP_TILE_SIZE) % (world / SUN_MAP_TILE_SIZE);
+            image.src = `https://tile.openstreetmap.org/${sunMapZoom}/${wrappedX}/${tileY}.png`;
+            image.alt = '';
+            image.draggable = false;
+            image.style.left = `${tileX * SUN_MAP_TILE_SIZE - left}px`;
+            image.style.top = `${tileY * SUN_MAP_TILE_SIZE - top}px`;
+            sunScheduleMap.append(image);
+        }
+    }
+
+    if (controls) {
+        sunScheduleMap.append(controls);
+    }
+    const marker = documentRef.createElement('span');
+    marker.className = 'sun-schedule-map-marker';
+    marker.setAttribute('aria-hidden', 'true');
+    marker.style.left = `${width / 2}px`;
+    marker.style.top = `${height / 2}px`;
+    sunScheduleMap.append(marker);
+};
+
+const setSunMapZoom = (value) => {
+    sunMapZoom = Math.max(SUN_MAP_MIN_ZOOM, Math.min(SUN_MAP_MAX_ZOOM, value));
+    renderSunMap();
+};
+
+const renderSunScheduleDialog = () => {
+    if (!sunScheduleForm) {
+        return;
+    }
+
+    const modeInput = sunScheduleForm.querySelector(
+        `input[name="sunScheduleMode"][value="${dialogSunSettings.mode}"]`
+    );
+    if (modeInput) {
+        modeInput.checked = true;
+    }
+    if (sunriseTimeInput) {
+        sunriseTimeInput.disabled = dialogSunSettings.mode
+            !== SUN_SCHEDULE_MODES.TIMES;
+        sunriseTimeInput.readOnly = sunriseTimeInput.disabled;
+        sunriseTimeInput.value = dialogSunSettings.times.sunrise;
+    }
+    if (sunsetTimeInput) {
+        sunsetTimeInput.disabled = dialogSunSettings.mode
+            !== SUN_SCHEDULE_MODES.TIMES;
+        sunsetTimeInput.readOnly = sunsetTimeInput.disabled;
+        sunsetTimeInput.value = dialogSunSettings.times.sunset;
+    }
+    if (sunScheduleTimes) {
+        sunScheduleTimes.hidden = dialogSunSettings.mode
+            !== SUN_SCHEDULE_MODES.TIMES;
+    }
+    if (sunScheduleLocation) {
+        sunScheduleLocation.hidden = dialogSunSettings.mode
+            !== SUN_SCHEDULE_MODES.LOCATION;
+    }
+    if (sunScheduleLocationLabel) {
+        sunScheduleLocationLabel.textContent = dialogSunSettings.location.name;
+    }
+    if (sunScheduleCoordinates) {
+        sunScheduleCoordinates.textContent = `${dialogSunSettings.location.latitude.toFixed(4)}°, ${dialogSunSettings.location.longitude.toFixed(4)}°`;
+    }
+    if (dialogSunSettings.mode === SUN_SCHEDULE_MODES.LOCATION) {
+        const calculated = calculateSunSchedule(
+            sourceNow(),
+            dialogSunSettings.location
+        );
+        const formatSunTime = (value) => {
+            if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+                return null;
+            }
+            const options = {
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+                ...(dialogSunSettings.location.timezoneId
+                    ? { timeZone: dialogSunSettings.location.timezoneId }
+                    : {})
+            };
+            return new Intl.DateTimeFormat('en-GB', options).format(value);
+        };
+        dialogSunSettings.times = {
+            sunrise: formatSunTime(calculated.sunrise)
+                || DEFAULT_SUN_TIMES.sunrise,
+            sunset: formatSunTime(calculated.sunset)
+                || DEFAULT_SUN_TIMES.sunset
+        };
+        if (sunriseTimeInput) {
+            sunriseTimeInput.value = dialogSunSettings.times.sunrise;
+        }
+        if (sunsetTimeInput) {
+            sunsetTimeInput.value = dialogSunSettings.times.sunset;
+        }
+    }
+    renderSunMap();
+};
+
+const openSunScheduleDialog = () => {
+    if (!sunScheduleDialog) {
+        return;
+    }
+    dialogSunSettings = normalizeSunScheduleSettings(sunScheduleSettings);
+    sunMapViewCenter = null;
+    if (typeof sunScheduleDialog.showModal === 'function') {
+        sunScheduleDialog.showModal();
+    } else {
+        sunScheduleDialog.setAttribute('open', '');
+    }
+    // Measure the open dialog so the tile grid uses the real viewport size.
+    renderSunScheduleDialog();
+    requestAnimationFrame(() => renderSunMap());
+};
+
+sunScheduleSettingsButton?.addEventListener('click', openSunScheduleDialog);
+sunScheduleForm?.querySelectorAll('input[name="sunScheduleMode"]')
+    .forEach((input) => input.addEventListener('change', () => {
+        dialogSunSettings.mode = input.value === SUN_SCHEDULE_MODES.TIMES
+            ? SUN_SCHEDULE_MODES.TIMES
+            : SUN_SCHEDULE_MODES.LOCATION;
+        renderSunScheduleDialog();
+    }));
+sunScheduleMap?.addEventListener('click', (event) => {
+    if (sunMapSuppressClick) {
+        sunMapSuppressClick = false;
+        return;
+    }
+    if (sunMapDrag?.moved) {
+        sunMapDrag = null;
+        return;
+    }
+    if (event.target.closest('[data-sun-map-zoom]')) {
+        return;
+    }
+    const rect = sunScheduleMap.getBoundingClientRect();
+    const viewCenter = sunMapViewCenter || dialogSunSettings.location;
+    const centerX = sunMapX(viewCenter.longitude);
+    const centerY = sunMapY(viewCenter.latitude);
+    const worldX = centerX + event.clientX - rect.left - rect.width / 2;
+    const worldY = centerY + event.clientY - rect.top - rect.height / 2;
+    dialogSunSettings.location = {
+        ...dialogSunSettings.location,
+        name: 'Vybraná poloha',
+        latitude: clampSunLatitude(sunMapLatitude(worldY)),
+        longitude: sunMapLongitude(worldX),
+        timezoneId: undefined
+    };
+    sunMapViewCenter = { ...dialogSunSettings.location };
+    renderSunScheduleDialog();
+});
+sunScheduleMap?.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.target.closest('[data-sun-map-zoom]')) {
+        return;
+    }
+    const viewCenter = sunMapViewCenter || dialogSunSettings.location;
+    sunMapDrag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        centerLongitude: viewCenter.longitude,
+        centerLatitude: viewCenter.latitude,
+        moved: false
+    };
+    sunScheduleMap.setPointerCapture(event.pointerId);
+    sunScheduleMap.classList.add('is-dragging');
+});
+sunScheduleMap?.addEventListener('pointermove', (event) => {
+    if (!sunMapDrag || event.pointerId !== sunMapDrag.pointerId) {
+        return;
+    }
+    const dx = event.clientX - sunMapDrag.startX;
+    const dy = event.clientY - sunMapDrag.startY;
+    if (!sunMapDrag.moved && Math.hypot(dx, dy) < 4) {
+        return;
+    }
+    sunMapDrag.moved = true;
+    const centerX = sunMapX(sunMapDrag.centerLongitude);
+    const centerY = sunMapY(sunMapDrag.centerLatitude);
+    sunMapViewCenter = {
+        longitude: sunMapLongitude(centerX - dx),
+        latitude: clampSunLatitude(sunMapLatitude(centerY - dy))
+    };
+    renderSunMap();
+});
+const stopSunMapDrag = (event, commitLocation = false) => {
+    if (!sunMapDrag || event.pointerId !== sunMapDrag.pointerId) {
+        return;
+    }
+    if (commitLocation && sunMapDrag.moved) {
+        const viewCenter = sunMapViewCenter || dialogSunSettings.location;
+        dialogSunSettings.location = {
+            ...dialogSunSettings.location,
+            name: 'Vybraná poloha',
+            latitude: viewCenter.latitude,
+            longitude: viewCenter.longitude,
+            timezoneId: undefined
+        };
+        sunMapSuppressClick = true;
+        renderSunScheduleDialog();
+    }
+    if (sunScheduleMap.hasPointerCapture(event.pointerId)) {
+        sunScheduleMap.releasePointerCapture(event.pointerId);
+    }
+    sunScheduleMap.classList.remove('is-dragging');
+    sunMapDrag = null;
+};
+sunScheduleMap?.addEventListener('pointerup', (event) => {
+    stopSunMapDrag(event, true);
+});
+sunScheduleMap?.addEventListener('pointercancel', (event) => {
+    stopSunMapDrag(event);
+});
+documentRef.addEventListener('pointerup', (event) => {
+    stopSunMapDrag(event, true);
+});
+documentRef.addEventListener('pointercancel', (event) => {
+    stopSunMapDrag(event);
+});
+sunScheduleMap?.querySelectorAll('[data-sun-map-zoom]').forEach((button) => {
+    button.addEventListener('click', () => {
+        setSunMapZoom(sunMapZoom + (button.dataset.sunMapZoom === 'in' ? 1 : -1));
+    });
+});
+sunScheduleMap?.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    setSunMapZoom(sunMapZoom + (event.deltaY < 0 ? 1 : -1));
+}, { passive: false });
+sunScheduleForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    dialogSunSettings.times = {
+        sunrise: sunriseTimeInput?.value || DEFAULT_SUN_TIMES.sunrise,
+        sunset: sunsetTimeInput?.value || DEFAULT_SUN_TIMES.sunset
+    };
+    sunScheduleSettings = normalizeSunScheduleSettings(dialogSunSettings);
+    sunSchedule.setSettings(sunScheduleSettings);
+    syncAutomaticNightMode();
+    publishSettings();
+    setBoardFormStatus('Nastavení slunce bylo uloženo.');
+    sunScheduleDialog?.close();
+});
+documentRef.querySelector('#sunScheduleCancel')?.addEventListener('click', () => {
+    sunScheduleDialog?.close();
+});
+
 const sunSchedule = new SunSchedule({
-    onChange: (isNight) => {
+        settings: sunScheduleSettings,
+        now: sourceNow,
+        clockRate: () => hasSourceClock() ? sourcePace() : 1,
+        onChange: (isNight) => {
         if (!autoNightMode) {
             return;
         }
@@ -3569,6 +3906,14 @@ const scraperQueryParameters = () => {
         }
         query[parameter.id] = normalized.value;
     });
+    try {
+        if (new URL(liveApiUrl, documentRef.baseURI).pathname
+            === '/api/departure-simulator') {
+            query.run = String(liveRunToken);
+        }
+    } catch {
+        // Invalid API URLs are reported by the normal scraper request path.
+    }
     return query;
 };
 
@@ -3895,6 +4240,7 @@ const pollLiveDepartures = async () => {
 
         const hadClock = hasSourceClock();
         setSourceClock(payload.clock);
+        syncAutomaticNightMode();
         const result = await reconcileLiveDepartures(payload.departures);
         if (!result.changed && (payload.clock || hadClock)) {
             publishDepartureSnapshot();

@@ -22,6 +22,7 @@ import {
     createEmptyBoardState,
     getEffectiveDepartureDate,
     DELAY_OFFSET_DEFAULT,
+    normalizeSunScheduleSettings,
     normalizeDelayOffset,
     PLATFORM_FLAP_TIMING_DEFAULTS,
     resolveBoardFlapTiming,
@@ -55,6 +56,9 @@ const transport = new BoardTransport({
 });
 let appliedRevision = 0;
 let automaticNightMode = savedSettings?.autoNightMode === true;
+let sunScheduleSettings = normalizeSunScheduleSettings(
+    savedSettings?.sunSchedule
+);
 let delayOffset = normalizeDelayOffset(
     savedSettings?.delayOffset ?? DELAY_OFFSET_DEFAULT
 );
@@ -366,7 +370,8 @@ const persistNightModeState = () => {
     const currentState = storage.load() || {};
     const modeState = {
         nightMode: nightLighting.isNightMode(),
-        autoNightMode: automaticNightMode
+        autoNightMode: automaticNightMode,
+        sunSchedule: sunScheduleSettings
     };
     storage.save({
         ...currentState,
@@ -381,12 +386,16 @@ const persistNightModeState = () => {
 const publishBoardMode = () => {
     transport.publish('board:mode', {
         nightMode: nightLighting.isNightMode(),
-        autoNightMode: automaticNightMode
+        autoNightMode: automaticNightMode,
+        sunSchedule: sunScheduleSettings
     });
 };
 
 const sunSchedule = new SunSchedule({
-    onChange: (isNight) => {
+        settings: sunScheduleSettings,
+        now: sourceNow,
+        clockRate: () => hasSourceClock() ? sourcePace() : 1,
+        onChange: (isNight) => {
         if (!automaticNightMode) {
             return;
         }
@@ -431,6 +440,7 @@ const applySettings = ({
     clockLight,
     nightMode,
     autoNightMode,
+    sunSchedule: nextSunSchedule,
     flapTiming,
     delayOffset: nextDelayOffset,
     stationProfile
@@ -457,6 +467,10 @@ const applySettings = ({
     }
     if (typeof autoNightMode === 'boolean') {
         automaticNightMode = autoNightMode;
+    }
+    if (nextSunSchedule) {
+        sunScheduleSettings = normalizeSunScheduleSettings(nextSunSchedule);
+        sunSchedule.setSettings(sunScheduleSettings);
     }
     if (typeof nightMode === 'boolean' && !automaticNightMode) {
         setNightMode(nightMode);
@@ -738,6 +752,7 @@ transport.subscribe((message) => {
     if (message.type === 'manage:departures'
         && Object.prototype.hasOwnProperty.call(message.payload || {}, 'clock')) {
         setSourceClock(message.payload.clock);
+        syncAutomaticNightMode();
         scheduleLensActivation(currentDisplayState);
         return;
     }

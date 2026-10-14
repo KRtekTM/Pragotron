@@ -380,8 +380,7 @@ const serveStaticFile = async (requestPath, response) => {
     const filePath = resolve(projectRoot, relativePath);
 
     if (!filePath.startsWith(projectRoot)) {
-        response.writeHead(403);
-        response.end('Forbidden');
+        await serveErrorPage(response, 403, 'Přístup k požadovanému souboru byl zamítnut.');
         return;
     }
 
@@ -399,10 +398,35 @@ const serveStaticFile = async (requestPath, response) => {
             'Content-Type': MIME_TYPES[extension] || 'application/octet-stream'
         });
         response.end(content);
-    } catch {
-        response.writeHead(404);
-        response.end('Not found');
+    } catch (error) {
+        await serveErrorPage(
+            response,
+            404,
+            error instanceof Error ? error.message : 'Požadovaný soubor nebyl nalezen.'
+        );
     }
+};
+
+const serveErrorPage = async (response, statusCode, message) => {
+    let content;
+    try {
+        content = await readFile(resolve(projectRoot, 'err.html'), 'utf8');
+    } catch {
+        response.writeHead(statusCode, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.end(`${statusCode}: ${message}`);
+        return;
+    }
+    const errorData = JSON.stringify({
+        code: statusCode,
+        message: String(message || 'Neznámá chyba.')
+    }).replace(/</g, '\\u003c');
+    const bootstrap = `<script>window.__PRAGOTRON_ERROR__=${errorData};</script>`;
+    content = content.replace('</head>', `${bootstrap}</head>`);
+    response.writeHead(statusCode, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'text/html; charset=utf-8'
+    });
+    response.end(content);
 };
 
 const LISTEN_HOST = process.env.HOST || '0.0.0.0';
@@ -433,7 +457,7 @@ const listensOnNetwork = LISTEN_HOST === '0.0.0.0'
         && LISTEN_HOST !== 'localhost'
         && LISTEN_HOST !== '::1');
 
-const server = createServer(async (request, response) => {
+const handleRequest = async (request, response) => {
     const requestUrl = new URL(
         request.url || '/',
         `http://${request.headers.host || `127.0.0.1:${listeningPort}`}`
@@ -603,6 +627,20 @@ const server = createServer(async (request, response) => {
     }
 
     await serveStaticFile(requestUrl.pathname, response);
+};
+
+const server = createServer((request, response) => {
+    handleRequest(request, response).catch(async (error) => {
+        if (response.headersSent || response.writableEnded) {
+            response.destroy();
+            return;
+        }
+        await serveErrorPage(
+            response,
+            500,
+            error instanceof Error ? error.message : 'Interní chyba serveru.'
+        );
+    });
 });
 
 attachBoardChannel(server);

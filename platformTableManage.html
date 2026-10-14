@@ -342,11 +342,66 @@
                         <input id="autoNightMode" style="vertical-align: middle;" type="checkbox">
                         Automaticky podle slunce
                     </label>
+                    <button
+                        id="sunScheduleSettingsButton"
+                        type="button"
+                        style="height: 36px; margin: auto;"
+                    >
+                        Nastavení slunce
+                    </button>
                 </div>
 
                 <p id="boardFormStatus" role="status" aria-live="polite"></p>
             </fieldset>
             </form>
+
+            <dialog id="sunScheduleDialog" class="sun-schedule-dialog">
+                <form method="dialog" id="sunScheduleForm">
+                    <h2>Nastavení slunce</h2>
+                    <p>Určete, podle čeho se má řídit automatický noční režim.</p>
+                    <fieldset>
+                        <legend>Zdroj času</legend>
+                        <label>
+                            <input type="radio" name="sunScheduleMode" value="times">
+                            Nastavené časy
+                        </label>
+                        <label>
+                            <input type="radio" name="sunScheduleMode" value="location">
+                            Východ a západ podle polohy
+                        </label>
+                    </fieldset>
+                    <div id="sunScheduleTimes" class="sun-schedule-times">
+                        <label for="sunriseTime">Východ slunce
+                            <input id="sunriseTime" type="time" step="60">
+                        </label>
+                        <label for="sunsetTime">Západ slunce
+                            <input id="sunsetTime" type="time" step="60">
+                        </label>
+                    </div>
+                    <div id="sunScheduleLocation" class="sun-schedule-location">
+                        <p id="sunScheduleLocationLabel">Brno</p>
+                        <p id="sunScheduleCoordinates"></p>
+                        <div
+                            id="sunScheduleMap"
+                            class="sun-schedule-map"
+                            role="application"
+                            aria-label="Mapa pro výběr polohy"
+                        >
+                            <div class="sun-schedule-map-controls" aria-label="Přiblížení mapy">
+                                <button type="button" data-sun-map-zoom="in" aria-label="Přiblížit mapu">+</button>
+                                <button type="button" data-sun-map-zoom="out" aria-label="Oddálit mapu">−</button>
+                            </div>
+                        </div>
+                        <small>
+                            Kliknutím do mapy vyberete místo. Podklad poskytuje OpenStreetMap.
+                        </small>
+                    </div>
+                    <div class="sun-schedule-dialog-actions">
+                        <button id="sunScheduleCancel" type="button">Zrušit</button>
+                        <button type="submit">Uložit</button>
+                    </div>
+                </form>
+            </dialog>
 
             <fieldset id="liveDeparturesPanel" class="manage-panel live-departures-panel" data-layout-block>
                 <div><legend>Živé odjezdy</legend></div>

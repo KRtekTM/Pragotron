@@ -906,6 +906,152 @@ body:has(#manage.is-layout-dragging) {
     accent-color: var(--control-focus);
 }
 
+.sun-schedule-dialog {
+    width: min(90vw, 760px);
+    max-height: 90vh;
+    padding: 1.2rem;
+    border: 1px solid #aaa;
+    border-radius: 1rem;
+    background: #f4f4f4;
+    color: #111;
+}
+
+.sun-schedule-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.62);
+}
+
+.sun-schedule-dialog h2 {
+    margin-top: 0;
+}
+
+.sun-schedule-dialog fieldset {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin: 1rem 0;
+    padding: 0.8rem;
+}
+
+.sun-schedule-dialog fieldset label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.sun-schedule-times {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+}
+
+.sun-schedule-times label {
+    display: grid;
+    gap: 0.3rem;
+}
+
+.sun-schedule-dialog input[type="time"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 2.3rem;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid #999;
+    border-radius: var(--control-radius);
+    background: #fff;
+    color: #111;
+    font: inherit;
+}
+
+.sun-schedule-map {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: min(42vw, 320px);
+    min-height: 220px;
+    margin: 0.7rem 0 0.35rem;
+    overflow: hidden;
+    border: 1px solid #777;
+    border-radius: 0.5rem;
+    background: #d5e5ef;
+    cursor: crosshair;
+    line-height: 0;
+    touch-action: none;
+}
+
+.sun-schedule-map img {
+    position: absolute;
+    z-index: 0;
+    display: block;
+    width: 256px;
+    height: 256px;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    user-select: none;
+}
+
+.sun-schedule-map-marker {
+    position: absolute;
+    z-index: 5;
+    width: 1rem;
+    height: 1rem;
+    transform: translate(-50%, -50%);
+    border: 3px solid #fff;
+    border-radius: 50% 50% 50% 0;
+    background: #d22;
+    box-shadow: 0 1px 4px #111;
+    pointer-events: none;
+}
+
+.sun-schedule-map-controls {
+    position: absolute;
+    z-index: 20;
+    top: 0.6rem;
+    left: 0.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    pointer-events: auto;
+}
+
+.sun-schedule-map-controls button {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid #777;
+    border-radius: 0.3rem;
+    background: rgba(255, 255, 255, 0.92);
+    color: #111;
+    cursor: pointer;
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.sun-schedule-map.is-dragging {
+    cursor: grabbing;
+}
+
+.sun-schedule-dialog-actions {
+    display: flex;
+    justify-content: flex-start;
+    flex-direction: row-reverse;
+    gap: 0.6rem;
+    margin-top: 1rem;
+}
+
+.sun-schedule-dialog-actions button {
+    padding: 0.5rem 0.9rem;
+    border: 1px solid #999;
+    border-radius: var(--control-radius);
+    background: #dedede;
+    color: #111;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
 #boardForm button:disabled {
     cursor: wait;
     opacity: 0.48;
@@ -2055,12 +2201,48 @@ body.manage-night-mode #manage #boardForm > fieldset,
 body.manage-night-mode #manage #boardForm .lamp-settings,
 #skrin.night-mode ~ #manage #liveDeparturesPanel,
 body.manage-night-mode #liveDeparturesPanel,
+#skrin.night-mode ~ #manage .sun-schedule-dialog,
+body.manage-night-mode .sun-schedule-dialog,
 #skrin.night-mode ~ #manage #stationProfilePanel,
 body.manage-night-mode #stationProfilePanel,
 #skrin.night-mode ~ #manage .manage-layout-column > .manage-panel,
 body.manage-night-mode #manage .manage-layout-column > .manage-panel {
     border-color: #3f464d;
     background: #171a1e;
+}
+
+#skrin.night-mode ~ #manage .sun-schedule-dialog input[type="time"],
+body.manage-night-mode .sun-schedule-dialog input[type="time"] {
+    border-color: #59636d;
+    background: #272d33;
+    color: #f0f2f4;
+    color-scheme: dark;
+}
+
+#skrin.night-mode ~ #manage .sun-schedule-dialog button,
+body.manage-night-mode .sun-schedule-dialog button {
+    border-color: #626d77;
+    background: #30363d;
+    color: #f0f2f4;
+}
+
+#skrin.night-mode ~ #manage .sun-schedule-dialog,
+body.manage-night-mode .sun-schedule-dialog {
+    border-color: #3f464d;
+    background: #171a1e;
+    color: #f0f2f4;
+    color-scheme: dark;
+}
+
+#skrin.night-mode ~ #manage .sun-schedule-dialog p,
+#skrin.night-mode ~ #manage .sun-schedule-dialog legend,
+#skrin.night-mode ~ #manage .sun-schedule-dialog label,
+#skrin.night-mode ~ #manage .sun-schedule-dialog small,
+body.manage-night-mode .sun-schedule-dialog p,
+body.manage-night-mode .sun-schedule-dialog legend,
+body.manage-night-mode .sun-schedule-dialog label,
+body.manage-night-mode .sun-schedule-dialog small {
+    color: #f0f2f4;
 }
 
 #skrin.night-mode ~ #manage .log-output,

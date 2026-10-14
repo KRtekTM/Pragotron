@@ -15,7 +15,8 @@ const at = (iso) => new Date(iso);
 const now = at('2026-10-14T02:56:00+02:00');
 const base = {
     count: '12',
-    spacing: '5',
+    spacingMin: '5',
+    spacingMax: '5',
     pace: '1',
     keep: '8',
     seed: 'brno',
@@ -27,7 +28,7 @@ const base = {
 const schema = normalizeScraperSchema(departureSimulatorSchema());
 assert(schema?.id === 'departure-simulator', 'schéma simulátoru se má načíst');
 assert(schema.controls.watch === false, 'simulátor nemá vyžadovat sledování');
-assert(schema.parameters.length === 9, 'simulátor má devět parametrů');
+assert(schema.parameters.length === 10, 'simulátor má deset parametrů');
 assert(
     schema.parameters.every((parameter) => parameter.id !== 'interval'),
     'interval zůstává správci'
@@ -144,6 +145,26 @@ assert(
     setClock.departures[0].departureTime.hours >= 7,
     'odjezdy se staví kolem nastaveného času'
 );
+
+const varied = simulateDepartures({
+    ...base,
+    count: '18',
+    spacingMin: '3',
+    spacingMax: '7',
+    keep: '0',
+    time: '08:00'
+}, now);
+const variedMinutes = varied.departures.map((departure) =>
+    departure.departureTime.hours * 60 + departure.departureTime.minutes
+);
+const gaps = variedMinutes.slice(1).map((minute, index) =>
+    minute - variedMinutes[index]
+);
+assert(
+    gaps.every((gap) => gap >= 3 && gap <= 7),
+    'náhodné rozestupy zůstávají v nastaveném rozsahu'
+);
+assert(new Set(gaps).size > 1, 'náhodné rozestupy se skutečně mění');
 
 resetSimulatorClock();
 const started = simulateDepartures(
