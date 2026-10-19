@@ -1,4 +1,8 @@
 {
-  "urls": ["https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=455", "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3694"],
+  "urls": [
+    "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=455",
+    "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3694",
+    "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3444"
+  ],
   "refreshMs": 30000
 }

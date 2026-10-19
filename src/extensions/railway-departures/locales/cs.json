@@ -2,55 +2,32 @@
   "name": "Odjezdy železnice",
   "description": "Prohlížení příjezdů a odjezdů železničních tabulí v panelu souborového systému Salamandra.",
   "commands": {
-    "OpenSalamander.RailwayDepartures.open": "Otevřít odjezdy železnice",
-    "OpenSalamander.RailwayDepartures.configure": "Konfigurovat URL",
-    "OpenSalamander.RailwayDepartures.toggleLens": "Přepnout čočku"
+    "TabuleSprZel.open": "Otevřít vlakové odjezdy",
+    "TabuleSprZel.configure": "Konfigurace"
   },
   "fileSystems": {
     "departures": {
-      "name": "Odjezdy železnice",
+      "name": "Tabule odjezdů SprŽel",
       "rootItems": {
         "departures-root": "Odjezdy"
-      },
-      "actions": {
-        "toggleLens": "Přepnout čočku",
-        "refresh": "Obnovit"
       },
       "columns": {
         "train": { "name": "Vlak", "description": "Název nebo číslo vlaku" },
         "trainNumber": { "name": "Číslo vlaku", "description": "Číslo vlaku" },
         "departureTime": { "name": "Odjezd", "description": "Plánovaný čas odjezdu" },
         "delay": { "name": "Zpoždění", "description": "Zpoždění v minutách" },
+        "actualDepartureTime": { "name": "Skutečný odjezd", "description": "Skutečný čas odjezdu včetně zpoždění" },
         "platform": { "name": "Nástupiště", "description": "Číslo nástupiště" },
         "track": { "name": "Kolej", "description": "Číslo koleje" },
         "sector": { "name": "Sektor", "description": "Sektor" },
-        "lens": { "name": "Čočka", "description": "Stav čočky (vypnuto/zapnuto/bliká)" }
+        "operator": { "name": "Dopravce", "description": "Název dopravce" }
       }
     }
   },
   "strings": {
-    "boardUrl": "URL tabule",
-    "boardUrlHint": "URL JSON API železniční tabule odjezdů",
-    "refreshInterval": "Interval obnovení (ms)",
-    "lensOff": "Vypnuto",
-    "lensOn": "Zapnuto",
-    "lensBlink": "Bliká",
-    "configure": "Konfigurovat",
-    "cancel": "Zrušit",
-    "save": "Uložit",
+    "errorInvalidUrl": "Není nastavena žádná URL tabule. Použijte Konfiguraci.",
     "errorFetch": "Nepodařilo se načíst odjezdy z URL",
-    "errorInvalidUrl": "Není nastavena žádná URL tabule. Použijte Konfigurovat URL.",
-    "settingsTitle": "Nastavení odjezdů železnice",
-    "settingsSaved": "Nastavení uloženo",
-    "departureTime": "Odjezd",
-    "delay": "Zpoždění",
-    "platform": "Nástupiště",
-    "track": "Kolej",
-    "sector": "Sektor",
-    "lens": "Čočka",
-    "refresh": "Obnovit",
-    "toggleLens": "Přepnout čočku",
-    "train": "Vlak",
-    "trainNo": "Číslo vlaku"
+    "fetchFailed": "Nepodařilo se načíst odjezdy",
+    "settingsTitle": "Nastavení odjezdů železnice"
   }
 }

@@ -5,10 +5,9 @@ import { join, dirname } from "node:path";
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = join(EXTENSION_DIR, "config.json");
 const DEFAULT_REFRESH_MS = 30000;
-const LENS_STATES = ["off", "on", "blink"];
 
-const SCRAPER_STATE_KEY = "railwayDepartures.scraperState";
-const CACHE_KEY = "railwayDepartures.cache";
+const SCRAPER_STATE_KEY = "TabuleSprZel.scraperState";
+const CACHE_KEY = "TabuleSprZel.cache";
 
 const HTML_ENTITIES = Object.freeze({
     amp: "&",
@@ -78,11 +77,10 @@ const isTrainTypeBoundary = (value, index) =>
     || /\d/.test(value[index]);
 
 const SOURCE_TRAIN_TYPES = Object.freeze([
-    "Mim. Os", "Mim. R", "ČEDOK", "Eurocity", "Intercity", "SuperCity",
-    "NightJet", "Nightjet", "Ex lôžk.", "Ex miest.", "EuroNight",
-    "railjet", "Railjet", "regiojet", "RegioJet", "Ex", "rj", "RJ",
-    "EC", "IC", "EN", "NJ", "nj", "SC", "sc", "Os", "Sp", "R miest.",
-    "ROH", "R"
+    "Mim. Os", "Mim. R", "ČEDOK", "Eurocity", "Intercity", "Supercity",
+    "Nightjet", "Nightjet", "EuroNight",
+    "Railjet", "Railjet", "RegioJet", "RegioJet", "Ex", "rj", "RJ",
+    "EC", "IC", "EN", "NJ", "nj", "SC", "sc", "Os", "Sp", "R"
 ]);
 
 const profileTrainLabels = () => SOURCE_TRAIN_TYPES;
@@ -94,6 +92,9 @@ const resolveProfileTrainType = (sourceType, operator) => {
         if (op.includes("regiojet")) return "RegioJet";
         if (op.includes("čd") || op.includes("ceske drahy")) return "Railjet";
         return st;
+    }
+    else if (/^nj$/i.test(st)) {
+        return "Nightjet";
     }
     return st;
 };
@@ -153,13 +154,16 @@ const parseTrainCell = (cellHtml) => {
 
 const parsePlatformTarget = (cellHtml) => {
     const raw = cleanText(cellHtml).replace(/[–—−]/g, "-");
+    if (!raw) return { platform: "", track: "", sector: "" };
     const match = raw.match(/^([^/]+?)\s*\/\s*([^\s]+)(?:\s+(.+))?$/);
-    if (!match) return { platform: "", track: "", sector: "" };
-    return {
-        platform: match[1].trim(),
-        track: match[2].trim(),
-        sector: match[3] ? match[3].trim() : ""
-    };
+    if (match) {
+        return {
+            platform: match[1].trim(),
+            track: match[2].trim(),
+            sector: match[3] ? match[3].trim() : ""
+        };
+    }
+    return { platform: raw.trim(), track: "", sector: "" };
 };
 
 const normalizeStationName = (value) => cleanText(value);
@@ -215,9 +219,8 @@ const parseStationTable = (html, { now = new Date(), stationKey = "" } = {}) => 
         const target = parsePlatformTarget(cells[9]);
         const trainRef = trainData.sourceTrainNumber || trainData.trainNumber;
         const liveKey = [
-            dateKey,
             `station-${stationKey || "unknown"}`,
-            trainRef ? `train-${trainRef}` : [`fallback`, departureTime.hours, departureTime.minutes, trainData.train, trainData.operator, stations[0], stations[1]].join("|")
+            trainRef ? `train-${trainRef}` : `seq-${departures.length}`
         ].join(":");
 
         if (seenKeys.has(liveKey)) continue;
@@ -287,7 +290,7 @@ function formatDelay(minutes) {
     if (minutes === null || minutes === undefined || minutes === "") return "";
     const n = Number(minutes);
     if (Number.isNaN(n)) return "";
-    return n > 0 ? `+${n} min` : n === 0 ? "0 min" : String(n) + " min";
+    return n > 0 ? `+${n} min` : n === 0 ? "0 min" : `${n} min`;
 }
 
 function minutesUntilDeparture(departureTime, now) {
@@ -300,51 +303,39 @@ function minutesUntilDeparture(departureTime, now) {
     return Math.round((dep - now) / 60000);
 }
 
-function secondsUntilDeparture(departureTime, now) {
-    if (!departureTime) return null;
-    const match = String(departureTime).match(/^(\d{1,2}):(\d{2})$/);
-    if (!match) return null;
-    const dep = new Date(now);
-    dep.setHours(Number(match[1]), Number(match[2]), 0, 0);
-    if (dep < now) dep.setDate(dep.getDate() + 1);
-    return Math.round((dep - now) / 1000);
-}
-
-function lensLabel(state) {
-    switch (state) {
-        case "on": return "on";
-        case "blink": return "blink";
-        default: return "off";
-    }
-};
-
 const trainShortName = (train) => {
     const map = {
         Osobní: "Os",
         Rychlík: "R",
         SuperCity: "SC",
         NightJet: "NJ",
-        Nightjet: "NJ",
+        Nightjet: "nj",
         Railjet: "RJ",
         RegioJet: "RJ",
         regiojet: "RJ",
-        railjet: "RJ"
+        railjet: "rj",
+        EuroCity: "EC",
+        InterCity: "IC",
+        EuroNight: "EN",
+        Express: "Ex",
+        Spěšný: "Sp",
     };
     return map[train] || train;
 };
 
-const addMinutesToClock = (time, minutes) => {
-    if (!time) return "";
-    const m = Number(minutes);
-    if (!Number.isFinite(m) || m === 0) return time;
-    const match = String(time).match(/^(\d{1,2}):(\d{2})$/);
+const formatActualDepartureWithDate = (departureTime, delayMinutes, now) => {
+    if (!departureTime) return "";
+    const match = String(departureTime).match(/^(\d{1,2}):(\d{2})$/);
     if (!match) return "";
-    let hours = Number(match[1]);
-    let mins = Number(match[2]) + m;
-    while (mins >= 60) { mins -= 60; hours += 1; }
-    while (mins < 0) { mins += 60; hours -= 1; }
-    hours = ((hours % 24) + 24) % 24;
-    return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+    const dep = new Date(now);
+    dep.setHours(Number(match[1]), Number(match[2]), 0, 0);
+    dep.setMinutes(dep.getMinutes() + Number(delayMinutes || 0));
+    if (dep < now) dep.setDate(dep.getDate() + 1);
+    const day = String(dep.getDate()).padStart(2, "0");
+    const month = String(dep.getMonth() + 1).padStart(2, "0");
+    const year = dep.getFullYear();
+    const timeStr = `${String(dep.getHours()).padStart(2, "0")}:${String(dep.getMinutes()).padStart(2, "0")}`;
+    return `${day}.${month}.${year} ${timeStr}`;
 };
 
 function normalizeDepartures(raw, stationName) {
@@ -355,7 +346,7 @@ function normalizeDepartures(raw, stationName) {
         trainNumber: d.trainNumber || "",
         departureTime: d.departureTime || "",
         delay: d.delay ?? "",
-        actualDepartureTime: addMinutesToClock(d.departureTime, d.delay),
+        actualDepartureTime: formatActualDepartureWithDate(d.departureTime, d.delay, new Date()),
         platform: d.platform || "",
         track: d.track || "",
         sector: d.sector || "",
@@ -363,17 +354,14 @@ function normalizeDepartures(raw, stationName) {
     }));
 }
 
-function buildItems(departures, lensStates, blinkOn) {
+function buildItems(departures) {
     const now = new Date();
     return departures.map((d) => {
-        const lens = lensStates[d.id] || "off";
-        const departureSeconds = secondsUntilDeparture(d.departureTime, now);
-        const autoBlink = departureSeconds !== null && departureSeconds >= 0 && departureSeconds < 90;
-        const effectiveLens = autoBlink ? "blink" : lens;
-        const isBlink = effectiveLens === "blink";
-        const lensOn = effectiveLens === "on" || (isBlink && blinkOn);
-        const icon = lensOn ? "icons/lens-on.svg" : "icons/lens-off.svg";
-        const iconDark = lensOn ? "icons/lens-on-dark.svg" : "icons/lens-off-dark.svg";
+        const operator = String(d.operator || "").toLocaleLowerCase("cs-CZ");
+        const isCD = operator.includes("čd") || operator.includes("ceske drahy") || operator.includes("cesk");
+        const isRjet = operator.includes("rjet") || operator.includes("regiojet");
+        const icon = isCD ? "icons/CD.svg" : isRjet ? "icons/RJET.svg" : "icons/train.svg";
+        const iconDark = isCD ? "icons/CD_dark.svg" : isRjet ? "icons/RJET_dark.svg" : "icons/train_dark.svg";
         const shortTrain = trainShortName(d.train);
         const name = d.trainNumber && shortTrain
             ? `${shortTrain} ${d.trainNumber}`
@@ -390,7 +378,7 @@ function buildItems(departures, lensStates, blinkOn) {
                 trainNumber: d.trainNumber,
                 departureTime: d.departureTime,
                 delay: formatDelay(d.delay),
-                actualDepartureTime: addMinutesToClock(d.departureTime, d.delay),
+                actualDepartureTime: formatActualDepartureWithDate(d.departureTime, d.delay, now),
                 platform: d.platform,
                 track: d.track,
                 sector: d.sector,
@@ -398,19 +386,6 @@ function buildItems(departures, lensStates, blinkOn) {
             }
         };
     });
-}
-
-async function loadLensStates() {
-    try {
-        const raw = await Salamander.storage.get("railwayDepartures.lens", "{}");
-        return JSON.parse(raw);
-    } catch {
-        return {};
-    }
-}
-
-async function saveLensStates(states) {
-    await Salamander.storage.set("railwayDepartures.lens", JSON.stringify(states));
 }
 
 async function readConfigFile() {
@@ -447,41 +422,31 @@ async function getRefreshInterval() {
 }
 
 async function getStringsAsync(locale) {
-    const candidates = [];
     if (locale) {
-        candidates.push(locale);
-        const primary = locale.split("-")[0];
-        if (primary !== locale) candidates.push(primary);
-    }
-    candidates.push("en");
-    for (const candidate of candidates) {
         try {
-            const response = await fetch(`locales/${candidate}.json`);
+            const response = await fetch(`locales/${locale}.json`);
             if (response.ok) return await response.json();
-        } catch { continue }
+        } catch { }
+        const primary = locale.split("-")[0];
+        if (primary !== locale) {
+            try {
+                const response = await fetch(`locales/${primary}.json`);
+                if (response.ok) return await response.json();
+            } catch { }
+        }
     }
+    try {
+        const response = await fetch("locales/cs.json");
+        if (response.ok) return await response.json();
+    } catch { }
     return {
-        name: "Railway Departures",
+        name: "Odjezdy železnice",
         strings: {
-            boardUrl: "Board URL",
-            boardUrlHint: "URL of the railway departure board JSON API",
-            refreshInterval: "Refresh interval (ms)",
-            lensOff: "Off",
-            lensOn: "On",
-            lensBlink: "Blinking",
-            configure: "Configure",
-            cancel: "Cancel",
-            save: "Save",
-            errorFetch: "Failed to fetch departures from URL",
-            errorInvalidUrl: "No board URL configured. Use Configure URL.",
-            settingsTitle: "Railway Departures Settings",
-            settingsSaved: "Settings saved",
-            scraperStarted: "Scraper started",
-            scraperStopped: "Scraper stopped",
-            scraperAlreadyRunning: "Scraper already running",
-            scraperNotRunning: "Scraper not running",
-            scraperError: "Scraper error",
-            fetchFailed: "Failed to fetch departures"
+            errorInvalidUrl: "Není nastavena žádná URL tabule. Použijte Konfigurovat URL.",
+            errorFetch: "Nepodařilo se načíst odjezdy z URL",
+            fetchFailed: "Nepodařilo se načíst odjezdy",
+            settingsTitle: "Nastavení odjezdů železnice",
+            lensToggleError: "Nelze přepnout čočku pro tuto položku."
         }
     };
 }
@@ -496,7 +461,7 @@ async function handleConfigureUrl(strings) {
 
     await Salamander.ui.messageBox(
         `Konfigurace:\n\nURL tabulí:\n  ${urlsText}\nRefresh interval (ms): ${currentRefresh}\n\nUpravte soubor config.json ve složce rozšíření a restartujte Salamander.`,
-        strings.settingsTitle || "Railway Departures Settings",
+        strings.settingsTitle || "Nastavení odjezdů železnice",
         "OK",
         "Information"
     );
@@ -508,19 +473,9 @@ let lastCache = null;
 let scraperError = null;
 let panelOpen = false;
 let lastPanelActivity = 0;
-let panelShowingStationItems = false;
+let currentView = null;
 let listDeparturesBusy = false;
 const PANEL_INACTIVITY_MS = 5 * 60 * 1000;
-let blinkOn = false;
-let blinkTimer = null;
-
-const ensureBlinkTimer = () => {
-    if (blinkTimer) return;
-    blinkTimer = setInterval(() => {
-        blinkOn = !blinkOn;
-        handleListDepartures().catch(() => { });
-    }, 500);
-};
 
 const saveCache = async (cache) => {
     try {
@@ -569,9 +524,6 @@ const startScraper = async () => {
             if (panelOpen && now - lastPanelActivity > PANEL_INACTIVITY_MS) {
                 stopScraper();
                 panelOpen = false;
-            } else if (panelOpen) {
-                scraperTimer = setTimeout(tick, interval);
-                try { await handleListDepartures(); } catch { }
             } else {
                 scraperTimer = setTimeout(tick, interval);
             }
@@ -616,7 +568,7 @@ async function handleListDepartures() {
     try {
         const locale = Salamander.application && typeof Salamander.application.Language === "function"
             ? Salamander.application.Language()
-            : "en";
+            : "cs";
         const strings = await getStringsAsync(locale);
 
         panelOpen = true;
@@ -628,8 +580,8 @@ async function handleListDepartures() {
         const urls = await getConfiguredUrls();
         if (!urls.length) {
             await Salamander.ui.messageBox(
-                strings.errorInvalidUrl || "No board URL configured. Use Configure URL.",
-                strings.name || "Railway Departures",
+                strings.errorInvalidUrl || "Není nastavena žádná URL tabule. Použijte Konfigurovat URL.",
+                strings.name || "Odjezdy železnice",
                 "OK",
                 "Error"
             );
@@ -642,10 +594,17 @@ async function handleListDepartures() {
         const stationIdFor = (s) =>
             s.stationKey ? "station-" + s.stationKey : "station-" + normalizeId(s.station);
 
+        // Determine what view we're in: root or a specific station
         let activeStation = null;
-        if (lastCache && lastCache.stations) {
-            for (const s of lastCache.stations) {
-                if (invPath.includes(stationIdFor(s))) {
+        let effectiveInvPath = invPath;
+        if (!invPath && currentView && currentView !== "root") {
+            effectiveInvPath = currentView;
+        }
+
+        if (effectiveInvPath) {
+            for (const s of (lastCache.stations || [])) {
+                const sid = stationIdFor(s);
+                if (effectiveInvPath.includes(sid)) {
                     activeStation = s;
                     break;
                 }
@@ -653,91 +612,67 @@ async function handleListDepartures() {
         }
 
         if (!activeStation) {
-            if (!lastCache || !lastCache.stations?.length) {
-                try {
-                    const stations = [];
-                    for (const url of urls) {
-                        const result = await fetchStationTable({ url });
-                        stations.push({
-                            station: result.station,
-                            stationKey: result.stationKey,
-                            departures: result.departures,
-                            fetchedAt: Date.now(),
-                            url: result.url
-                        });
+            // Root view: show station folders
+            if (currentView !== "root") {
+                currentView = "root";
+                if (!lastCache || !lastCache.stations?.length) {
+                    try {
+                        const stations = [];
+                        for (const url of urls) {
+                            const result = await fetchStationTable({ url });
+                            stations.push({
+                                station: result.station,
+                                stationKey: result.stationKey,
+                                departures: result.departures,
+                                fetchedAt: Date.now(),
+                                url: result.url
+                            });
+                        }
+                        lastCache = { stations };
+                        await saveCache(lastCache);
+                    } catch (error) {
+                        await Salamander.ui.messageBox(
+                            `${strings.fetchFailed || "Nepodařilo se načíst odjezdy"}:\n${String(error)}`,
+                            strings.name || "Odjezdy železnice",
+                            "OK",
+                            "Error"
+                        );
+                        return;
                     }
-                    lastCache = { stations };
-                    await saveCache(lastCache);
-                } catch (error) {
-                    await Salamander.ui.messageBox(
-                        `${strings.fetchFailed || "Failed to fetch departures"}:\n${String(error)}`,
-                        strings.name || "Railway Departures",
-                        "OK",
-                        "Error"
-                    );
-                    return;
                 }
+                const stationItems = (lastCache.stations || []).map((s) => ({
+                    id: stationIdFor(s),
+                    name: s.station,
+                    directory: true,
+                    enabled: true,
+                    icon: "icon.svg",
+                    iconDark: "icon.svg",
+                    columns: {}
+                }));
+                await Salamander.fileSystem.addItems(stationItems);
             }
-
-            const stationItems = (lastCache.stations || []).map((s) => ({
-                id: stationIdFor(s),
-                name: s.station,
-                directory: true,
-                enabled: true,
-                icon: "icon.svg",
-                iconDark: "icon.svg",
-                columns: {}
-            }));
-            await Salamander.fileSystem.addItems(stationItems);
-            panelShowingStationItems = false;
             return;
         }
 
-        panelShowingStationItems = true;
+        // Station view: show departures for this station.
+        const stationId = stationIdFor(activeStation);
         const departures = activeStation.departures || [];
         const stationName = activeStation.station || "Stanice";
 
-        const lensStates = await loadLensStates();
-        const hasBlink = Object.values(lensStates).some((s) => s === "blink");
         const now = new Date();
-        const hasAutoBlink = departures.some((d) => {
-            const s = secondsUntilDeparture(d.departureTime, now);
-            return s !== null && s >= 0 && s < 90;
-        });
-        if (hasBlink || hasAutoBlink) ensureBlinkTimer();
 
-        const items = buildItems(departures, lensStates, blinkOn);
+        const items = buildItems(departures);
+        currentView = stationId;
         await Salamander.fileSystem.addItems(items);
+    } catch (error) {
+        await Salamander.ui.notify(
+            `Chyba: ${String(error)}`,
+            "Odjezdy železnice",
+            3000
+        );
     } finally {
         listDeparturesBusy = false;
     }
-}
-
-async function handleToggleLens() {
-    const item = Salamander.invocation.item || {};
-    const itemId = item.id || "";
-    if (!itemId.startsWith("dep-")) {
-        await Salamander.ui.messageBox(
-            "Cannot toggle lens for this item.",
-            "Railway Departures",
-            "OK",
-            "Error"
-        );
-        return;
-    }
-
-    const lensStates = await loadLensStates();
-    const current = lensStates[itemId] || "off";
-    const nextIndex = (LENS_STATES.indexOf(current) + 1) % LENS_STATES.length;
-    const next = LENS_STATES[nextIndex];
-    lensStates[itemId] = next;
-    await saveLensStates(lensStates);
-
-    await Salamander.ui.notify(
-        `Lens: ${lensLabel(next)}`,
-        "Railway Departures",
-        1500
-    );
 }
 
 async function handleRefreshDepartures(strings) {
@@ -759,25 +694,21 @@ const h = String(handler ?? "");
 const is = (...names) => names.some((n) =>
     h === n
     || h.endsWith("." + n)
-    || h === `OpenSalamander.RailwayDepartures.${n}`
+    || h === `TabuleSprZel.${n}`
 );
 
 try {
     if (is("listDepartures")) {
         await handleListDepartures();
     } else if (is("openDepartures", "open")) {
-        await handleOpenDepartures(await getStringsAsync("en"));
+        await handleOpenDepartures(await getStringsAsync("cs"));
     } else if (is("configureUrl", "configure")) {
-        await handleConfigureUrl(await getStringsAsync("en"));
-    } else if (is("toggleLens")) {
-        await handleToggleLens();
-    } else if (is("refreshDepartures", "refresh")) {
-        await handleRefreshDepartures(await getStringsAsync("en"));
+        await handleConfigureUrl(await getStringsAsync("cs"));
     }
 } catch (error) {
     await Salamander.ui.notify(
         `Chyba: ${String(error)}`,
-        "Railway Departures",
+        "Odjezdy železnice",
         3000
     );
 }
