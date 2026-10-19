@@ -416,9 +416,16 @@ async function saveLensStates(states) {
 async function readConfigFile() {
     try {
         const text = await readFile(CONFIG_FILE, "utf8");
-        return JSON.parse(text);
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed.urls)) {
+            return parsed;
+        }
+        if (typeof parsed.url === "string" && parsed.url) {
+            return { urls: [parsed.url], refreshMs: parsed.refreshMs };
+        }
+        return { urls: [], refreshMs: DEFAULT_REFRESH_MS };
     } catch {
-        return { url: "", refreshMs: DEFAULT_REFRESH_MS };
+        return { urls: [], refreshMs: DEFAULT_REFRESH_MS };
     }
 }
 
@@ -428,9 +435,9 @@ async function writeConfigFile(config) {
     } catch { }
 }
 
-async function getConfiguredUrl() {
+async function getConfiguredUrls() {
     const config = await readConfigFile();
-    return config.url || "";
+    return Array.isArray(config.urls) ? config.urls : [];
 }
 
 async function getRefreshInterval() {
@@ -481,11 +488,14 @@ async function getStringsAsync(locale) {
 
 async function handleConfigureUrl(strings) {
     const config = await readConfigFile();
-    const currentUrl = config.url || "";
+    const currentUrls = Array.isArray(config.urls) ? config.urls : [];
     const currentRefresh = config.refreshMs || DEFAULT_REFRESH_MS;
+    const urlsText = currentUrls.length
+        ? currentUrls.join("\n  ")
+        : "(není nastaveno)";
 
     await Salamander.ui.messageBox(
-        `Konfigurace:\n\nURL tabule: ${currentUrl || "(není nastaveno)"}\nRefresh interval (ms): ${currentRefresh}\n\nUpravte soubor config.json ve složce rozšíření a restartujte Salamander.`,
+        `Konfigurace:\n\nURL tabulí:\n  ${urlsText}\nRefresh interval (ms): ${currentRefresh}\n\nUpravte soubor config.json ve složce rozšíření a restartujte Salamander.`,
         strings.settingsTitle || "Railway Departures Settings",
         "OK",
         "Information"
@@ -529,9 +539,8 @@ const loadCache = async () => {
 
 const startScraper = async () => {
     if (scraperRunning) return { ok: false, reason: "alreadyRunning" };
-    const config = await readConfigFile();
-    const url = config.url || "";
-    if (!url) {
+    const urls = await getConfiguredUrls();
+    if (!urls.length) {
         return { ok: false, reason: "noUrl" };
     }
     scraperRunning = true;
@@ -539,16 +548,23 @@ const startScraper = async () => {
 
     const tick = async () => {
         try {
-            const result = await fetchStationTable({ url });
-            lastCache = {
-                station: result.station,
-                stationKey: result.stationKey,
-                departures: result.departures,
-                fetchedAt: Date.now(),
-                url: result.url
-            };
+            const stations = [];
+            for (const url of urls) {
+                try {
+                    const result = await fetchStationTable({ url });
+                    stations.push({
+                        station: result.station,
+                        stationKey: result.stationKey,
+                        departures: result.departures,
+                        fetchedAt: Date.now(),
+                        url: result.url
+                    });
+                } catch (error) {
+                    scraperError = scraperError || String(error);
+                }
+            }
+            lastCache = { stations };
             await saveCache(lastCache);
-            scraperError = null;
             const now = Date.now();
             if (panelOpen && now - lastPanelActivity > PANEL_INACTIVITY_MS) {
                 stopScraper();
@@ -578,8 +594,12 @@ const stopScraper = () => {
     scraperRunning = false;
 };
 
-const getCachedStation = () => lastCache ? lastCache.station : "Stanice";
-const getCachedDepartures = () => lastCache ? lastCache.departures : null;
+const getCachedStation = (stationKey) => lastCache
+    ? lastCache.stations.find((s) => s.stationKey === stationKey)?.station || "Stanice"
+    : "Stanice";
+const getCachedDepartures = (stationKey) => lastCache
+    ? lastCache.stations.find((s) => s.stationKey === stationKey)?.departures || null
+    : null;
 
 const stripDiacritics = (s) => String(s ?? "")
     .normalize("NFD")
@@ -605,51 +625,77 @@ async function handleListDepartures() {
         const item = Salamander.invocation.item || {};
         const invPath = Salamander.invocation.path || "";
 
-        let departures = getCachedDepartures();
-        let stationName = getCachedStation();
-        if (!departures || departures.length === 0) {
-            const stored = await loadCache();
-            if (stored) {
-                lastCache = stored;
-                departures = stored.departures;
-                stationName = stored.station;
+        const urls = await getConfiguredUrls();
+        if (!urls.length) {
+            await Salamander.ui.messageBox(
+                strings.errorInvalidUrl || "No board URL configured. Use Configure URL.",
+                strings.name || "Railway Departures",
+                "OK",
+                "Error"
+            );
+            return;
+        }
+
+        let stored = await loadCache();
+        if (stored) lastCache = stored;
+
+        const stationIdFor = (s) =>
+            s.stationKey ? "station-" + s.stationKey : "station-" + normalizeId(s.station);
+
+        let activeStation = null;
+        if (lastCache && lastCache.stations) {
+            for (const s of lastCache.stations) {
+                if (invPath.includes(stationIdFor(s))) {
+                    activeStation = s;
+                    break;
+                }
             }
         }
 
-        if (!departures || departures.length === 0) {
-            const config = await readConfigFile();
-            const url = config.url || "";
-            if (!url) {
-                await Salamander.ui.messageBox(
-                    strings.errorInvalidUrl || "No board URL configured. Use Configure URL.",
-                    strings.name || "Railway Departures",
-                    "OK",
-                    "Error"
-                );
-                return;
+        if (!activeStation) {
+            if (!lastCache || !lastCache.stations?.length) {
+                try {
+                    const stations = [];
+                    for (const url of urls) {
+                        const result = await fetchStationTable({ url });
+                        stations.push({
+                            station: result.station,
+                            stationKey: result.stationKey,
+                            departures: result.departures,
+                            fetchedAt: Date.now(),
+                            url: result.url
+                        });
+                    }
+                    lastCache = { stations };
+                    await saveCache(lastCache);
+                } catch (error) {
+                    await Salamander.ui.messageBox(
+                        `${strings.fetchFailed || "Failed to fetch departures"}:\n${String(error)}`,
+                        strings.name || "Railway Departures",
+                        "OK",
+                        "Error"
+                    );
+                    return;
+                }
             }
-            try {
-                const result = await fetchStationTable({ url });
-                departures = result.departures;
-                stationName = result.station;
-                lastCache = {
-                    station: result.station,
-                    stationKey: result.stationKey,
-                    departures: result.departures,
-                    fetchedAt: Date.now(),
-                    url: result.url
-                };
-                await saveCache(lastCache);
-            } catch (error) {
-                await Salamander.ui.messageBox(
-                    `${strings.fetchFailed || "Failed to fetch departures"}:\n${String(error)}`,
-                    strings.name || "Railway Departures",
-                    "OK",
-                    "Error"
-                );
-                return;
-            }
+
+            const stationItems = (lastCache.stations || []).map((s) => ({
+                id: stationIdFor(s),
+                name: s.station,
+                directory: true,
+                enabled: true,
+                icon: "icon.svg",
+                iconDark: "icon.svg",
+                columns: {}
+            }));
+            await Salamander.fileSystem.addItems(stationItems);
+            panelShowingStationItems = false;
+            return;
         }
+
+        panelShowingStationItems = true;
+        const departures = activeStation.departures || [];
+        const stationName = activeStation.station || "Stanice";
 
         const lensStates = await loadLensStates();
         const hasBlink = Object.values(lensStates).some((s) => s === "blink");
@@ -660,25 +706,6 @@ async function handleListDepartures() {
         });
         if (hasBlink || hasAutoBlink) ensureBlinkTimer();
 
-        const stationId = "station-" + normalizeId(stationName);
-
-        const insideStation = invPath.includes(stationId);
-
-        if (!insideStation && !panelShowingStationItems) {
-            await Salamander.fileSystem.addItems([{
-                id: stationId,
-                name: stationName,
-                directory: true,
-                enabled: true,
-                icon: "icon.svg",
-                iconDark: "icon.svg",
-                columns: {}
-            }]);
-            panelShowingStationItems = false;
-            return;
-        }
-
-        panelShowingStationItems = true;
         const items = buildItems(departures, lensStates, blinkOn);
         await Salamander.fileSystem.addItems(items);
     } finally {
@@ -718,8 +745,8 @@ async function handleRefreshDepartures(strings) {
 }
 
 async function handleOpenDepartures(strings) {
-    const config = await readConfigFile();
-    if (!config.url) {
+    const urls = await getConfiguredUrls();
+    if (!urls.length) {
         await handleConfigureUrl(strings);
     } else {
         await handleListDepartures();
@@ -756,8 +783,8 @@ try {
 }
 
 if (is("listDepartures") && !scraperRunning) {
-    const config = await readConfigFile();
-    if (config.url) {
+    const urls = await getConfiguredUrls();
+    if (urls.length) {
         await startScraper();
     }
 }

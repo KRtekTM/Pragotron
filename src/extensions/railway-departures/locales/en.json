@@ -39,7 +39,7 @@
     "cancel": "Cancel",
     "save": "Save",
     "errorFetch": "Failed to fetch departures from URL",
-    "errorInvalidUrl": "No board URL configured. Use Configure URL.",
+    "errorInvalidUrl": "No board URLs configured. Use Configure URL.",
     "settingsTitle": "Railway Departures Settings",
     "settingsSaved": "Settings saved",
     "departureTime": "Departure",

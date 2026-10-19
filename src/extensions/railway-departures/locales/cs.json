@@ -39,7 +39,7 @@
     "cancel": "Zrušit",
     "save": "Uložit",
     "errorFetch": "Nepodařilo se načíst odjezdy z URL",
-    "errorInvalidUrl": "Není nastavena URL tabule. Použijte Konfigurovat URL.",
+    "errorInvalidUrl": "Není nastavena žádná URL tabule. Použijte Konfigurovat URL.",
     "settingsTitle": "Nastavení odjezdů železnice",
     "settingsSaved": "Nastavení uloženo",
     "departureTime": "Odjezd",
