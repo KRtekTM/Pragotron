@@ -92,8 +92,33 @@ const readRowCountParam = () => {
     }
 };
 
+const readOffsetParam = () => {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (!params.has('offset')) {
+            return null;
+        }
+
+        const raw = String(params.get('offset') ?? '').trim();
+        if (!/^\d{1,4}$/.test(raw)) {
+            return null;
+        }
+
+        const numeric = Number(raw);
+        if (numeric < 0 || numeric > 9999) {
+            return null;
+        }
+
+        return numeric;
+    } catch {
+        return null;
+    }
+};
+
 const urlRowCount = readRowCountParam();
+const urlOffset = readOffsetParam();
 const initialRowCount = urlRowCount ?? DEPARTURE_BOARD_ROW_COUNT_DEFAULT;
+let boardOffset = urlOffset ?? 0;
 
 const lensTemplate = (colors) => ({
     lenses: colors.map((color) => ({ color }))
@@ -451,7 +476,7 @@ const getPreDepartureActive = (departure, now = sourceNow().getTime()) => {
 
 const getDisplayDepartures = () => {
     const now = sourceNow().getTime();
-    return departures.map((departure) => ({
+    return departures.slice(boardOffset).map((departure) => ({
         ...departure,
         preDepartureActive: getPreDepartureActive(departure, now)
     }));

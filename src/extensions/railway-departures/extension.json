@@ -1,0 +1,63 @@
+{
+  "schema": 2,
+  "id": "OpenSalamander.RailwayDepartures",
+  "name": "Railway Departures",
+  "version": "1.0.0",
+  "description": "Browses railway departure board arrivals/departures in a Salamander file-system panel.",
+  "runtime": "JavaScript.Node",
+  "entryPoint": "main.mjs",
+  "web": "https://samandarin.net/",
+  "security": {
+    "networkAccess": "possible",
+    "externalProcesses": "no",
+    "scriptExecution": "yes",
+    "activeWebContent": "no",
+    "elevation": "never"
+  },
+  "icon": "icon.svg",
+  "iconDark": "icon-dark.svg",
+  "capabilities": ["file-system", "ui.dialogs", "storage"],
+  "events": [],
+  "commands": [{
+    "id": "OpenSalamander.RailwayDepartures.open",
+    "title": "Open Railway Departures",
+    "handler": "openDepartures",
+    "menu": "both",
+    "contextMenu": true,
+    "toolbar": true,
+    "requires": "any"
+  }, {
+    "id": "OpenSalamander.RailwayDepartures.configure",
+    "title": "Configure URL",
+    "handler": "configureUrl",
+    "menu": "both",
+    "contextMenu": false,
+    "toolbar": false,
+    "requires": "any"
+  }],
+  "fileSystems": [{
+    "id": "departures",
+    "name": "Railway Departures",
+    "icon": "icon.svg",
+    "iconDark": "icon.svg",
+    "spinner": true,
+    "listHandler": "listDepartures",
+    "refreshIntervalMs": 30000,
+    "refreshDepth": 1,
+    "columns": [
+      {"id": "train", "name": "Train", "width": 120},
+      {"id": "trainNumber", "name": "Train No.", "width": 80, "numeric": true},
+      {"id": "departureTime", "name": "Departure", "width": 100},
+      {"id": "delay", "name": "Delay", "width": 70, "numeric": true},
+      {"id": "actualDepartureTime", "name": "Actual departure time", "width": 110},
+      {"id": "platform", "name": "Platform", "width": 80, "numeric": true},
+      {"id": "track", "name": "Track", "width": 70, "numeric": true},
+      {"id": "sector", "name": "Sector", "width": 80},
+      {"id": "operator", "name": "Carrier", "width": 100}
+    ],
+    "actions": [
+      {"id": "toggleLens", "title": "Toggle Lens", "handler": "toggleLens", "itemIdPrefix": "dep-", "refresh": true},
+      {"id": "refresh", "title": "Refresh", "handler": "refreshDepartures", "itemIdPrefix": "dep-", "refresh": true}
+    ]
+  }]
+}

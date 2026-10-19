@@ -1,0 +1,56 @@
+{
+  "name": "Railway Departures",
+  "description": "Browses railway departure board arrivals/departures in a Salamander file-system panel.",
+  "commands": {
+    "OpenSalamander.RailwayDepartures.open": "Open Railway Departures",
+    "OpenSalamander.RailwayDepartures.configure": "Configure URL",
+    "OpenSalamander.RailwayDepartures.toggleLens": "Toggle Lens"
+  },
+  "fileSystems": {
+    "departures": {
+      "name": "Railway Departures",
+      "rootItems": {
+        "departures-root": "Departures"
+      },
+      "actions": {
+        "toggleLens": "Toggle Lens",
+        "refresh": "Refresh"
+      },
+      "columns": {
+        "train": { "name": "Train", "description": "Train name or number" },
+        "trainNumber": { "name": "Train No.", "description": "Train number" },
+        "departureTime": { "name": "Departure", "description": "Scheduled departure time" },
+        "delay": { "name": "Delay", "description": "Delay in minutes" },
+        "platform": { "name": "Platform", "description": "Platform number" },
+        "track": { "name": "Track", "description": "Track number" },
+        "sector": { "name": "Sector", "description": "Sector" },
+        "lens": { "name": "Lens", "description": "Lens state (on/off/blinking)" }
+      }
+    }
+  },
+  "strings": {
+    "boardUrl": "Board URL",
+    "boardUrlHint": "URL of the railway departure board JSON API",
+    "refreshInterval": "Refresh interval (ms)",
+    "lensOff": "Off",
+    "lensOn": "On",
+    "lensBlink": "Blinking",
+    "configure": "Configure",
+    "cancel": "Cancel",
+    "save": "Save",
+    "errorFetch": "Failed to fetch departures from URL",
+    "errorInvalidUrl": "No board URL configured. Use Configure URL.",
+    "settingsTitle": "Railway Departures Settings",
+    "settingsSaved": "Settings saved",
+    "departureTime": "Departure",
+    "delay": "Delay",
+    "platform": "Platform",
+    "track": "Track",
+    "sector": "Sector",
+    "lens": "Lens",
+    "refresh": "Refresh",
+    "toggleLens": "Toggle Lens",
+    "train": "Train",
+    "trainNo": "Train No."
+  }
+}
