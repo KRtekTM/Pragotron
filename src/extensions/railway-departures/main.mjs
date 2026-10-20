@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
 
@@ -205,7 +205,17 @@ const parseStationTable = (html, { now = new Date(), stationKey = "" } = {}) => 
 
     for (const rowMatch of table.matchAll(/<tr\b[^>]*DXDataRow\d+[^>]*>([\s\S]*?)<\/tr>/gi)) {
         const rowHtml = rowMatch[0];
-        if (/\btableTextRow\b/i.test(rowHtml)) continue;
+        if (/\btableTextRow\b/i.test(rowHtml)) {
+            const note = extractCells(rowMatch[1])
+                .map((cell) => cleanText(cell))
+                .find(Boolean);
+            if (note && departures.length) {
+                departures[departures.length - 1].note = departures[departures.length - 1].note
+                    ? `${departures[departures.length - 1].note}\n${note}`
+                    : note;
+            }
+            continue;
+        }
 
         const cells = extractCells(rowMatch[1]);
         if (cells.length < 10) continue;
@@ -215,7 +225,9 @@ const parseStationTable = (html, { now = new Date(), stationKey = "" } = {}) => 
 
         const actualTime = parseClock(cells[1]);
         const trainData = parseTrainCell(cells[3]);
-        const stations = [normalizeStationName(cells[6]), parseViaStation(cells[7])];
+        const destination = normalizeStationName(cells[6]);
+        const via = cleanText(cells[7]);
+        const stations = [destination, parseViaStation(via)];
         const target = parsePlatformTarget(cells[9]);
         const trainRef = trainData.sourceTrainNumber || trainData.trainNumber;
         const liveKey = [
@@ -236,7 +248,11 @@ const parseStationTable = (html, { now = new Date(), stationKey = "" } = {}) => 
             track: target.track,
             sector: target.sector,
             stations,
-            operator: trainData.operator
+            operator: trainData.operator,
+            line: cleanText(cells[4]),
+            destination,
+            via,
+            note: ""
         });
     }
 
@@ -350,18 +366,70 @@ function normalizeDepartures(raw, stationName) {
         platform: d.platform || "",
         track: d.track || "",
         sector: d.sector || "",
+        line: d.line || "",
+        destination: d.destination || d.stations?.[0] || "",
+        via: d.via || d.stations?.[1] || "",
+        note: d.note || "",
         station: stationName || ""
     }));
 }
 
-function buildItems(departures) {
+function normalizeOperatorIconKey(operator) {
+    return stripDiacritics(operator)
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "");
+}
+
+async function getOperatorIconFiles() {
+    try {
+        const entries = await readdir(join(EXTENSION_DIR, "icons", "operators"), {
+            withFileTypes: true
+        });
+        return new Set(entries
+            .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".svg"))
+            .map((entry) => entry.name));
+    } catch {
+        return new Set();
+    }
+}
+
+const isOrderedSubsequence = (candidate, value) => {
+    let candidateIndex = 0;
+    for (const character of value) {
+        if (character === candidate[candidateIndex]) candidateIndex += 1;
+        if (candidateIndex === candidate.length) return true;
+    }
+    return false;
+};
+
+function findOperatorIcon(operatorKey, suffix, operatorIconFiles) {
+    if (!operatorKey) return null;
+    const exact = `${operatorKey}${suffix}.svg`;
+    if (operatorIconFiles.has(exact)) return exact;
+
+    const candidates = [...operatorIconFiles]
+        .filter((file) => file.endsWith(`${suffix}.svg`))
+        .map((file) => ({
+            file,
+            key: normalizeOperatorIconKey(file.slice(0, -`${suffix}.svg`.length))
+        }))
+        .filter(({ key }) => key && isOrderedSubsequence(key, operatorKey))
+        .sort((left, right) => right.key.length - left.key.length || left.file.localeCompare(right.file));
+    return candidates[0]?.file || null;
+}
+
+function buildItems(departures, operatorIconFiles = new Set()) {
     const now = new Date();
     const items = departures.map((d) => {
-        const operator = String(d.operator || "").toLocaleLowerCase("cs-CZ");
-        const isCD = operator.includes("čd") || operator.includes("ceske drahy") || operator.includes("cesk");
-        const isRjet = operator.includes("rjet") || operator.includes("regiojet");
-        const icon = isCD ? "icons/CD.svg" : isRjet ? "icons/RJET.svg" : "icons/train.svg";
-        const iconDark = isCD ? "icons/CD_dark.svg" : isRjet ? "icons/RJET_dark.svg" : "icons/train_dark.svg";
+        const operatorKey = normalizeOperatorIconKey(d.operator);
+        const operatorIcon = findOperatorIcon(operatorKey, "", operatorIconFiles);
+        const operatorIconDark = findOperatorIcon(operatorKey, "_dark", operatorIconFiles);
+        const icon = operatorIcon
+            ? `icons/operators/${operatorIcon}`
+            : "icons/train.svg";
+        const iconDark = operatorIconDark
+            ? `icons/operators/${operatorIconDark}`
+            : "icons/train_dark.svg";
         const shortTrain = trainShortName(d.train);
         const name = d.trainNumber && shortTrain
             ? `${shortTrain} ${d.trainNumber}`
@@ -382,6 +450,10 @@ function buildItems(departures) {
                 platform: d.platform,
                 track: d.track,
                 sector: d.sector,
+                line: d.line || "",
+                destination: d.destination || d.stations?.[0] || "",
+                via: d.via || d.stations?.[1] || "",
+                note: d.note || "",
                 operator: d.operator || ""
             }
         };
@@ -399,6 +471,10 @@ function buildItems(departures) {
             platform: d.platform,
             track: d.track,
             sector: d.sector,
+            line: d.line || "",
+            destination: d.destination || d.stations?.[0] || "",
+            via: d.via || d.stations?.[1] || "",
+            note: d.note || "",
             operator: d.operator || "",
             station: d.station || ""
         });
@@ -477,7 +553,7 @@ async function getStringsAsync(locale = "en") {
         } catch { }
     }
     return {
-        name: "Railway Departures",
+        name: "Tabule SprŽel",
         error: "Error:",
         configTitle: "Configuration",
         urlsLabel: "Board URLs:",
@@ -487,7 +563,7 @@ async function getStringsAsync(locale = "en") {
         errorInvalidUrl: "No board URLs configured. Use Configure URL.",
         errorFetch: "Failed to fetch departures from URL",
         fetchFailed: "Failed to fetch departures",
-        settingsTitle: "Railway Departures Settings",
+        settingsTitle: "Tabule SprŽel Settings",
         detailTrain: "Train:",
         detailTrainNumber: "Train No.:",
         detailDepartureTime: "Departure:",
@@ -496,8 +572,12 @@ async function getStringsAsync(locale = "en") {
         detailPlatform: "Platform:",
         detailTrack: "Track:",
         detailSector: "Sector:",
+        detailLine: "Line:",
+        detailDestination: "Destination:",
+        detailVia: "Via:",
         detailOperator: "Operator:",
-        detailStation: "Station:"
+        detailStation: "Station:",
+        detailNote: "Note:"
     };
 }
 
@@ -515,7 +595,7 @@ async function handleConfigureUrl(strings) {
 
     await Salamander.ui.messageBox(
         `${strings.configTitle || "Configuration"}:\n\n${strings.urlsLabel || "Board URLs:"}\n  ${urlsText}\n${strings.refreshLabel || "Refresh interval (ms):"} ${currentRefresh}\n\n${strings.configHint || "Edit the config.json file in the extension folder and restart Salamander."}`,
-        strings.settingsTitle || "Railway Departures Settings",
+        strings.settingsTitle || "Tabule SprŽel Settings",
         "OK",
         "Information"
     );
@@ -528,7 +608,8 @@ let scraperError = null;
 let panelOpen = false;
 let lastPanelActivity = 0;
 let currentView = null;
-let listDeparturesBusy = false;
+let stationRefreshPromise = null;
+let listRequestId = 0;
 const departureDetailsById = new Map();
 const PANEL_INACTIVITY_MS = 5 * 60 * 1000;
 
@@ -547,6 +628,83 @@ const loadCache = async () => {
     }
 };
 
+const cacheMatchesConfiguredUrls = (cache, urls) => {
+    const configuredUrls = urls
+        .map((url) => String(url ?? "").trim())
+        .filter(Boolean);
+    const cachedUrls = Array.isArray(cache?.stations)
+        ? cache.stations
+            .map((station) => String(station?.url ?? "").trim())
+            .filter(Boolean)
+        : [];
+    const cachedNames = Array.isArray(cache?.stations)
+        ? cache.stations.map((station) => String(station?.station ?? "").trim())
+        : [];
+
+    if (configuredUrls.length !== cachedUrls.length) return false;
+    if (
+        cachedNames.length !== cachedUrls.length
+        || cachedNames.some((name) => !name || /^station-[A-Za-z0-9_-]+$/i.test(name))
+    ) return false;
+
+    const cachedUrlSet = new Set(cachedUrls);
+    return configuredUrls.every((url) => cachedUrlSet.has(url));
+};
+
+const fetchConfiguredStations = async ({ urls, strings, fallbackCache, reportError }) => {
+    const results = await Promise.all(urls.map(async (url) => {
+        try {
+            const result = await fetchStationTable({ url });
+            return {
+                station: result.station,
+                stationKey: result.stationKey,
+                departures: result.departures,
+                fetchedAt: Date.now(),
+                url: result.url
+            };
+        } catch (error) {
+            return { url, error };
+        }
+    }));
+
+    const fallbackByUrl = new Map((fallbackCache?.stations || [])
+        .map((station) => [String(station.url || "").trim(), station]));
+    const stations = results.map((result) => result.error
+        ? fallbackByUrl.get(String(result.url).trim())
+        : result).filter(Boolean);
+
+    if (!stations.length) {
+        if (reportError) {
+            const firstError = results.find((result) => result.error)?.error;
+            await Salamander.ui.messageBox(
+                `${strings.fetchFailed || "Failed to fetch departures"}:\n${String(firstError || "No station data was returned.")}`,
+                strings.name || "Tabule SprŽel",
+                "OK",
+                "Error"
+            );
+        }
+        return null;
+    }
+
+    const refreshed = { stations };
+    lastCache = refreshed;
+    void saveCache(refreshed);
+    return refreshed;
+};
+
+const refreshConfiguredStations = ({ urls, strings, reportError = false } = {}) => {
+    if (stationRefreshPromise) return stationRefreshPromise;
+    stationRefreshPromise = fetchConfiguredStations({
+        urls,
+        strings,
+        fallbackCache: lastCache,
+        reportError
+    }).finally(() => {
+        stationRefreshPromise = null;
+    });
+    return stationRefreshPromise;
+};
+
 const startScraper = async () => {
     if (scraperRunning) return { ok: false, reason: "alreadyRunning" };
     const urls = await getConfiguredUrls();
@@ -558,38 +716,22 @@ const startScraper = async () => {
 
     const tick = async () => {
         try {
-            const stations = [];
-            for (const url of urls) {
-                try {
-                    const result = await fetchStationTable({ url });
-                    stations.push({
-                        station: result.station,
-                        stationKey: result.stationKey,
-                        departures: result.departures,
-                        fetchedAt: Date.now(),
-                        url: result.url
-                    });
-                } catch (error) {
-                    scraperError = scraperError || String(error);
-                }
-            }
-            lastCache = { stations };
-            await saveCache(lastCache);
+            const refreshed = await refreshConfiguredStations({ urls });
+            if (!refreshed) scraperError = "No station data was returned.";
             const now = Date.now();
             if (panelOpen && now - lastPanelActivity > PANEL_INACTIVITY_MS) {
                 stopScraper();
                 panelOpen = false;
             } else {
-                scraperTimer = setTimeout(tick, interval);
+                scraperTimer = setTimeout(() => void tick(), await getRefreshInterval());
             }
         } catch (error) {
             scraperError = String(error);
+            scraperTimer = setTimeout(() => void tick(), await getRefreshInterval());
         }
-        const interval = await getRefreshInterval();
-        scraperTimer = setTimeout(tick, interval);
     };
 
-    await tick();
+    void tick();
     return { ok: true };
 };
 
@@ -618,8 +760,7 @@ const normalizeId = (s) => stripDiacritics(s)
     .replace(/[^a-z0-9-]/g, "");
 
 async function handleListDepartures() {
-    if (listDeparturesBusy) return;
-    listDeparturesBusy = true;
+    const requestId = ++listRequestId;
     let strings = null;
     try {
         strings = await getStringsAsync(await detectLocale());
@@ -634,7 +775,7 @@ async function handleListDepartures() {
         if (!urls.length) {
             await Salamander.ui.messageBox(
                 strings.errorInvalidUrl || "No board URLs configured. Use Configure URL.",
-                strings.name || "Railway Departures",
+                strings.name || "Tabule SprŽel",
                 "OK",
                 "Error"
             );
@@ -642,22 +783,62 @@ async function handleListDepartures() {
         }
 
         let stored = await loadCache();
-        if (stored) lastCache = stored;
+        lastCache = stored && cacheMatchesConfiguredUrls(stored, urls)
+            ? stored
+            : null;
 
-        const stationIdFor = (s) =>
-            s.stationKey ? "station-" + s.stationKey : "station-" + normalizeId(s.station);
+        // Load data before resolving the current path. A station path must
+        // still resolve when the persisted cache is missing or outdated.
+        if (!lastCache?.stations?.length) {
+            const refreshed = await refreshConfiguredStations({
+                urls,
+                strings,
+                reportError: true
+            });
+            if (!refreshed || requestId !== listRequestId) return;
+        }
+
+        const cache = lastCache;
+        if (!cache?.stations?.length || requestId !== listRequestId) return;
+
+        const stationNameFor = (s) => {
+            const name = String(s.station ?? "").trim();
+            return name && !/^station-[A-Za-z0-9_-]+$/i.test(name)
+                ? name
+                : `Station ${s.stationKey || ""}`.trim();
+        };
+        const stationIdFor = (s) => {
+            const nameId = normalizeId(stationNameFor(s));
+            const namePart = nameId || normalizeId(s.stationKey) || "unknown";
+            const keyPart = s.stationKey ? `!station-${normalizeId(s.stationKey)}` : "";
+            return `station-${namePart}${keyPart}`;
+        };
+        const legacyStationIdFor = (s) =>
+            s.stationKey ? `station-${s.stationKey}` : "";
+        const previousStationIdFor = (s) =>
+            `station-${normalizeId(stationNameFor(s))}`;
 
         // Determine what view we're in: root or a specific station
         let activeStation = null;
         let effectiveInvPath = invPath;
-        if (!invPath && currentView && currentView !== "root") {
-            effectiveInvPath = currentView;
+        if (!invPath && String(item.id || "").startsWith("station-")) {
+            effectiveInvPath = String(item.id);
         }
+        const pathParts = String(effectiveInvPath)
+            .split(/[\\/]/)
+            .filter(Boolean);
+        const stationPathIds = pathParts.filter((part) => part.startsWith("station-"));
 
-        if (effectiveInvPath) {
-            for (const s of (lastCache.stations || [])) {
+        if (stationPathIds.length) {
+            for (const s of cache.stations) {
                 const sid = stationIdFor(s);
-                if (effectiveInvPath.includes(sid)) {
+                const legacySid = legacyStationIdFor(s);
+                const previousSid = previousStationIdFor(s);
+                if (
+                    stationPathIds.includes(sid)
+                    || stationPathIds.includes(legacySid)
+                    || stationPathIds.includes(previousSid)
+                ) {
                     activeStation = s;
                     break;
                 }
@@ -666,42 +847,17 @@ async function handleListDepartures() {
 
         if (!activeStation) {
             // Root view: show station folders
-            if (currentView !== "root") {
-                currentView = "root";
-                if (!lastCache || !lastCache.stations?.length) {
-                    try {
-                        const stations = [];
-                        for (const url of urls) {
-                            const result = await fetchStationTable({ url });
-                            stations.push({
-                                station: result.station,
-                                stationKey: result.stationKey,
-                                departures: result.departures,
-                                fetchedAt: Date.now(),
-                                url: result.url
-                            });
-                        }
-                        lastCache = { stations };
-                        await saveCache(lastCache);
-                    } catch (error) {
-                        await Salamander.ui.messageBox(
-                            `${strings.fetchFailed || "Failed to fetch departures"}:\n${String(error)}`,
-                            strings.name || "Railway Departures",
-                            "OK",
-                            "Error"
-                        );
-                        return;
-                    }
-                }
-                const stationItems = (lastCache.stations || []).map((s) => ({
-                    id: stationIdFor(s),
-                    name: s.station,
-                    directory: true,
-                    enabled: true,
-                    icon: "icon.svg",
-                    iconDark: "icon.svg",
-                    columns: {}
-                }));
+            currentView = "root";
+            const stationItems = cache.stations.map((s) => ({
+                id: stationIdFor(s),
+                name: stationNameFor(s),
+                directory: true,
+                enabled: true,
+                icon: "icon.svg",
+                iconDark: "icon.svg",
+                columns: {}
+            }));
+            if (requestId === listRequestId) {
                 await Salamander.fileSystem.addItems(stationItems);
             }
             return;
@@ -714,11 +870,18 @@ async function handleListDepartures() {
 
         const now = new Date();
 
-        const items = buildItems(departures);
+        const operatorIconFiles = await getOperatorIconFiles();
+        if (requestId !== listRequestId) return;
+
+        const items = buildItems(departures, operatorIconFiles);
         currentView = stationId;
 
-        // Persist departure details to storage for cross-context access by action handler
-        for (const d of departures) {
+        if (requestId !== listRequestId) return;
+        await Salamander.fileSystem.addItems(items);
+
+        // Do not block the panel on per-departure persistence. The in-memory
+        // map serves the immediate action; storage is only the cross-context fallback.
+        void Promise.all(departures.map(async (d) => {
             const depId = makeDepartureId(d);
             try {
                 await Salamander.storage.set(
@@ -732,22 +895,22 @@ async function handleListDepartures() {
                         platform: d.platform,
                         track: d.track,
                         sector: d.sector,
+                        line: d.line || "",
+                        destination: d.destination || d.stations?.[0] || "",
+                        via: d.via || d.stations?.[1] || "",
+                        note: d.note || "",
                         operator: d.operator || "",
                         station: d.station || ""
                     })
                 );
             } catch { }
-        }
-
-        await Salamander.fileSystem.addItems(items);
+        }));
     } catch (error) {
         await Salamander.ui.notify(
             `${strings.error || "Error:"} ${String(error)}`,
-            strings.name || "Railway Departures",
+            strings.name || "Tabule SprŽel",
             3000
         );
-    } finally {
-        listDeparturesBusy = false;
     }
 }
 
@@ -793,13 +956,17 @@ async function handleViewDeparture() {
         `${strings.detailPlatform || "Platform:"} ${details.platform || ""}`,
         `${strings.detailTrack || "Track:"} ${details.track || ""}`,
         `${strings.detailSector || "Sector:"} ${details.sector || ""}`,
+        `${strings.detailLine || "Line:"} ${details.line || ""}`,
+        `${strings.detailDestination || "Destination:"} ${details.destination || ""}`,
+        `${strings.detailVia || "Via:"} ${details.via || ""}`,
         `${strings.detailOperator || "Operator:"} ${details.operator || ""}`,
         `${strings.detailStation || "Station:"} ${details.station || ""}`,
+        `${strings.detailNote || "Note:"} ${details.note || ""}`,
     ];
 
     const title = item.name
-        ? `${strings.name || "Railway Departures"} — ${item.name}`
-        : strings.name || "Railway Departures";
+        ? `${strings.name || "Tabule SprŽel"} — ${item.name}`
+        : strings.name || "Tabule SprŽel";
 
     await Salamander.ui.messageBox(
         lines.join("\n"),
@@ -824,6 +991,6 @@ if (handler === "listDepartures") {
 if (handler === "listDepartures" && !scraperRunning) {
     const urls = await getConfiguredUrls();
     if (urls.length) {
-        await startScraper();
+        void startScraper();
     }
 }

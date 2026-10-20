@@ -1,8 +1,8 @@
 {
-  "name": "Railway Departures",
+  "name": "Tabule SprŽel",
   "description": "Browses railway departure board arrivals/departures in a Salamander file-system panel.",
   "commands": {
-    "TabuleSprZel.open": "Open Railway Departures Board",
+    "TabuleSprZel.open": "Open SprŽel Departures Board",
     "TabuleSprZel.configure": "Configuration"
   },
   "fileSystems": {
@@ -20,7 +20,11 @@
         "platform": { "name": "Platform", "description": "Platform number" },
         "track": { "name": "Track", "description": "Track number" },
         "sector": { "name": "Sector", "description": "Sector" },
-        "operator": { "name": "Carrier", "description": "Carrier name" }
+        "line": { "name": "Line", "description": "Service line" },
+        "destination": { "name": "Destination", "description": "Destination station" },
+        "via": { "name": "Via", "description": "Stations along the route" },
+        "operator": { "name": "Carrier", "description": "Carrier name" },
+        "note": { "name": "Note", "description": "Departure note" }
       },
       "actions": {
         "viewDeparture": "Show departure details"
@@ -30,7 +34,7 @@
   "errorInvalidUrl": "No board URLs configured. Use Configure URL.",
   "errorFetch": "Failed to fetch departures from URL",
   "fetchFailed": "Failed to fetch departures",
-  "settingsTitle": "Railway Departures Settings",
+  "settingsTitle": "Tabule SprŽel Settings",
   "detailTrain": "Train:",
   "detailTrainNumber": "Train No.:",
   "detailDepartureTime": "Departure:",
@@ -39,8 +43,12 @@
   "detailPlatform": "Platform:",
   "detailTrack": "Track:",
   "detailSector": "Sector:",
+  "detailLine": "Line:",
+  "detailDestination": "Destination:",
+  "detailVia": "Via:",
   "detailOperator": "Operator:",
   "detailStation": "Station:",
+  "detailNote": "Note:",
   "error": "Error:",
   "configTitle": "Configuration",
   "urlsLabel": "Board URLs:",

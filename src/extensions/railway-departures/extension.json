@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "id": "TabuleSprZel",
-  "name": "Railway Departures",
+  "name": "Tabule SprŽel",
   "version": "1.0.0",
   "description": "Scrapes railway departures from Správy Železnic website and displays them in Salamander file-system panel.",
   "runtime": "JavaScript.Node",
@@ -11,66 +11,142 @@
     "networkAccess": "yes",
     "externalProcesses": "no",
     "scriptExecution": "yes",
-    "activeWebContent": "no",
+    "activeWebContent": "yes",
     "elevation": "never"
   },
   "icon": "icon.svg",
   "iconDark": "icon-dark.svg",
-  "capabilities": ["file-system", "ui.dialogs", "storage"],
-  "viewers": [{
-    "name": "Departure Details",
-    "patterns": ["*.departure"],
-    "handler": "viewDeparture"
-  }],
+  "capabilities": [
+    "file-system",
+    "panels.write",
+    "ui.dialogs",
+    "storage"
+  ],
+  "viewers": [
+    {
+      "name": "Departure Details",
+      "patterns": [
+        "*.departure"
+      ],
+      "handler": "viewDeparture"
+    }
+  ],
   "events": [],
   "locales": {
     "en": "locales/en.json",
     "cs": "locales/cs.json"
   },
-  "commands": [{
-    "id": "TabuleSprZel.open",
-    "title": "Open Railway Departures Board",
-    "handler": "openDepartures",
-    "menu": "both",
-    "contextMenu": true,
-    "toolbar": true,
-    "requires": "any"
-  },
-  {
-    "id": "TabuleSprZel.configure",
-    "title": "Configuration",
-    "handler": "configureUrl",
-    "menu": "both",
-    "contextMenu": false,
-    "toolbar": false,
-    "requires": "any"
-  }],
-  "fileSystems": [{
-    "id": "departures",
-    "name": "SprŽel Departures Board",
-    "icon": "icon.svg",
-    "iconDark": "icon.svg",
-    "spinner": true,
-    "listHandler": "listDepartures",
-    "refreshIntervalMs": 30000,
-    "refreshDepth": 1,
-    "columns": [
-      {"id": "train", "name": "Train", "width": 100},
-      {"id": "trainNumber", "name": "Train No.", "width": 70, "numeric": true},
-      {"id": "departureTime", "name": "Departure", "width": 100},
-      {"id": "delay", "name": "Delay", "width": 70, "numeric": true},
-      {"id": "actualDepartureTime", "name": "Actual Departure", "width": 100},
-      {"id": "platform", "name": "Platform", "width": 70, "numeric": true},
-      {"id": "track", "name": "Track", "width": 60, "numeric": true},
-      {"id": "sector", "name": "Sector", "width": 70},
-      {"id": "operator", "name": "Carrier", "width": 80}
-    ],
-    "actions": [{
-      "id": "viewDeparture",
-      "title": "Show departure details",
-      "handler": "viewDeparture",
-      "default": true,
-      "itemIdPrefix": "dep-"
-    }]
-  }]
+  "commands": [
+    {
+      "id": "TabuleSprZel.open",
+      "title": "Open SprŽel Departures Board",
+      "path": "salamatrix:TabuleSprZel!departures",
+      "menu": "both",
+      "contextMenu": false,
+      "toolbar": true,
+      "requires": "any",
+      "toolbarMenu": true
+    },
+    {
+      "id": "TabuleSprZel.configure",
+      "title": "Configuration",
+      "handler": "configureUrl",
+      "menu": "both",
+      "contextMenu": false,
+      "toolbar": false,
+      "requires": "any"
+    }
+  ],
+  "fileSystems": [
+    {
+      "id": "departures",
+      "name": "SprŽel Departures Board",
+      "icon": "icon.svg",
+      "iconDark": "icon.svg",
+      "spinner": true,
+      "listHandler": "listDepartures",
+      "refreshIntervalMs": 30000,
+      "refreshDepth": 1,
+      "columns": [
+        {
+          "id": "train",
+          "name": "Train",
+          "width": 100
+        },
+        {
+          "id": "trainNumber",
+          "name": "Train No.",
+          "width": 70,
+          "numeric": true
+        },
+        {
+          "id": "departureTime",
+          "name": "Departure",
+          "width": 100
+        },
+        {
+          "id": "delay",
+          "name": "Delay",
+          "width": 70,
+          "numeric": true
+        },
+        {
+          "id": "actualDepartureTime",
+          "name": "Actual Departure",
+          "width": 100
+        },
+        {
+          "id": "platform",
+          "name": "Platform",
+          "width": 70,
+          "numeric": true
+        },
+        {
+          "id": "track",
+          "name": "Track",
+          "width": 60,
+          "numeric": true
+        },
+        {
+          "id": "sector",
+          "name": "Sector",
+          "width": 70
+        },
+        {
+          "id": "line",
+          "name": "Line",
+          "width": 70
+        },
+        {
+          "id": "destination",
+          "name": "Destination",
+          "width": 180
+        },
+        {
+          "id": "via",
+          "name": "Via",
+          "width": 240
+        },
+        {
+          "id": "operator",
+          "name": "Carrier",
+          "width": 80
+        },
+        {
+          "id": "note",
+          "name": "Note",
+          "width": 300
+        }
+      ],
+      "actions": [
+        {
+          "id": "viewDeparture",
+          "title": "Show departure details",
+          "handler": "viewDeparture",
+          "default": true,
+          "itemIdPrefix": "dep-"
+        }
+      ]
+    }
+  ]
 }

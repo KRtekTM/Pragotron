@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "generatedBy": "SalamatrixStudio",
+  "commands": [
+    {
+      "handler": "openDepartures",
+      "action": "custom"
+    },
+    {
+      "handler": "configureUrl",
+      "action": "custom"
+    }
+  ]
+}

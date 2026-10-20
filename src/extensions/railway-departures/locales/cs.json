@@ -20,7 +20,11 @@
         "platform": { "name": "Nástupiště", "description": "Číslo nástupiště" },
         "track": { "name": "Kolej", "description": "Číslo koleje" },
         "sector": { "name": "Sektor", "description": "Sektor" },
-        "operator": { "name": "Dopravce", "description": "Název dopravce" }
+        "line": { "name": "Linka", "description": "Označení linky" },
+        "destination": { "name": "Cíl", "description": "Cílová stanice" },
+        "via": { "name": "Přes", "description": "Stanice na trase" },
+        "operator": { "name": "Dopravce", "description": "Název dopravce" },
+        "note": { "name": "Poznámka", "description": "Poznámka k odjezdu" }
       },
       "actions": {
         "viewDeparture": "Zobrazit detaily odjezdu"
@@ -39,8 +43,12 @@
   "detailPlatform": "Nástupiště:",
   "detailTrack": "Kolej:",
   "detailSector": "Sektor:",
+  "detailLine": "Linka:",
+  "detailDestination": "Cíl:",
+  "detailVia": "Přes:",
   "detailOperator": "Dopravce:",
   "detailStation": "Stanice:",
+  "detailNote": "Poznámka:",
   "error": "Chyba:",
   "configTitle": "Konfigurace",
   "urlsLabel": "URL tabulí:",
