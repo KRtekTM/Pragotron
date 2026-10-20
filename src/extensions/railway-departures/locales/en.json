@@ -21,32 +21,30 @@
         "track": { "name": "Track", "description": "Track number" },
         "sector": { "name": "Sector", "description": "Sector" },
         "operator": { "name": "Carrier", "description": "Carrier name" }
+      },
+      "actions": {
+        "viewDeparture": "Show departure details"
       }
-    },
-    "actions": {
-      "viewDeparture": "Show departure details"
     }
   },
-  "strings": {
-    "errorInvalidUrl": "No board URLs configured. Use Configure URL.",
-    "errorFetch": "Failed to fetch departures from URL",
-    "fetchFailed": "Failed to fetch departures",
-    "settingsTitle": "Railway Departures Settings",
-    "detailTrain": "Train:",
-    "detailTrainNumber": "Train No.:",
-    "detailDepartureTime": "Departure:",
-    "detailDelay": "Delay:",
-    "detailActualDepartureTime": "Actual Departure:",
-    "detailPlatform": "Platform:",
-    "detailTrack": "Track:",
-    "detailSector": "Sector:",
-    "detailOperator": "Operator:",
-    "detailStation": "Station:",
-    "error": "Error:",
-    "configTitle": "Configuration",
-    "urlsLabel": "Board URLs:",
-    "refreshLabel": "Refresh interval (ms):",
-    "configHint": "Edit the config.json file in the extension folder and restart Salamander.",
-    "urlsNotConfigured": "(not configured)"
-  }
+  "errorInvalidUrl": "No board URLs configured. Use Configure URL.",
+  "errorFetch": "Failed to fetch departures from URL",
+  "fetchFailed": "Failed to fetch departures",
+  "settingsTitle": "Railway Departures Settings",
+  "detailTrain": "Train:",
+  "detailTrainNumber": "Train No.:",
+  "detailDepartureTime": "Departure:",
+  "detailDelay": "Delay:",
+  "detailActualDepartureTime": "Actual Departure:",
+  "detailPlatform": "Platform:",
+  "detailTrack": "Track:",
+  "detailSector": "Sector:",
+  "detailOperator": "Operator:",
+  "detailStation": "Station:",
+  "error": "Error:",
+  "configTitle": "Configuration",
+  "urlsLabel": "Board URLs:",
+  "refreshLabel": "Refresh interval (ms):",
+  "configHint": "Edit the config.json file in the extension folder and restart Salamander.",
+  "urlsNotConfigured": "(not configured)"
 }

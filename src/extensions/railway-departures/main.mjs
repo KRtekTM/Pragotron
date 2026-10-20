@@ -258,7 +258,7 @@ const fetchStationTable = async ({ url, attempts = 3 } = {}) => {
                 }
             });
             if (!response.ok) {
-                throw new Error(`Zdrojová tabule vrátila HTTP ${response.status}.`);
+                throw new Error(`The departure board returned HTTP ${response.status}.`);
             }
             const html = await response.text();
             const station = extractStationNameFromHtml(html) || "Stanice";
@@ -365,7 +365,7 @@ function buildItems(departures) {
         const shortTrain = trainShortName(d.train);
         const name = d.trainNumber && shortTrain
             ? `${shortTrain} ${d.trainNumber}`
-            : (d.train || d.trainNumber || d.departureTime || "Odjezd");
+            : (d.train || d.trainNumber || d.departureTime || "Departure");
         return {
             id: makeDepartureId(d),
             name,
@@ -440,42 +440,70 @@ async function getRefreshInterval() {
     return Number.isFinite(n) && n > 0 ? n : DEFAULT_REFRESH_MS;
 }
 
-async function getStringsAsync(locale) {
-    if (locale) {
-        try {
-            const response = await fetch(`locales/${locale}.json`);
-            if (response.ok) return await response.json();
-        } catch { }
-        const primary = locale.split("-")[0];
-        if (primary !== locale) {
-            try {
-                const response = await fetch(`locales/${primary}.json`);
-                if (response.ok) return await response.json();
-            } catch { }
-        }
+function extractLanguageCode(lang) {
+    if (typeof lang === "string" && lang) return String(lang).split("-")[0];
+    if (lang && typeof lang === "object") {
+        if (lang.locale) return String(lang.locale).split("-")[0];
+        if (lang.language) return String(lang.language).split("-")[0];
     }
+    return null;
+}
+
+async function detectLocale() {
     try {
-        const response = await fetch("locales/cs.json");
-        if (response.ok) return await response.json();
-    } catch { }
-    return {
-        name: "Odjezdy železnice",
-        strings: {
-            errorInvalidUrl: "Není nastavena žádná URL tabule. Použijte Konfigurovat URL.",
-            errorFetch: "Nepodařilo se načíst odjezdy z URL",
-            fetchFailed: "Nepodařilo se načíst odjezdy",
-            settingsTitle: "Nastavení odjezdů železnice",
-            lensToggleError: "Nelze přepnout čočku pro tuto položku."
+        if (Salamander.application && typeof Salamander.application.language === "function") {
+            const lang = await Salamander.application.language();
+            const code = extractLanguageCode(lang);
+            if (code) return code;
         }
+    } catch { }
+    try {
+        if (Salamander.application && typeof Salamander.application.Language === "function") {
+            const lang = Salamander.application.Language();
+            const code = extractLanguageCode(lang);
+            if (code) return code;
+        }
+    } catch { }
+    return "en";
+}
+
+async function getStringsAsync(locale = "en") {
+    const primary = String(locale || "en").split("-")[0];
+    const candidates = primary === "cs" ? ["locales/cs.json", "locales/en.json"] : ["locales/en.json", "locales/cs.json"];
+    for (const relativePath of candidates) {
+        try {
+            const text = await readFile(join(EXTENSION_DIR, relativePath), "utf8");
+            return JSON.parse(text);
+        } catch { }
+    }
+    return {
+        name: "Railway Departures",
+        error: "Error:",
+        configTitle: "Configuration",
+        urlsLabel: "Board URLs:",
+        refreshLabel: "Refresh interval (ms):",
+        configHint: "Edit the config.json file in the extension folder and restart Salamander.",
+        urlsNotConfigured: "(not configured)",
+        errorInvalidUrl: "No board URLs configured. Use Configure URL.",
+        errorFetch: "Failed to fetch departures from URL",
+        fetchFailed: "Failed to fetch departures",
+        settingsTitle: "Railway Departures Settings",
+        detailTrain: "Train:",
+        detailTrainNumber: "Train No.:",
+        detailDepartureTime: "Departure:",
+        detailDelay: "Delay:",
+        detailActualDepartureTime: "Actual Departure:",
+        detailPlatform: "Platform:",
+        detailTrack: "Track:",
+        detailSector: "Sector:",
+        detailOperator: "Operator:",
+        detailStation: "Station:"
     };
 }
 
 async function handleConfigureUrl(strings) {
     if (!strings) {
-        const locale = Salamander.application && typeof Salamander.application.Language === "function"
-            ? Salamander.application.Language()
-            : "cs";
-        strings = await getStringsAsync(locale);
+        strings = await getStringsAsync(await detectLocale());
     }
 
     const config = await readConfigFile();
@@ -483,11 +511,11 @@ async function handleConfigureUrl(strings) {
     const currentRefresh = config.refreshMs || DEFAULT_REFRESH_MS;
     const urlsText = currentUrls.length
         ? currentUrls.join("\n  ")
-        : strings.urlsNotConfigured || "(není nastaveno)";
+        : strings.urlsNotConfigured || "(not configured)";
 
     await Salamander.ui.messageBox(
-        `${strings.configTitle || "Konfigurace"}:\n\n${strings.urlsLabel || "URL tabulí:"}\n  ${urlsText}\n${strings.refreshLabel || "Refresh interval (ms):"} ${currentRefresh}\n\n${strings.configHint || "Upravte soubor config.json ve složce rozšíření a restartujte Salamander."}`,
-        strings.settingsTitle || "Nastavení odjezdů železnice",
+        `${strings.configTitle || "Configuration"}:\n\n${strings.urlsLabel || "Board URLs:"}\n  ${urlsText}\n${strings.refreshLabel || "Refresh interval (ms):"} ${currentRefresh}\n\n${strings.configHint || "Edit the config.json file in the extension folder and restart Salamander."}`,
+        strings.settingsTitle || "Railway Departures Settings",
         "OK",
         "Information"
     );
@@ -574,8 +602,8 @@ const stopScraper = () => {
 };
 
 const getCachedStation = (stationKey) => lastCache
-    ? lastCache.stations.find((s) => s.stationKey === stationKey)?.station || "Stanice"
-    : "Stanice";
+    ? lastCache.stations.find((s) => s.stationKey === stationKey)?.station || "Station"
+    : "Station";
 const getCachedDepartures = (stationKey) => lastCache
     ? lastCache.stations.find((s) => s.stationKey === stationKey)?.departures || null
     : null;
@@ -592,11 +620,9 @@ const normalizeId = (s) => stripDiacritics(s)
 async function handleListDepartures() {
     if (listDeparturesBusy) return;
     listDeparturesBusy = true;
+    let strings = null;
     try {
-        const locale = Salamander.application && typeof Salamander.application.Language === "function"
-            ? Salamander.application.Language()
-            : "cs";
-        const strings = await getStringsAsync(locale);
+        strings = await getStringsAsync(await detectLocale());
 
         panelOpen = true;
         lastPanelActivity = Date.now();
@@ -607,8 +633,8 @@ async function handleListDepartures() {
         const urls = await getConfiguredUrls();
         if (!urls.length) {
             await Salamander.ui.messageBox(
-                strings.errorInvalidUrl || "Není nastavena žádná URL tabule. Použijte Konfigurovat URL.",
-                strings.name || "Odjezdy železnice",
+                strings.errorInvalidUrl || "No board URLs configured. Use Configure URL.",
+                strings.name || "Railway Departures",
                 "OK",
                 "Error"
             );
@@ -659,8 +685,8 @@ async function handleListDepartures() {
                         await saveCache(lastCache);
                     } catch (error) {
                         await Salamander.ui.messageBox(
-                            `${strings.fetchFailed || "Nepodařilo se načíst odjezdy"}:\n${String(error)}`,
-                            strings.name || "Odjezdy železnice",
+                            `${strings.fetchFailed || "Failed to fetch departures"}:\n${String(error)}`,
+                            strings.name || "Railway Departures",
                             "OK",
                             "Error"
                         );
@@ -716,8 +742,8 @@ async function handleListDepartures() {
         await Salamander.fileSystem.addItems(items);
     } catch (error) {
         await Salamander.ui.notify(
-            `${strings.error || "Chyba:"} ${String(error)}`,
-            strings.name || "Odjezdy železnice",
+            `${strings.error || "Error:"} ${String(error)}`,
+            strings.name || "Railway Departures",
             3000
         );
     } finally {
@@ -731,10 +757,7 @@ async function handleRefreshDepartures(strings) {
 
 async function handleOpenDepartures(strings) {
     if (!strings) {
-        const locale = Salamander.application && typeof Salamander.application.Language === "function"
-            ? Salamander.application.Language()
-            : "cs";
-        strings = await getStringsAsync(locale);
+        strings = await getStringsAsync(await detectLocale());
     }
 
     const urls = await getConfiguredUrls();
@@ -746,10 +769,7 @@ async function handleOpenDepartures(strings) {
 }
 
 async function handleViewDeparture() {
-    const locale = Salamander.application && typeof Salamander.application.Language === "function"
-        ? Salamander.application.Language()
-        : "cs";
-    const strings = await getStringsAsync(locale);
+    const strings = await getStringsAsync(await detectLocale());
 
     const item = Salamander.invocation.item || {};
     const id = String(item.id || "");
@@ -765,21 +785,21 @@ async function handleViewDeparture() {
     details = details || {};
 
     const lines = [
-        `${strings.detailTrain || "Vlak:"} ${details.train || ""}`,
-        `${strings.detailTrainNumber || "Číslo vlaku:"} ${details.trainNumber || ""}`,
-        `${strings.detailDepartureTime || "Odjezd:"} ${details.departureTime || ""}`,
-        `${strings.detailDelay || "Zpoždění:"} ${details.delay || ""}`,
-        `${strings.detailActualDepartureTime || "Skutečný odjezd:"} ${details.actualDepartureTime || ""}`,
-        `${strings.detailPlatform || "Nástupiště:"} ${details.platform || ""}`,
-        `${strings.detailTrack || "Kolej:"} ${details.track || ""}`,
-        `${strings.detailSector || "Sektor:"} ${details.sector || ""}`,
-        `${strings.detailOperator || "Dopravce:"} ${details.operator || ""}`,
-        `${strings.detailStation || "Stanice:"} ${details.station || ""}`,
+        `${strings.detailTrain || "Train:"} ${details.train || ""}`,
+        `${strings.detailTrainNumber || "Train No.:"} ${details.trainNumber || ""}`,
+        `${strings.detailDepartureTime || "Departure:"} ${details.departureTime || ""}`,
+        `${strings.detailDelay || "Delay:"} ${details.delay || ""}`,
+        `${strings.detailActualDepartureTime || "Actual Departure:"} ${details.actualDepartureTime || ""}`,
+        `${strings.detailPlatform || "Platform:"} ${details.platform || ""}`,
+        `${strings.detailTrack || "Track:"} ${details.track || ""}`,
+        `${strings.detailSector || "Sector:"} ${details.sector || ""}`,
+        `${strings.detailOperator || "Operator:"} ${details.operator || ""}`,
+        `${strings.detailStation || "Station:"} ${details.station || ""}`,
     ];
 
     const title = item.name
-        ? `${strings.name || "Odjezdy železnice"} — ${item.name}`
-        : strings.name || "Odjezdy železnice";
+        ? `${strings.name || "Railway Departures"} — ${item.name}`
+        : strings.name || "Railway Departures";
 
     await Salamander.ui.messageBox(
         lines.join("\n"),

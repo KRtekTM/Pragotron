@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "id": "TabuleSprZel",
-  "name": "Tabule SprŽel",
+  "name": "Railway Departures",
   "version": "1.0.0",
-  "description": "Scrapuje odjezdy vlaků z webu Správy Železnic a zobrazuje je v panelu souborového systému Salamanderu.",
+  "description": "Scrapes railway departures from Správy Železnic website and displays them in Salamander file-system panel.",
   "runtime": "JavaScript.Node",
   "entryPoint": "main.mjs",
   "web": "https://samandarin.net/",
@@ -18,7 +18,7 @@
   "iconDark": "icon-dark.svg",
   "capabilities": ["file-system", "ui.dialogs", "storage"],
   "viewers": [{
-    "name": "Detaily odjezdu vlaků",
+    "name": "Departure Details",
     "patterns": ["*.departure"],
     "handler": "viewDeparture"
   }],
@@ -29,7 +29,7 @@
   },
   "commands": [{
     "id": "TabuleSprZel.open",
-    "title": "Otevřít vlakové odjezdy",
+    "title": "Open Railway Departures Board",
     "handler": "openDepartures",
     "menu": "both",
     "contextMenu": true,
@@ -38,7 +38,7 @@
   },
   {
     "id": "TabuleSprZel.configure",
-    "title": "Konfigurace",
+    "title": "Configuration",
     "handler": "configureUrl",
     "menu": "both",
     "contextMenu": false,
@@ -47,7 +47,7 @@
   }],
   "fileSystems": [{
     "id": "departures",
-    "name": "Tabule odjezdů SprŽel",
+    "name": "SprŽel Departures Board",
     "icon": "icon.svg",
     "iconDark": "icon.svg",
     "spinner": true,
@@ -55,19 +55,19 @@
     "refreshIntervalMs": 30000,
     "refreshDepth": 1,
     "columns": [
-      {"id": "train", "name": "Vlak", "width": 100},
-      {"id": "trainNumber", "name": "Číslo vlaku", "width": 70, "numeric": true},
-      {"id": "departureTime", "name": "Odjezd", "width": 100},
-      {"id": "delay", "name": "Zpoždění", "width": 70, "numeric": true},
-      {"id": "actualDepartureTime", "name": "Skutečný odjezd", "width": 100},
-      {"id": "platform", "name": "Nástupiště", "width": 70, "numeric": true},
-      {"id": "track", "name": "Kolej", "width": 60, "numeric": true},
-      {"id": "sector", "name": "Sektor", "width": 70},
-      {"id": "operator", "name": "Dopravce", "width": 80}
+      {"id": "train", "name": "Train", "width": 100},
+      {"id": "trainNumber", "name": "Train No.", "width": 70, "numeric": true},
+      {"id": "departureTime", "name": "Departure", "width": 100},
+      {"id": "delay", "name": "Delay", "width": 70, "numeric": true},
+      {"id": "actualDepartureTime", "name": "Actual Departure", "width": 100},
+      {"id": "platform", "name": "Platform", "width": 70, "numeric": true},
+      {"id": "track", "name": "Track", "width": 60, "numeric": true},
+      {"id": "sector", "name": "Sector", "width": 70},
+      {"id": "operator", "name": "Carrier", "width": 80}
     ],
     "actions": [{
       "id": "viewDeparture",
-      "title": "Zobrazit detaily odjezdu",
+      "title": "Show departure details",
       "handler": "viewDeparture",
       "default": true,
       "itemIdPrefix": "dep-"

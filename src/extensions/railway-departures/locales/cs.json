@@ -21,32 +21,30 @@
         "track": { "name": "Kolej", "description": "Číslo koleje" },
         "sector": { "name": "Sektor", "description": "Sektor" },
         "operator": { "name": "Dopravce", "description": "Název dopravce" }
+      },
+      "actions": {
+        "viewDeparture": "Zobrazit detaily odjezdu"
       }
-    },
-    "actions": {
-      "viewDeparture": "Zobrazit detaily odjezdu"
     }
   },
-  "strings": {
-    "errorInvalidUrl": "Není nastavena žádná URL tabule. Použijte Konfiguraci.",
-    "errorFetch": "Nepodařilo se načíst odjezdy z URL",
-    "fetchFailed": "Nepodařilo se načíst odjezdy",
-    "settingsTitle": "Nastavení odjezdů železnice",
-    "detailTrain": "Vlak:",
-    "detailTrainNumber": "Číslo vlaku:",
-    "detailDepartureTime": "Odjezd:",
-    "detailDelay": "Zpoždění:",
-    "detailActualDepartureTime": "Skutečný odjezd:",
-    "detailPlatform": "Nástupiště:",
-    "detailTrack": "Kolej:",
-    "detailSector": "Sektor:",
-    "detailOperator": "Dopravce:",
-    "detailStation": "Stanice:",
-    "error": "Chyba:",
-    "configTitle": "Konfigurace",
-    "urlsLabel": "URL tabulí:",
-    "refreshLabel": "Refresh interval (ms):",
-    "configHint": "Upravte soubor config.json ve složce rozšíření a restartujte Salamander.",
-    "urlsNotConfigured": "(není nastaveno)"
-  }
+  "errorInvalidUrl": "Není nastavena žádná URL tabule. Použijte Konfiguraci.",
+  "errorFetch": "Nepodařilo se načíst odjezdy z URL",
+  "fetchFailed": "Nepodařilo se načíst odjezdy",
+  "settingsTitle": "Nastavení odjezdů železnice",
+  "detailTrain": "Vlak:",
+  "detailTrainNumber": "Číslo vlaku:",
+  "detailDepartureTime": "Odjezd:",
+  "detailDelay": "Zpoždění:",
+  "detailActualDepartureTime": "Skutečný odjezd:",
+  "detailPlatform": "Nástupiště:",
+  "detailTrack": "Kolej:",
+  "detailSector": "Sektor:",
+  "detailOperator": "Dopravce:",
+  "detailStation": "Stanice:",
+  "error": "Chyba:",
+  "configTitle": "Konfigurace",
+  "urlsLabel": "URL tabulí:",
+  "refreshLabel": "Interval obnovení (ms):",
+  "configHint": "Upravte soubor config.json ve složce rozšíření a restartujte Salamander.",
+  "urlsNotConfigured": "(není nastaveno)"
 }

@@ -2,7 +2,9 @@
   "urls": [
     "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=455",
     "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3694",
-    "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3444"
+    "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3444",
+    "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=2408",
+    "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=2358"
   ],
   "refreshMs": 30000
 }
