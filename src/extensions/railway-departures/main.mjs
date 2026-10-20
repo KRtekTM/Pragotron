@@ -341,7 +341,7 @@ const formatActualDepartureWithDate = (departureTime, delayMinutes, now) => {
 function normalizeDepartures(raw, stationName) {
     if (!raw) return [];
     return raw.map((d) => ({
-        id: d.id || makeDepartureId(d),
+        id: makeDepartureId(d),
         train: d.train || "",
         trainNumber: d.trainNumber || "",
         departureTime: d.departureTime || "",
@@ -356,7 +356,7 @@ function normalizeDepartures(raw, stationName) {
 
 function buildItems(departures) {
     const now = new Date();
-    return departures.map((d) => {
+    const items = departures.map((d) => {
         const operator = String(d.operator || "").toLocaleLowerCase("cs-CZ");
         const isCD = operator.includes("čd") || operator.includes("ceske drahy") || operator.includes("cesk");
         const isRjet = operator.includes("rjet") || operator.includes("regiojet");
@@ -367,7 +367,7 @@ function buildItems(departures) {
             ? `${shortTrain} ${d.trainNumber}`
             : (d.train || d.trainNumber || d.departureTime || "Odjezd");
         return {
-            id: d.id,
+            id: makeDepartureId(d),
             name,
             directory: false,
             enabled: true,
@@ -386,6 +386,25 @@ function buildItems(departures) {
             }
         };
     });
+
+    departureDetailsById.clear();
+    for (const d of departures) {
+        const depId = makeDepartureId(d);
+        departureDetailsById.set(depId, {
+            train: d.train,
+            trainNumber: d.trainNumber,
+            departureTime: d.departureTime,
+            delay: formatDelay(d.delay),
+            actualDepartureTime: formatActualDepartureWithDate(d.departureTime, d.delay, now),
+            platform: d.platform,
+            track: d.track,
+            sector: d.sector,
+            operator: d.operator || "",
+            station: d.station || ""
+        });
+    }
+
+    return items;
 }
 
 async function readConfigFile() {
@@ -452,15 +471,22 @@ async function getStringsAsync(locale) {
 }
 
 async function handleConfigureUrl(strings) {
+    if (!strings) {
+        const locale = Salamander.application && typeof Salamander.application.Language === "function"
+            ? Salamander.application.Language()
+            : "cs";
+        strings = await getStringsAsync(locale);
+    }
+
     const config = await readConfigFile();
     const currentUrls = Array.isArray(config.urls) ? config.urls : [];
     const currentRefresh = config.refreshMs || DEFAULT_REFRESH_MS;
     const urlsText = currentUrls.length
         ? currentUrls.join("\n  ")
-        : "(není nastaveno)";
+        : strings.urlsNotConfigured || "(není nastaveno)";
 
     await Salamander.ui.messageBox(
-        `Konfigurace:\n\nURL tabulí:\n  ${urlsText}\nRefresh interval (ms): ${currentRefresh}\n\nUpravte soubor config.json ve složce rozšíření a restartujte Salamander.`,
+        `${strings.configTitle || "Konfigurace"}:\n\n${strings.urlsLabel || "URL tabulí:"}\n  ${urlsText}\n${strings.refreshLabel || "Refresh interval (ms):"} ${currentRefresh}\n\n${strings.configHint || "Upravte soubor config.json ve složce rozšíření a restartujte Salamander."}`,
         strings.settingsTitle || "Nastavení odjezdů železnice",
         "OK",
         "Information"
@@ -475,6 +501,7 @@ let panelOpen = false;
 let lastPanelActivity = 0;
 let currentView = null;
 let listDeparturesBusy = false;
+const departureDetailsById = new Map();
 const PANEL_INACTIVITY_MS = 5 * 60 * 1000;
 
 const saveCache = async (cache) => {
@@ -663,11 +690,34 @@ async function handleListDepartures() {
 
         const items = buildItems(departures);
         currentView = stationId;
+
+        // Persist departure details to storage for cross-context access by action handler
+        for (const d of departures) {
+            const depId = makeDepartureId(d);
+            try {
+                await Salamander.storage.set(
+                    `departure.${depId}`,
+                    JSON.stringify({
+                        train: d.train,
+                        trainNumber: d.trainNumber,
+                        departureTime: d.departureTime,
+                        delay: formatDelay(d.delay),
+                        actualDepartureTime: formatActualDepartureWithDate(d.departureTime, d.delay, now),
+                        platform: d.platform,
+                        track: d.track,
+                        sector: d.sector,
+                        operator: d.operator || "",
+                        station: d.station || ""
+                    })
+                );
+            } catch { }
+        }
+
         await Salamander.fileSystem.addItems(items);
     } catch (error) {
         await Salamander.ui.notify(
-            `Chyba: ${String(error)}`,
-            "Odjezdy železnice",
+            `${strings.error || "Chyba:"} ${String(error)}`,
+            strings.name || "Odjezdy železnice",
             3000
         );
     } finally {
@@ -680,6 +730,13 @@ async function handleRefreshDepartures(strings) {
 }
 
 async function handleOpenDepartures(strings) {
+    if (!strings) {
+        const locale = Salamander.application && typeof Salamander.application.Language === "function"
+            ? Salamander.application.Language()
+            : "cs";
+        strings = await getStringsAsync(locale);
+    }
+
     const urls = await getConfiguredUrls();
     if (!urls.length) {
         await handleConfigureUrl(strings);
@@ -688,32 +745,63 @@ async function handleOpenDepartures(strings) {
     }
 }
 
-const handler = Salamander.commandHandler || Salamander.command_handler;
-const h = String(handler ?? "");
+async function handleViewDeparture() {
+    const locale = Salamander.application && typeof Salamander.application.Language === "function"
+        ? Salamander.application.Language()
+        : "cs";
+    const strings = await getStringsAsync(locale);
 
-const is = (...names) => names.some((n) =>
-    h === n
-    || h.endsWith("." + n)
-    || h === `TabuleSprZel.${n}`
-);
+    const item = Salamander.invocation.item || {};
+    const id = String(item.id || "");
+    if (!id.startsWith("dep-")) return;
 
-try {
-    if (is("listDepartures")) {
-        await handleListDepartures();
-    } else if (is("openDepartures", "open")) {
-        await handleOpenDepartures(await getStringsAsync("cs"));
-    } else if (is("configureUrl", "configure")) {
-        await handleConfigureUrl(await getStringsAsync("cs"));
+    let details = departureDetailsById.get(id);
+    if (!details) {
+        try {
+            const raw = await Salamander.storage.get(`departure.${id}`, "");
+            if (raw) details = JSON.parse(raw);
+        } catch { }
     }
-} catch (error) {
-    await Salamander.ui.notify(
-        `Chyba: ${String(error)}`,
-        "Odjezdy železnice",
-        3000
+    details = details || {};
+
+    const lines = [
+        `${strings.detailTrain || "Vlak:"} ${details.train || ""}`,
+        `${strings.detailTrainNumber || "Číslo vlaku:"} ${details.trainNumber || ""}`,
+        `${strings.detailDepartureTime || "Odjezd:"} ${details.departureTime || ""}`,
+        `${strings.detailDelay || "Zpoždění:"} ${details.delay || ""}`,
+        `${strings.detailActualDepartureTime || "Skutečný odjezd:"} ${details.actualDepartureTime || ""}`,
+        `${strings.detailPlatform || "Nástupiště:"} ${details.platform || ""}`,
+        `${strings.detailTrack || "Kolej:"} ${details.track || ""}`,
+        `${strings.detailSector || "Sektor:"} ${details.sector || ""}`,
+        `${strings.detailOperator || "Dopravce:"} ${details.operator || ""}`,
+        `${strings.detailStation || "Stanice:"} ${details.station || ""}`,
+    ];
+
+    const title = item.name
+        ? `${strings.name || "Odjezdy železnice"} — ${item.name}`
+        : strings.name || "Odjezdy železnice";
+
+    await Salamander.ui.messageBox(
+        lines.join("\n"),
+        title,
+        "OK",
+        "Information"
     );
 }
 
-if (is("listDepartures") && !scraperRunning) {
+const handler = Salamander.commandHandler || Salamander.command_handler;
+
+if (handler === "listDepartures") {
+    await handleListDepartures();
+} else if (handler === "openDepartures" || handler === "open") {
+    await handleOpenDepartures();
+} else if (handler === "viewDeparture") {
+    await handleViewDeparture();
+} else if (handler === "configureUrl" || handler === "configure") {
+    await handleConfigureUrl();
+}
+
+if (handler === "listDepartures" && !scraperRunning) {
     const urls = await getConfiguredUrls();
     if (urls.length) {
         await startScraper();

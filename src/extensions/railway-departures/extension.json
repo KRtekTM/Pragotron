@@ -17,6 +17,11 @@
   "icon": "icon.svg",
   "iconDark": "icon-dark.svg",
   "capabilities": ["file-system", "ui.dialogs", "storage"],
+  "viewers": [{
+    "name": "Detaily odjezdu vlaků",
+    "patterns": ["*.departure"],
+    "handler": "viewDeparture"
+  }],
   "events": [],
   "locales": {
     "en": "locales/en.json",
@@ -59,6 +64,13 @@
       {"id": "track", "name": "Kolej", "width": 60, "numeric": true},
       {"id": "sector", "name": "Sektor", "width": 70},
       {"id": "operator", "name": "Dopravce", "width": 80}
-    ]
+    ],
+    "actions": [{
+      "id": "viewDeparture",
+      "title": "Zobrazit detaily odjezdu",
+      "handler": "viewDeparture",
+      "default": true,
+      "itemIdPrefix": "dep-"
+    }]
   }]
 }
