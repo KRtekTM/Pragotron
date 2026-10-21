@@ -1065,50 +1065,181 @@ async function handleViewDeparture() {
         : strings.name || "Tabule SprŽel";
     const vagonwebUrl = buildVagonwebUrl(details);
     const detailsText = detailRows.join("\r\n");
-    const detailsHeight = Math.min(210, Math.max(125, detailRows.length * 12 + 12));
-    const linkY = 10 + detailsHeight + 12;
-    const buttonY = linkY + 28;
-
     if (typeof Salamander.ui.dialog === "function") {
-        const dialog = await Salamander.ui.dialog(title, {
-            width: 700,
-            height: vagonwebUrl ? buttonY + 40 : detailsHeight + 55
-        }).create();
+        let dialog;
         try {
-            await dialog.addControl(
-                "textbox",
-                "details",
-                detailsText,
-                { x: 10, y: 10, width: 660, height: detailsHeight },
-                { readOnly: true, multiline: true }
+            const color = (red, green, blue) => red | (green << 8) | (blue << 16);
+            const palette = {
+                header: color(0x00, 0x4c, 0x9f),
+                accent: color(0x00, 0x66, 0xc9),
+                body: color(0xef, 0xf8, 0xfe),
+                block: color(0xd2, 0xea, 0xfd),
+                blockAlt: color(0xe6, 0xf3, 0xfd),
+                text: color(0x00, 0x2d, 0x77),
+                muted: color(0x5d, 0x7c, 0xb1),
+                white: color(0xff, 0xff, 0xff),
+                green: color(0x2a, 0x9b, 0x5f),
+                orange: color(0xff, 0x52, 0x00)
+            };
+            const bold = 0x10082;
+            const clean = (value, fallback = "—") => {
+                const text = String(value ?? "").replace(/\r?\n/g, " ").trim();
+                return text || fallback;
+            };
+            const shortLabel = (value) => clean(value, "").replace(/:\s*$/, "").toUpperCase();
+            const addStatic = (id, text, x, y, width, height, options = {}) => dialog.addControl(
+                "statictext",
+                id,
+                text,
+                { x, y, width, height },
+                options
             );
-            if (vagonwebUrl) {
-                await dialog.addControl(
-                    "label",
-                    "formation-label",
-                    strings.detailComposition || "Train formation:",
-                    { x: 10, y: linkY, width: 120, height: 16 }
+            const addBlock = (id, x, y, width, height, backgroundColor) => addStatic(
+                id,
+                "",
+                x,
+                y,
+                width,
+                height,
+                { textColor: backgroundColor, backgroundColor }
+            );
+            const addField = async (id, label, value, x, y, width, backgroundColor = palette.blockAlt) => {
+                await addStatic(
+                    `${id}-label`,
+                    `${label}  ${clean(value)}`,
+                    x + 8,
+                    y + 5,
+                    width - 16,
+                    24,
+                    { textColor: palette.text, backgroundColor }
                 );
+            };
+
+            const carrierCode = vagonwebCarrierCode(details.operator) || clean(details.operator, "").slice(0, 4).toUpperCase();
+            const carrierName = clean(details.operator, carrierCode);
+            const trainName = clean(details.train, "Train");
+            const trainNumber = clean(details.trainNumber);
+            const station = clean(details.station);
+            const note = clean(details.note, "");
+            const routeY = 194;
+            const noteY = routeY + 52;
+            const formationY = note ? noteY + 48 : noteY;
+            const formationHeight = vagonwebUrl ? 42 : 0;
+            const dialogHeight = formationY + formationHeight + 42;
+
+            dialog = await Salamander.ui.dialog(title, { width: 700, height: dialogHeight }).create();
+
+            await addBlock("body-background", 0, 0, 700, dialogHeight, palette.body);
+            await addBlock("header-background", 0, 0, 700, 58, palette.header);
+            await addBlock("header-accent", 580, 0, 120, 58, palette.accent);
+            await addStatic("carrier-name", carrierName, 16, 8, 180, 18, {
+                styleFlags: bold,
+                textColor: palette.white,
+                backgroundColor: palette.header
+            });
+            await addStatic("carrier-code", carrierCode, 16, 29, 70, 18, {
+                textColor: palette.white,
+                backgroundColor: palette.header
+            });
+            await addStatic("train-badge", "▣", 212, 10, 30, 32, {
+                styleFlags: bold,
+                textColor: palette.white,
+                backgroundColor: palette.header
+            });
+            await addStatic("train-name", `${trainName}  ${trainNumber}`, 248, 9, 320, 25, {
+                styleFlags: bold,
+                textColor: palette.white,
+                backgroundColor: palette.header
+            });
+            await addStatic("train-meta", `${shortLabel(strings.detailDepartureTime || "Departure:")}: ${clean(details.departureTime)}`, 248, 34, 320, 16, {
+                textColor: palette.white,
+                backgroundColor: palette.header
+            });
+
+            const fields = [
+                ["train", "◉", strings.detailTrain || "Train:", details.train],
+                ["number", "#", strings.detailTrainNumber || "Train No.:", details.trainNumber],
+                ["departure", "◷", strings.detailDepartureTime || "Departure:", details.departureTime],
+                ["delay", "!", strings.detailDelay || "Delay:", details.delay],
+                ["station", "⌂", strings.detailStation || "Station:", station],
+                ["platform", "P", strings.detailPlatform || "Platform:", details.platform],
+                ["track", "▤", strings.detailTrack || "Track:", details.track],
+                ["sector", "S", strings.detailSector || "Sector:", details.sector],
+                ["actual", "◷", strings.detailActualDepartureTime || "Actual:", details.actualDepartureTime],
+                ["operator", "", strings.detailOperator || "Operator:", details.operator]
+            ];
+            const fieldWidth = 136;
+            for (let index = 0; index < fields.length; index += 1) {
+                const [id, symbol, label, value] = fields[index];
+                const column = index % 5;
+                const row = Math.floor(index / 5);
+                const x = 12 + column * fieldWidth;
+                const y = 68 + row * 38;
+                await addField(id, `${symbol} ${shortLabel(label)}`, value, x, y, fieldWidth, row === 1 ? palette.block : palette.blockAlt);
+            }
+
+            await addBlock("route-divider", 12, routeY - 5, 676, 1, palette.accent);
+            await addStatic("route-label", `${shortLabel(strings.detailLine || "Line:")}  ${clean(details.line)}`, 16, routeY + 4, 150, 18, {
+                styleFlags: bold,
+                textColor: palette.text,
+                backgroundColor: palette.body
+            });
+            await addStatic("route-destination", `↗  ${clean(details.destination)}`, 176, routeY + 4, 285, 18, {
+                styleFlags: bold,
+                textColor: palette.text,
+                backgroundColor: palette.body
+            });
+            await addStatic("route-via", `${shortLabel(strings.detailVia || "Via:")}  ${clean(details.via)}`, 466, routeY + 4, 218, 18, {
+                textColor: palette.muted,
+                backgroundColor: palette.body
+            });
+
+            if (note) {
+                await addBlock("note-background", 12, noteY, 676, 38, palette.block);
+                await addStatic("note", `i  ${shortLabel(strings.detailNote || "Note:")}  ${note}`, 22, noteY + 9, 656, 20, {
+                    textColor: palette.text,
+                    backgroundColor: palette.block
+                });
+            }
+
+            if (vagonwebUrl) {
+                await addBlock("formation-background", 12, formationY, 676, formationHeight, palette.blockAlt);
+                await addStatic("formation-icon", "▣", 22, formationY + 10, 24, 20, {
+                    styleFlags: bold,
+                    textColor: palette.text,
+                    backgroundColor: palette.blockAlt
+                });
+                await addStatic("formation-label", strings.detailComposition || "Train formation:", 50, formationY + 6, 150, 16, {
+                    textColor: palette.muted,
+                    backgroundColor: palette.blockAlt
+                });
                 await dialog.addControl(
                     "hyperlink",
                     "formation-link",
                     vagonwebUrl,
-                    { x: 130, y: linkY, width: 520, height: 16 },
-                    { styleFlags: 0x14, actionOpen: vagonwebUrl }
+                    { x: 50, y: formationY + 22, width: 630, height: 16 },
+                    { styleFlags: 0x14, actionOpen: vagonwebUrl, textColor: palette.accent, backgroundColor: palette.blockAlt }
                 );
             }
+
             await dialog.addControl(
                 "button",
                 "close",
                 "OK",
-                { x: 620, y: vagonwebUrl ? buttonY : detailsHeight + 22, width: 50, height: 24 },
+                { x: 620, y: dialogHeight - 34, width: 50, height: 24 },
                 { dialogResult: 1, styleFlags: 0x100000 }
             );
-            await dialog.show();
-        } finally {
-            await dialog.close();
+            try {
+                await dialog.show();
+            } finally {
+                await dialog.close();
+            }
+            return;
+        } catch {
+            if (dialog) {
+                try { await dialog.close(); } catch { }
+            }
         }
-        return;
     }
 
     await Salamander.ui.messageBox(
