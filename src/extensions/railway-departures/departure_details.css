@@ -227,10 +227,13 @@ body {
 .icon-delay {
     width: 10px;
     height: 10px;
-    margin: 4px 5px 0 2px;
+    margin: 1px 5px 0 2px;
     border-radius: 50%;
     background: var(--green);
     font-size: 0;
+}
+.status-line .field-label {
+    margin-top: 1px;
 }
 .field-label, .note-label {
     overflow: hidden;
@@ -480,10 +483,65 @@ body {
     max-width: calc(100vw - 265px);
 }
 
-
 .formation-source a { color: var(--link); }
 .formation-status { padding: 20px; color: var(--muted); }
 .is-empty { display: none; }
+
+
+
+.loader {
+  --color-1: #fff;
+  --color-2: var(--muted);
+  --size: 1px;
+
+  width: calc(48 * var(--size));
+  height: calc(48 * var(--size));
+  border: calc(3 * var(--size)) dotted var(--color-1);
+  border-style: solid solid dotted dotted;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+  box-sizing: border-box;
+  animation: rotation 2s linear infinite;
+}
+.loader::after {
+  content: '';
+  box-sizing: border-box;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  border: calc(3 * var(--size)) dotted var(--color-2);
+  border-style: solid solid dotted;
+  width: calc(24 * var(--size));
+  height: calc(24 * var(--size));
+  border-radius: 50%;
+  animation: rotationBack 1s linear infinite;
+  transform-origin: center center;
+}
+
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+@keyframes rotationBack {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(-360deg);
+  }
+}
+
+
+
+
 @media (max-width: 760px) {
     body { padding: 8px; }
     .header { padding: 0 15px; }

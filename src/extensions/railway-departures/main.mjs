@@ -808,6 +808,9 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         icon("sprzel.svg")
     ]);
     const carrierName = departureHtmlValue(carrier.name, "Carrier");
+    const config = await readConfigFile();
+    const colors = String(config.departureDetails?.colors || "light");
+    const colorsCss = colors === "dark" ? "colors-dark.css" : "colors-light.css";
     const safeUrl = isSafeVagonwebUrl(vagonwebUrl) ? escapeHtml(vagonwebUrl) : "";
     const hasFormationUrl = Boolean(safeUrl);
     const values = {
@@ -833,6 +836,7 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         FORMATION_CLASS: hasFormationUrl ? "" : "is-empty",
         FORMATION_HTML: formation?.html || "",
         VAGONWEB_URL: safeUrl,
+        COLORS_CSS: colorsCss,
         ICON_SPRZEL: sprzel,
         ICON_TRAIN_DARK: trainDark,
         ICON_TRAIN_WHITE: trainWhite,
@@ -1504,7 +1508,7 @@ async function handleViewDeparture() {
             strings.detailFormationError || "Train formation could not be loaded."
         );
         const formation = vagonwebUrl
-            ? { html: `<div class="formation-status">${escapeHtml(departureHtmlValue(strings.detailFormationLoading, "Loading train formation..."))}</div>` }
+            ? { html: `<div class="formation-status"><span class="loader"></span>${escapeHtml(departureHtmlValue(strings.detailFormationLoading, "Loading train formation..."))}</div>` }
             : { html: "" };
         const html = await buildDepartureDetailsFromTemplate(details, strings, title, vagonwebUrl, formation);
         if (
