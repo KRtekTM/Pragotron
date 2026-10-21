@@ -813,6 +813,12 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
     const colorsCss = colors === "dark" ? "colors-dark.css" : "colors-light.css";
     const safeUrl = isSafeVagonwebUrl(vagonwebUrl) ? escapeHtml(vagonwebUrl) : "";
     const hasFormationUrl = Boolean(safeUrl);
+    let delayMinutes = Number(details.delayMinutes ?? 0);
+    if (!delayMinutes && details.delay) {
+        const parsedDelay = Number(String(details.delay).match(/\d+/)?.[0]);
+        if (!Number.isNaN(parsedDelay)) delayMinutes = parsedDelay;
+    }
+    const delayClass = delayMinutes > 20 ? "icon-delay--red" : delayMinutes > 0 ? "icon-delay--yellow" : "icon-delay--green";
     const values = {
         LANG: value(strings.detailPageLanguage, "en"),
         TITLE: escapeHtml(title),
@@ -837,6 +843,7 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         FORMATION_HTML: formation?.html || "",
         VAGONWEB_URL: safeUrl,
         COLORS_CSS: colorsCss,
+        DELAY_CLASS: delayClass,
         ICON_SPRZEL: sprzel,
         ICON_TRAIN_DARK: trainDark,
         ICON_TRAIN_WHITE: trainWhite,
@@ -935,8 +942,9 @@ function buildItems(departures, operatorIconFiles = new Set(), stationName = "")
                 train: d.train,
                 trainNumber: d.trainNumber,
                 departureTime: d.departureTime,
-                delay: formatDelay(d.delay),
-                actualDepartureTime: formatActualDepartureWithDate(d.departureTime, d.delay, now),
+            delay: formatDelay(d.delay),
+            delayMinutes: Number(d.delay || 0),
+            actualDepartureTime: formatActualDepartureWithDate(d.departureTime, d.delay, now),
                 platform: d.platform,
                 track: d.track,
                 sector: d.sector,
@@ -957,6 +965,7 @@ function buildItems(departures, operatorIconFiles = new Set(), stationName = "")
             trainNumber: d.trainNumber,
             departureTime: d.departureTime,
             delay: formatDelay(d.delay),
+            delayMinutes: Number(d.delay || 0),
             actualDepartureTime: formatActualDepartureWithDate(d.departureTime, d.delay, now),
             platform: d.platform,
             track: d.track,

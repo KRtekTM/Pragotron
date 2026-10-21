@@ -227,11 +227,13 @@ body {
 .icon-delay {
     width: 10px;
     height: 10px;
-    margin: 1px 5px 0 2px;
+    margin: 4px 5px 0 2px;
     border-radius: 50%;
-    background: var(--green);
     font-size: 0;
 }
+.icon-delay--green { background: var(--green); }
+.icon-delay--yellow { background: var(--yellow); }
+.icon-delay--red { background: var(--red); }
 .status-line .field-label {
     margin-top: 1px;
 }
