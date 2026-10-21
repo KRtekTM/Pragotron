@@ -1,10 +1,15 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = join(EXTENSION_DIR, "config.json");
+const DEPARTURE_DETAILS_TEMPLATE = join(EXTENSION_DIR, "departure-details.html");
 const DEFAULT_REFRESH_MS = 30000;
+const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
+const VAGONWEB_HTML_LIMIT = 8 * 1024 * 1024;
 
 const SCRAPER_STATE_KEY = "TabuleSprZel.scraperState";
 const CACHE_KEY = "TabuleSprZel.cache";
@@ -139,7 +144,7 @@ const parseTrainCell = (cellHtml) => {
         : split.remainder || primary.slice(sourceType.length).trim();
     const numberMatch = remainder.match(/\d+/);
     const sourceTrainNumber = numberMatch ? numberMatch[0] : "";
-    const trainNumber = sourceTrainNumber.slice(-4);
+    const trainNumber = sourceTrainNumber;
     const operatorFromRemainder = numberMatch
         ? remainder.slice(remainder.indexOf(numberMatch[0]) + numberMatch[0].length).trim()
         : remainder.trim();
@@ -471,6 +476,327 @@ function buildVagonwebUrl(details) {
         rok: String(new Date().getFullYear())
     });
     return `https://www.vagonweb.cz/razeni/vlak.php?${params}`;
+}
+
+const escapeHtml = (value) => String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const departureHtmlValue = (value, fallback = "—") => {
+    const text = String(value ?? "")
+        .replace(/\r?\n/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    return text || fallback;
+};
+
+const departureHtmlLabel = (value, fallback) => escapeHtml(
+    departureHtmlValue(value || fallback).replace(/:\s*$/, "")
+);
+
+const isSafeVagonwebUrl = (value) => {
+    try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "www.vagonweb.cz";
+    } catch {
+        return false;
+    }
+};
+
+const VAGONWEB_ALLOWED_TAGS = new Set([
+    "a", "b", "br", "div", "em", "i", "img", "p", "small", "span", "strong",
+    "table", "tbody", "td", "tfoot", "th", "thead", "tr"
+]);
+const VAGONWEB_VOID_TAGS = new Set(["br", "img"]);
+const VAGONWEB_ALLOWED_ATTRIBUTES = new Set([
+    "alt", "align", "cellpadding", "cellspacing", "class", "colspan", "height",
+    "rowspan", "title", "valign", "width"
+]);
+
+const resolveVagonwebResource = (value, baseUrl) => {
+    try {
+        const url = new URL(decodeHtml(value), baseUrl);
+        if (url.protocol !== "https:" || url.hostname !== "www.vagonweb.cz") return "";
+        return url.href;
+    } catch {
+        return "";
+    }
+};
+
+const extractElementById = (html, id) => {
+    const opening = new RegExp(
+        `<([a-z][a-z0-9:-]*)\\b(?=[^>]*\\bid\\s*=\\s*(["'])${id}\\2)[^>]*>`,
+        "i"
+    ).exec(html);
+    if (!opening) return "";
+
+    const tagName = opening[1].toLowerCase();
+    const start = opening.index;
+    const contentStart = start + opening[0].length;
+    const tags = /<\/?([a-z][a-z0-9:-]*)(?:\s[^>]*)?>/gi;
+    tags.lastIndex = contentStart;
+    let depth = 1;
+    let match;
+    while ((match = tags.exec(html))) {
+        const tag = match[1].toLowerCase();
+        if (tag !== tagName || VAGONWEB_VOID_TAGS.has(tag) || /\/\s*>$/.test(match[0])) continue;
+        if (match[0][1] === "/") depth -= 1;
+        else depth += 1;
+        if (depth === 0) return html.slice(start, tags.lastIndex);
+    }
+    return html.slice(start);
+};
+
+const extractVagonwebShowUrl = (html, baseUrl) => {
+    for (const match of String(html).matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+        if (cleanText(match[2]).toLocaleLowerCase("cs-CZ") !== "zobrazit") continue;
+        const href = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(match[1]);
+        const resolved = resolveVagonwebResource(href?.[1] ?? href?.[2] ?? href?.[3] ?? "", baseUrl);
+        if (resolved) return resolved;
+    }
+    return "";
+};
+
+const sanitizeVagonwebFormation = (html, baseUrl) => {
+    const withoutActiveContent = String(html)
+        .replace(/<!--[\s\S]*?-->/g, "")
+        .replace(/<\s*(script|style|iframe|object|embed|form|input|button|link|meta|base)\b[^>]*>[\s\S]*?(?:<\/\s*\1\s*>|$)/gi, "")
+        .replace(/<\s*\/?\s*(script|style|iframe|object|embed|form|input|button|link|meta|base)\b[^>]*>/gi, "");
+
+    return withoutActiveContent.replace(/<\s*(\/?)\s*([a-z][a-z0-9:-]*)([^>]*)>/gi, (full, closing, rawTag, rawAttributes) => {
+        const tag = rawTag.toLowerCase();
+        if (!VAGONWEB_ALLOWED_TAGS.has(tag)) return "";
+        if (closing) return `</${tag}>`;
+        const attributes = [];
+        for (const attribute of rawAttributes.matchAll(/([a-z_:][a-z0-9_.:-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/gi)) {
+            const name = attribute[1].toLowerCase();
+            const value = attribute[2] ?? attribute[3] ?? attribute[4] ?? "";
+            if (name === "src" && tag === "img") {
+                const source = resolveVagonwebResource(value, baseUrl);
+                if (source) attributes.push(`src="${escapeHtml(source)}"`);
+                continue;
+            }
+            if (name === "href" && tag === "a") {
+                const href = resolveVagonwebResource(value, baseUrl);
+                if (href) attributes.push(`href="${escapeHtml(href)}"`);
+                continue;
+            }
+            if (VAGONWEB_ALLOWED_ATTRIBUTES.has(name)) {
+                attributes.push(`${name}="${escapeHtml(value)}"`);
+            }
+        }
+        if (tag === "img" && !attributes.some((attribute) => attribute.startsWith("src=\""))) return "";
+        return `<${tag}${attributes.length ? ` ${attributes.join(" ")}` : ""}${VAGONWEB_VOID_TAGS.has(tag) ? " /" : ""}>`;
+    }).replace(/Pl[áa]novan[ée] [rŘ]azen[íi]/gi, "");
+};
+
+async function fetchVagonwebFormation(vagonwebUrl) {
+    if (!isSafeVagonwebUrl(vagonwebUrl)) {
+        return { html: "", error: null };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), VAGONWEB_FETCH_TIMEOUT_MS);
+    try {
+        const cookies = new Map();
+        let previousUrl = "";
+        const rememberCookies = (response) => {
+            const values = typeof response.headers.getSetCookie === "function"
+                ? response.headers.getSetCookie()
+                : [response.headers.get("set-cookie")].filter(Boolean);
+            for (const value of values) {
+                const pair = String(value).split(";", 1)[0];
+                const separator = pair.indexOf("=");
+                if (separator <= 0) continue;
+                const name = pair.slice(0, separator).trim();
+                const cookieValue = pair.slice(separator + 1).trim();
+                if (!cookieValue) cookies.delete(name);
+                else cookies.set(name, cookieValue);
+            }
+        };
+        const request = async (url, options = {}) => {
+            const headers = new Headers(options.headers);
+            headers.set("user-agent", "TabuleSprZel/1.1 (train departure details)");
+            if (cookies.size) headers.set("cookie", [...cookies].map(([name, value]) => `${name}=${value}`).join("; "));
+            if (previousUrl && !headers.has("referer")) headers.set("referer", previousUrl);
+            const response = await fetch(url, {
+                ...options,
+                headers,
+                signal: controller.signal
+            });
+            rememberCookies(response);
+            previousUrl = response.url || String(url);
+            return response;
+        };
+        const response = await request(vagonwebUrl);
+        if (!response.ok) throw new Error(`Vagonweb returned HTTP ${response.status}.`);
+        let html = await response.text();
+        if (html.length > VAGONWEB_HTML_LIMIT) throw new Error("Vagonweb response is too large.");
+        let block = extractElementById(html, "planovane_razeni");
+        let blockBaseUrl = vagonwebUrl;
+        if (!block) {
+            const pageUrl = new URL(vagonwebUrl);
+            const showUrl = extractVagonwebShowUrl(html, pageUrl);
+            if (showUrl) {
+                const showResponse = await request(showUrl);
+                if (!showResponse.ok) throw new Error(`Vagonweb detail returned HTTP ${showResponse.status}.`);
+                const showHtml = await showResponse.text();
+                if (showHtml.length > VAGONWEB_HTML_LIMIT) throw new Error("Vagonweb detail is too large.");
+                block = extractElementById(showHtml, "planovane_razeni");
+                blockBaseUrl = showUrl;
+            }
+        }
+        if (!block) {
+            const pageUrl = new URL(vagonwebUrl);
+            const common = {
+                rok: pageUrl.searchParams.get("rok") || String(new Date().getFullYear()),
+                zeme: pageUrl.searchParams.get("zeme") || "",
+                cislo: pageUrl.searchParams.get("cislo") || "",
+                nazev: "_n_",
+                styl: "r",
+                aktualni_rok: String(new Date().getFullYear()),
+                cislo_vozu: "",
+                virtualni_vlak: "",
+                cislo_alias: ""
+            };
+            const calendarUrl = new URL("ajax_kalendar_planovany.php", pageUrl);
+            const calendarResponse = await request(calendarUrl, {
+                method: "POST",
+                headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                body: new URLSearchParams(common)
+            });
+            if (!calendarResponse.ok) throw new Error(`Vagonweb calendar returned HTTP ${calendarResponse.status}.`);
+            const calendar = await calendarResponse.text();
+            if (calendar.length > VAGONWEB_HTML_LIMIT) throw new Error("Vagonweb calendar is too large.");
+            const dateCell = [...calendar.matchAll(/<td\b[^>]*>/gi)]
+                .map((match) => match[0])
+                .find((tag) => /\bod\s*=\s*["'][^"']+["']/i.test(tag) && /\bdo\s*=\s*["'][^"']+["']/i.test(tag));
+            const dateStart = /\bod\s*=\s*["']([^"']+)["']/i.exec(dateCell || "")?.[1];
+            const dateEnd = /\bdo\s*=\s*["']([^"']+)["']/i.exec(dateCell || "")?.[1];
+            if (!dateStart || !dateEnd) throw new Error("Vagonweb has no planned formation date range.");
+
+            const formationUrl = new URL("ajax_dalsi_razeni_vlak.php", pageUrl);
+            const formationResponse = await request(formationUrl, {
+                method: "POST",
+                headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                body: new URLSearchParams({ ...common, od: dateStart, do_x: dateEnd })
+            });
+            if (!formationResponse.ok) throw new Error(`Vagonweb formation returned HTTP ${formationResponse.status}.`);
+            const formationResponseHtml = await formationResponse.text();
+            if (formationResponseHtml.length > VAGONWEB_HTML_LIMIT) throw new Error("Vagonweb formation is too large.");
+            block = extractElementById(
+                `<div id="planovane_razeni">${formationResponseHtml}</div>`,
+                "planovane_razeni"
+            );
+        }
+        if (!block) throw new Error("Vagonweb did not contain #planovane_razeni.");
+        const sanitized = sanitizeVagonwebFormation(block, blockBaseUrl);
+        if (!sanitized) throw new Error("Vagonweb formation could not be sanitized.");
+        return { html: sanitized, error: null };
+    } catch (error) {
+        return {
+            html: '<div class="formation-status">Train formation could not be loaded.</div>',
+            error
+        };
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+const renderDepartureDetailsTemplate = (template, values) => template.replace(
+    /\{\{([A-Z0-9_]+)\}\}/g,
+    (full, key) => Object.prototype.hasOwnProperty.call(values, key) ? values[key] : full
+);
+
+async function buildDepartureDetailsFromTemplate(details, strings, title, vagonwebUrl, formation) {
+    const template = await readFile(DEPARTURE_DETAILS_TEMPLATE, "utf8");
+    const value = (input, fallback) => escapeHtml(departureHtmlValue(input, fallback));
+    const label = (input, fallback) => departureHtmlLabel(input, fallback);
+    const icon = async (relativePath) => escapeHtml(
+        `data:image/svg+xml;base64,${(await readFile(join(EXTENSION_DIR, "icons", relativePath))).toString("base64")}`
+    );
+    const operator = departureHtmlValue(details.operator, "");
+    const operatorKey = operator.toUpperCase();
+    var operatorIcon = "sprzel.svg";
+    switch (operatorKey) {
+        case "RJET":
+            operatorIcon = "operators/RJET_details.svg";
+            break;
+        case "ARV":
+        case "ARR":
+            operatorIcon = "operators/ARR_details.svg";
+            break;
+        case "CD":
+        case "ČD":
+            operatorIcon = "operators/CD_details.svg";
+            break;
+        default:
+            operatorIcon = "sprzel.svg";
+    }
+    const [sprzel, trainDark, trainWhite, trainCircle, time, calendar, location, via, info] = await Promise.all([
+        icon(operatorIcon),
+        icon("picto/picto-train-darkblue.svg"),
+        icon("picto/picto-train-white.svg"),
+        icon("picto/picto-train-circle.svg"),
+        icon("picto/picto-time.svg"),
+        icon("picto/picto-calendar.svg"),
+        icon("picto/picto-location.svg"),
+        icon("picto/picto-via.svg"),
+        icon("picto/picto-info.svg")
+    ]);
+    const carrierCode = departureHtmlValue(vagonwebCarrierCode(operator), operator.slice(0, 4).toUpperCase());
+    const safeUrl = isSafeVagonwebUrl(vagonwebUrl) ? escapeHtml(vagonwebUrl) : "";
+    const hasFormationUrl = Boolean(safeUrl);
+    const values = {
+        TITLE: escapeHtml(title),
+        CARRIER_CODE: value(carrierCode),
+        OPERATOR: value(operator),
+        TRAIN: value(details.train, "Train"),
+        TRAIN_NUMBER: value(details.trainNumber),
+        DEPARTURE: value(details.departureTime),
+        DELAY: value(details.delay),
+        STATION: value(details.station),
+        PLATFORM: value(details.platform),
+        TRACK: value(details.track),
+        SECTOR: value(details.sector),
+        ACTUAL_DEPARTURE: value(details.actualDepartureTime),
+        LINE: value(details.line),
+        DESTINATION: value(details.destination),
+        VIA: value(details.via),
+        NOTE: value(details.note),
+        NOTE_CLASS: "",
+        FORMATION_CLASS: hasFormationUrl ? "" : "is-empty",
+        FORMATION_HTML: formation?.html || "",
+        VAGONWEB_URL: safeUrl,
+        ICON_SPRZEL: sprzel,
+        ICON_TRAIN_DARK: trainDark,
+        ICON_TRAIN_WHITE: trainWhite,
+        ICON_TRAIN_CIRCLE: trainCircle,
+        ICON_TIME: time,
+        ICON_CALENDAR: calendar,
+        ICON_LOCATION: location,
+        ICON_VIA: via,
+        ICON_INFO: info,
+        LABEL_TRAIN: label(strings.detailTrain, "Train:"),
+        LABEL_TRAIN_NUMBER: label(strings.detailTrainNumber, "Train No.:"),
+        LABEL_DEPARTURE: label(strings.detailDepartureTime, "Departure:"),
+        LABEL_DELAY: label(strings.detailDelay, "Delay:"),
+        LABEL_STATION: label(strings.detailStation, "Station:"),
+        LABEL_PLATFORM: label(strings.detailPlatform, "Platform:"),
+        LABEL_TRACK: label(strings.detailTrack, "Track:"),
+        LABEL_SECTOR: label(strings.detailSector, "Sector:"),
+         LABEL_ACTUAL: label(strings.detailActualDepartureTime, "Actual Departure:"),
+         LABEL_OPERATOR: label(strings.detailOperator, "Operator:"),
+         LABEL_LINE: label(strings.detailLine, "Line:"),
+         LABEL_DESTINATION: label(strings.detailDestination, "Destination:"),
+         LABEL_VIA: label(strings.detailVia, "Via:"),
+        LABEL_NOTE: label(strings.detailNote, "Note:"),
+        LABEL_COMPOSITION: label(strings.detailComposition, "Train formation:")
+    };
+    return renderDepartureDetailsTemplate(template, values);
 }
 
 async function getOperatorIconFiles() {
@@ -1025,6 +1351,25 @@ async function handleOpenDepartures(strings) {
     }
 }
 
+const describeDepartureDetailsError = (error) => {
+    const message = error instanceof Error ? error.message : String(error ?? "Unknown WebView error");
+    return message.replace(/\s+/g, " ").trim().slice(0, 500) || "Unknown WebView error";
+};
+
+async function departureDetailsFallback(detailsText, title, vagonwebUrl, strings, error = null) {
+    const errorText = error
+        ? `\r\n\r\n${strings.error || "Error:"} ${describeDepartureDetailsError(error)}`
+        : "";
+    await Salamander.ui.messageBox(
+        vagonwebUrl
+            ? `${detailsText}\r\n\r\n${strings.detailComposition || "Train formation:"} ${vagonwebUrl}${errorText}`
+            : `${detailsText}${errorText}`,
+        title,
+        "OK",
+        "Information"
+    );
+}
+
 async function handleViewDeparture() {
     const strings = await getStringsAsync(await detectLocale());
 
@@ -1065,191 +1410,79 @@ async function handleViewDeparture() {
         : strings.name || "Tabule SprŽel";
     const vagonwebUrl = buildVagonwebUrl(details);
     const detailsText = detailRows.join("\r\n");
-    if (typeof Salamander.ui.dialog === "function") {
-        let dialog;
-        try {
-            const color = (red, green, blue) => red | (green << 8) | (blue << 16);
-            const palette = {
-                header: color(0x00, 0x4c, 0x9f),
-                accent: color(0x00, 0x66, 0xc9),
-                body: color(0xef, 0xf8, 0xfe),
-                block: color(0xd2, 0xea, 0xfd),
-                blockAlt: color(0xe6, 0xf3, 0xfd),
-                text: color(0x00, 0x2d, 0x77),
-                muted: color(0x5d, 0x7c, 0xb1),
-                white: color(0xff, 0xff, 0xff),
-                green: color(0x2a, 0x9b, 0x5f),
-                orange: color(0xff, 0x52, 0x00)
-            };
-            const bold = 0x10082;
-            const clean = (value, fallback = "—") => {
-                const text = String(value ?? "").replace(/\r?\n/g, " ").trim();
-                return text || fallback;
-            };
-            const shortLabel = (value) => clean(value, "").replace(/:\s*$/, "").toUpperCase();
-            const addStatic = (id, text, x, y, width, height, options = {}) => dialog.addControl(
-                "statictext",
-                id,
-                text,
-                { x, y, width, height },
-                options
-            );
-            const addBlock = (id, x, y, width, height, backgroundColor) => addStatic(
-                id,
-                "",
-                x,
-                y,
-                width,
-                height,
-                { textColor: backgroundColor, backgroundColor }
-            );
-            const addField = async (id, label, value, x, y, width, backgroundColor = palette.blockAlt) => {
-                await addStatic(
-                    `${id}-label`,
-                    `${label}  ${clean(value)}`,
-                    x + 8,
-                    y + 5,
-                    width - 16,
-                    24,
-                    { textColor: palette.text, backgroundColor }
-                );
-            };
+    let directory = null;
+    try {
+        const packageHostPath = join(
+            EXTENSION_DIR,
+            "node_modules",
+            "webview-node",
+            "bin",
+            "webview2-host.exe"
+        );
+        await access(packageHostPath);
+        const launcherPath = join(EXTENSION_DIR, "departure-window.mjs");
+        await access(launcherPath);
 
-            const carrierCode = vagonwebCarrierCode(details.operator) || clean(details.operator, "").slice(0, 4).toUpperCase();
-            const carrierName = clean(details.operator, carrierCode);
-            const trainName = clean(details.train, "Train");
-            const trainNumber = clean(details.trainNumber);
-            const station = clean(details.station);
-            const note = clean(details.note, "");
-            const routeY = 194;
-            const noteY = routeY + 52;
-            const formationY = note ? noteY + 48 : noteY;
-            const formationHeight = vagonwebUrl ? 42 : 0;
-            const dialogHeight = formationY + formationHeight + 42;
-
-            dialog = await Salamander.ui.dialog(title, { width: 700, height: dialogHeight }).create();
-
-            await addBlock("body-background", 0, 0, 700, dialogHeight, palette.body);
-            await addBlock("header-background", 0, 0, 700, 58, palette.header);
-            await addBlock("header-accent", 580, 0, 120, 58, palette.accent);
-            await addStatic("carrier-name", carrierName, 16, 8, 180, 18, {
-                styleFlags: bold,
-                textColor: palette.white,
-                backgroundColor: palette.header
-            });
-            await addStatic("carrier-code", carrierCode, 16, 29, 70, 18, {
-                textColor: palette.white,
-                backgroundColor: palette.header
-            });
-            await addStatic("train-badge", "▣", 212, 10, 30, 32, {
-                styleFlags: bold,
-                textColor: palette.white,
-                backgroundColor: palette.header
-            });
-            await addStatic("train-name", `${trainName}  ${trainNumber}`, 248, 9, 320, 25, {
-                styleFlags: bold,
-                textColor: palette.white,
-                backgroundColor: palette.header
-            });
-            await addStatic("train-meta", `${shortLabel(strings.detailDepartureTime || "Departure:")}: ${clean(details.departureTime)}`, 248, 34, 320, 16, {
-                textColor: palette.white,
-                backgroundColor: palette.header
-            });
-
-            const fields = [
-                ["train", "◉", strings.detailTrain || "Train:", details.train],
-                ["number", "#", strings.detailTrainNumber || "Train No.:", details.trainNumber],
-                ["departure", "◷", strings.detailDepartureTime || "Departure:", details.departureTime],
-                ["delay", "!", strings.detailDelay || "Delay:", details.delay],
-                ["station", "⌂", strings.detailStation || "Station:", station],
-                ["platform", "P", strings.detailPlatform || "Platform:", details.platform],
-                ["track", "▤", strings.detailTrack || "Track:", details.track],
-                ["sector", "S", strings.detailSector || "Sector:", details.sector],
-                ["actual", "◷", strings.detailActualDepartureTime || "Actual:", details.actualDepartureTime],
-                ["operator", "", strings.detailOperator || "Operator:", details.operator]
-            ];
-            const fieldWidth = 136;
-            for (let index = 0; index < fields.length; index += 1) {
-                const [id, symbol, label, value] = fields[index];
-                const column = index % 5;
-                const row = Math.floor(index / 5);
-                const x = 12 + column * fieldWidth;
-                const y = 68 + row * 38;
-                await addField(id, `${symbol} ${shortLabel(label)}`, value, x, y, fieldWidth, row === 1 ? palette.block : palette.blockAlt);
-            }
-
-            await addBlock("route-divider", 12, routeY - 5, 676, 1, palette.accent);
-            await addStatic("route-label", `${shortLabel(strings.detailLine || "Line:")}  ${clean(details.line)}`, 16, routeY + 4, 150, 18, {
-                styleFlags: bold,
-                textColor: palette.text,
-                backgroundColor: palette.body
-            });
-            await addStatic("route-destination", `↗  ${clean(details.destination)}`, 176, routeY + 4, 285, 18, {
-                styleFlags: bold,
-                textColor: palette.text,
-                backgroundColor: palette.body
-            });
-            await addStatic("route-via", `${shortLabel(strings.detailVia || "Via:")}  ${clean(details.via)}`, 466, routeY + 4, 218, 18, {
-                textColor: palette.muted,
-                backgroundColor: palette.body
-            });
-
-            if (note) {
-                await addBlock("note-background", 12, noteY, 676, 38, palette.block);
-                await addStatic("note", `i  ${shortLabel(strings.detailNote || "Note:")}  ${note}`, 22, noteY + 9, 656, 20, {
-                    textColor: palette.text,
-                    backgroundColor: palette.block
-                });
-            }
-
-            if (vagonwebUrl) {
-                await addBlock("formation-background", 12, formationY, 676, formationHeight, palette.blockAlt);
-                await addStatic("formation-icon", "▣", 22, formationY + 10, 24, 20, {
-                    styleFlags: bold,
-                    textColor: palette.text,
-                    backgroundColor: palette.blockAlt
-                });
-                await addStatic("formation-label", strings.detailComposition || "Train formation:", 50, formationY + 6, 150, 16, {
-                    textColor: palette.muted,
-                    backgroundColor: palette.blockAlt
-                });
-                await dialog.addControl(
-                    "hyperlink",
-                    "formation-link",
-                    vagonwebUrl,
-                    { x: 50, y: formationY + 22, width: 630, height: 16 },
-                    { styleFlags: 0x14, actionOpen: vagonwebUrl, textColor: palette.accent, backgroundColor: palette.blockAlt }
-                );
-            }
-
-            await dialog.addControl(
-                "button",
-                "close",
-                "OK",
-                { x: 620, y: dialogHeight - 34, width: 50, height: 24 },
-                { dialogResult: 1, styleFlags: 0x100000 }
-            );
-            try {
-                await dialog.show();
-            } finally {
-                await dialog.close();
-            }
-            return;
-        } catch {
-            if (dialog) {
-                try { await dialog.close(); } catch { }
-            }
+        directory = await mkdtemp(join(tmpdir(), "pragotron-departure-"));
+        const htmlPath = join(directory, "details.html");
+        const formation = vagonwebUrl
+            ? { html: '<div class="formation-status">Loading train formation...</div>' }
+            : { html: "" };
+        const html = await buildDepartureDetailsFromTemplate(details, strings, title, vagonwebUrl, formation);
+        if (
+            typeof html !== "string"
+            || html.length === 0
+            || html.length > 1024 * 1024
+            || !html.startsWith("<!doctype html>")
+            || !html.includes('<main class="card">')
+        ) {
+            throw new Error("Invalid departure details document");
         }
-    }
+        await writeFile(htmlPath, html, "utf8");
 
-    await Salamander.ui.messageBox(
-        vagonwebUrl
-            ? `${detailsText}\r\n\r\n${strings.detailComposition || "Train formation:"} ${vagonwebUrl}`
-            : detailsText,
-        title,
-        "OK",
-        "Information"
-    );
+        const child = spawn(process.execPath, [launcherPath, htmlPath, directory, title, vagonwebUrl], {
+            detached: true,
+            windowsHide: true,
+            stdio: "ignore"
+        });
+        await new Promise((resolve, reject) => {
+            const onSpawn = () => {
+                child.removeListener("error", onError);
+                resolve();
+            };
+            const onError = (error) => {
+                child.removeListener("spawn", onSpawn);
+                reject(error);
+            };
+            child.once("spawn", onSpawn);
+            child.once("error", onError);
+        });
+        let fallbackShown = false;
+        const showFallback = (error) => {
+            if (fallbackShown) return;
+            fallbackShown = true;
+            try {
+                console.error(`[TabuleSprZel] departure details launcher: ${describeDepartureDetailsError(error)}`);
+            } catch { }
+            void departureDetailsFallback(detailsText, title, vagonwebUrl, strings, error)
+                .catch(() => { });
+        };
+        child.once("error", showFallback);
+        child.once("exit", (code, signal) => {
+            if (code !== 0) {
+                showFallback(new Error(`The departure details launcher exited with ${signal || `code ${code}`}.`));
+            }
+        });
+        child.unref();
+        directory = null;
+        return;
+    } catch (error) {
+        try {
+            console.error(`[TabuleSprZel] failed to open departure details: ${describeDepartureDetailsError(error)}`);
+        } catch { }
+        if (directory) await rm(directory, { recursive: true, force: true }).catch(() => { });
+        await departureDetailsFallback(detailsText, title, vagonwebUrl, strings, error);
+    }
 }
 
 const handler = Salamander.commandHandler || Salamander.command_handler;

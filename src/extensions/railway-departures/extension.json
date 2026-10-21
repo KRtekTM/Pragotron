@@ -2,14 +2,14 @@
   "schema": 2,
   "id": "TabuleSprZel",
   "name": "Tabule SprŽel",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Scrapes railway departures from Správy Železnic website and displays them in Salamander file-system panel.",
   "runtime": "JavaScript.Node",
   "entryPoint": "main.mjs",
   "web": "https://samandarin.net/",
   "security": {
     "networkAccess": "yes",
-    "externalProcesses": "no",
+    "externalProcesses": "yes",
     "scriptExecution": "yes",
     "activeWebContent": "yes",
     "elevation": "never"
