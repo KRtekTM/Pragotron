@@ -310,12 +310,8 @@ function formatDelay(minutes) {
 }
 
 function minutesUntilDeparture(departureTime, now) {
-    if (!departureTime) return null;
-    const match = String(departureTime).match(/^(\d{1,2}):(\d{2})$/);
-    if (!match) return null;
-    const dep = new Date(now);
-    dep.setHours(Number(match[1]), Number(match[2]), 0, 0);
-    if (dep < now) dep.setDate(dep.getDate() + 1);
+    const dep = getEffectiveDepartureDate(departureTime, 0, now);
+    if (!dep) return null;
     return Math.round((dep - now) / 60000);
 }
 
@@ -339,14 +335,33 @@ const trainShortName = (train) => {
     return map[train] || train;
 };
 
-const formatActualDepartureWithDate = (departureTime, delayMinutes, now) => {
-    if (!departureTime) return "";
+const RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1000;
+
+const getEffectiveDepartureDate = (departureTime, delayMinutes, now = new Date()) => {
     const match = String(departureTime).match(/^(\d{1,2}):(\d{2})$/);
-    if (!match) return "";
+    if (!match) return null;
     const dep = new Date(now);
     dep.setHours(Number(match[1]), Number(match[2]), 0, 0);
-    dep.setMinutes(dep.getMinutes() + Number(delayMinutes || 0));
-    if (dep < now) dep.setDate(dep.getDate() + 1);
+
+    const delay = Number(delayMinutes || 0);
+    if (Number.isFinite(delay)) {
+        dep.setMinutes(dep.getMinutes() + delay);
+    }
+
+    const referenceMinute = new Date(now);
+    referenceMinute.setSeconds(0, 0);
+    const recentDeparture = referenceMinute.getTime() - dep.getTime()
+        <= RECENT_DEPARTURE_GRACE_MS;
+    if (dep < now && !recentDeparture) {
+        dep.setDate(dep.getDate() + 1);
+    }
+
+    return dep;
+};
+
+const formatActualDepartureWithDate = (departureTime, delayMinutes, now) => {
+    const dep = getEffectiveDepartureDate(departureTime, delayMinutes, now);
+    if (!dep) return "";
     const day = String(dep.getDate()).padStart(2, "0");
     const month = String(dep.getMonth() + 1).padStart(2, "0");
     const year = dep.getFullYear();
@@ -378,6 +393,84 @@ function normalizeOperatorIconKey(operator) {
     return stripDiacritics(operator)
         .toUpperCase()
         .replace(/[^A-Z0-9]+/g, "");
+}
+
+const VAGONWEB_CARRIER_CODES = [
+    ["CD", ["CD", "CESKEDRAHY"]],
+    ["RJ", ["RJ", "RJET", "REGIOJET"]],
+    ["LE", ["LE", "LEOEXPRESS"]],
+    ["ARV", ["ARR", "ARRIVA", "ARRIVAVLAKY"]],
+    ["AŽD", ["AZD", "AZDPRAHA"]],
+    ["DLB", ["DLB", "LANDERBAHN", "DIELANDERBAHN"]],
+    ["GWTR", ["GWTR", "GWTRAIN", "GWTRAINREGIO"]],
+    ["OÚD", ["OUD", "OSOBLAZSKAUZKOROZCHODNIDRAHA"]],
+    ["KŽC", ["KZC", "KZCDOPRAVA"]],
+    ["GE", ["GE", "GEPARDEXPRESS"]],
+    ["ZSSK", ["ZSSK", "ZELEZNICNASPOLOCNOSTSLOVENSKO"]],
+    ["RJSK", ["RJSK", "REGIOJETSLOVENSKO"]],
+    ["LESK", ["LESK", "LEOEXPRESSSLOVENSKO"]],
+    ["TREŽ", ["TREZ", "TRENCIANSKAELEKTRICKAZELEZNICA"]],
+    ["PKPIC", ["PKP", "PKPIC", "PKPINTERCITY"]],
+    ["PREG", ["PREG", "POLREGIO"]],
+    ["RJPL", ["RJPL", "REGIOJETPOLSKA"]],
+    ["LEPL", ["LEPL", "LEOEXPRESSPOLSKA"]],
+    ["ÖBB", ["OBB", "OEBB", "OSTERREICHISCHEBUNDESBAHNEN"]],
+    ["DB", ["DB", "DEUTSCHEBAHN"]],
+    ["MÁV", ["MAV", "MAVSZEMELYSZALLITASIZRT"]]
+];
+
+const vagonwebCarrierCode = (operator) => {
+    const key = normalizeOperatorIconKey(operator);
+    const exact = VAGONWEB_CARRIER_CODES.find(([, aliases]) => aliases.includes(key));
+    if (exact) return exact[0];
+    return VAGONWEB_CARRIER_CODES.find(([, aliases]) =>
+        aliases.some((alias) => alias.length > 3 && key.includes(alias))
+    )?.[0] || "";
+};
+
+const vagonwebCategory = (train) => {
+    const key = normalizeOperatorIconKey(train);
+    const categories = [
+        ["RJ", ["RAILJET", "REGIOJET", "RJ"]],
+        ["RJX", ["RJX", "RAILJETXPRESS"]],
+        ["LE", ["LE", "LEOEXPRESS"]],
+        ["SC", ["SUPERCITY", "SC"]],
+        ["EC", ["EUROCITY", "EC"]],
+        ["EIC", ["EIC", "EXPRESSINTERCITY"]],
+        ["EIP", ["EIP", "EXPRESSINTERCITYPREMIUM"]],
+        ["ECE", ["ECE", "EUROCITYEXPRESS"]],
+        ["ICE", ["ICE", "INTERCITYEXPRESS"]],
+        ["EN", ["EURONIGHT", "EN"]],
+        ["NJ", ["NIGHTJET", "NJ"]],
+        ["IC", ["INTERCITY", "IC"]],
+        ["ICN", ["ICN"]],
+        ["REX", ["REX", "REGIONALNYEXPRES", "REGIONALEXPRESS"]],
+        ["TLX", ["TLX", "TRILEXEXPRESS"]],
+        ["TL", ["TL", "TRILEX"]],
+        ["IR", ["IR", "INTERREGIO"]],
+        ["RE", ["RE", "REGIOEXPRESS"]],
+        ["RB", ["RB", "REGIONALBAHN"]],
+        ["Ex", ["EXPRESS", "EX"]],
+        ["R", ["RYCHLIK", "R"]],
+        ["Sp", ["SPESNY", "SP"]],
+        ["Os", ["OSOBNI", "OS"]]
+    ];
+    return categories.find(([, aliases]) => aliases.includes(key))?.[0] || "";
+};
+
+function buildVagonwebUrl(details) {
+    const carrier = vagonwebCarrierCode(details.operator);
+    const category = vagonwebCategory(details.train);
+    const number = String(details.trainNumber || "").trim();
+    if (!carrier || !category || !/^\d+$/.test(number)) return "";
+
+    const params = new URLSearchParams({
+        zeme: carrier,
+        kategorie: category,
+        cislo: number,
+        rok: String(new Date().getFullYear())
+    });
+    return `https://www.vagonweb.cz/razeni/vlak.php?${params}`;
 }
 
 async function getOperatorIconFiles() {
@@ -575,6 +668,7 @@ async function getStringsAsync(locale = "en") {
         detailLine: "Line:",
         detailDestination: "Destination:",
         detailVia: "Via:",
+        detailComposition: "Train formation:",
         detailOperator: "Operator:",
         detailStation: "Station:",
         detailNote: "Note:"
@@ -947,29 +1041,80 @@ async function handleViewDeparture() {
     }
     details = details || {};
 
-    const lines = [
-        `${strings.detailTrain || "Train:"} ${details.train || ""}`,
-        `${strings.detailTrainNumber || "Train No.:"} ${details.trainNumber || ""}`,
-        `${strings.detailDepartureTime || "Departure:"} ${details.departureTime || ""}`,
-        `${strings.detailDelay || "Delay:"} ${details.delay || ""}`,
-        `${strings.detailActualDepartureTime || "Actual Departure:"} ${details.actualDepartureTime || ""}`,
-        `${strings.detailPlatform || "Platform:"} ${details.platform || ""}`,
-        `${strings.detailTrack || "Track:"} ${details.track || ""}`,
-        `${strings.detailSector || "Sector:"} ${details.sector || ""}`,
-        `${strings.detailLine || "Line:"} ${details.line || ""}`,
-        `${strings.detailDestination || "Destination:"} ${details.destination || ""}`,
-        `${strings.detailVia || "Via:"} ${details.via || ""}`,
-        `${strings.detailOperator || "Operator:"} ${details.operator || ""}`,
-        `${strings.detailStation || "Station:"} ${details.station || ""}`,
-        `${strings.detailNote || "Note:"} ${details.note || ""}`,
-    ];
+    const detailRows = [
+        [strings.detailTrain || "Train:", details.train],
+        [strings.detailTrainNumber || "Train No.:", details.trainNumber],
+        [strings.detailDepartureTime || "Departure:", details.departureTime],
+        [strings.detailDelay || "Delay:", details.delay],
+        [strings.detailActualDepartureTime || "Actual Departure:", details.actualDepartureTime],
+        [strings.detailPlatform || "Platform:", details.platform],
+        [strings.detailTrack || "Track:", details.track],
+        [strings.detailSector || "Sector:", details.sector],
+        [strings.detailLine || "Line:", details.line],
+        [strings.detailDestination || "Destination:", details.destination],
+        [strings.detailVia || "Via:", details.via],
+        [strings.detailOperator || "Operator:", details.operator],
+        [strings.detailStation || "Station:", details.station],
+        [strings.detailNote || "Note:", details.note]
+    ]
+        .filter(([, value]) => String(value ?? "").trim())
+        .map(([label, value]) => `${label} ${String(value).replace(/\r?\n/g, "\r\n")}`);
 
     const title = item.name
         ? `${strings.name || "Tabule SprŽel"} — ${item.name}`
         : strings.name || "Tabule SprŽel";
+    const vagonwebUrl = buildVagonwebUrl(details);
+    const detailsText = detailRows.join("\r\n");
+    const detailsHeight = Math.min(210, Math.max(125, detailRows.length * 12 + 12));
+    const linkY = 10 + detailsHeight + 12;
+    const buttonY = linkY + 28;
+
+    if (typeof Salamander.ui.dialog === "function") {
+        const dialog = await Salamander.ui.dialog(title, {
+            width: 700,
+            height: vagonwebUrl ? buttonY + 40 : detailsHeight + 55
+        }).create();
+        try {
+            await dialog.addControl(
+                "textbox",
+                "details",
+                detailsText,
+                { x: 10, y: 10, width: 660, height: detailsHeight },
+                { readOnly: true, multiline: true }
+            );
+            if (vagonwebUrl) {
+                await dialog.addControl(
+                    "label",
+                    "formation-label",
+                    strings.detailComposition || "Train formation:",
+                    { x: 10, y: linkY, width: 120, height: 16 }
+                );
+                await dialog.addControl(
+                    "hyperlink",
+                    "formation-link",
+                    vagonwebUrl,
+                    { x: 130, y: linkY, width: 520, height: 16 },
+                    { styleFlags: 0x14, actionOpen: vagonwebUrl }
+                );
+            }
+            await dialog.addControl(
+                "button",
+                "close",
+                "OK",
+                { x: 620, y: vagonwebUrl ? buttonY : detailsHeight + 22, width: 50, height: 24 },
+                { dialogResult: 1, styleFlags: 0x100000 }
+            );
+            await dialog.show();
+        } finally {
+            await dialog.close();
+        }
+        return;
+    }
 
     await Salamander.ui.messageBox(
-        lines.join("\n"),
+        vagonwebUrl
+            ? `${detailsText}\r\n\r\n${strings.detailComposition || "Train formation:"} ${vagonwebUrl}`
+            : detailsText,
         title,
         "OK",
         "Information"

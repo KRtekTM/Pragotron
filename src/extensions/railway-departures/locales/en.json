@@ -46,6 +46,7 @@
   "detailLine": "Line:",
   "detailDestination": "Destination:",
   "detailVia": "Via:",
+  "detailComposition": "Train formation:",
   "detailOperator": "Operator:",
   "detailStation": "Station:",
   "detailNote": "Note:",
