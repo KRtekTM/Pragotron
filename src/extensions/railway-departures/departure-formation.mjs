@@ -37,7 +37,7 @@ const isSafeVagonwebUrl = (value) => {
 };
 
 const VAGONWEB_ALLOWED_TAGS = new Set([
-    "a", "b", "br", "div", "em", "i", "img", "p", "small", "span", "strong",
+    "a", "b", "br", "div", "em", "i", "img", "p", "small", "span", "strong", "sub", "sup",
     "table", "tbody", "td", "tfoot", "th", "thead", "tr"
 ]);
 const VAGONWEB_VOID_TAGS = new Set(["br", "img"]);
@@ -129,7 +129,7 @@ const escapeHtml = (value) => String(value ?? "")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-export async function fetchVagonwebFormation(vagonwebUrl) {
+export async function fetchVagonwebFormation(vagonwebUrl, formationErrorText = "Train formation could not be loaded.") {
     if (!isSafeVagonwebUrl(vagonwebUrl)) return { html: "", error: null };
 
     const controller = new AbortController();
@@ -229,7 +229,7 @@ export async function fetchVagonwebFormation(vagonwebUrl) {
         return { html: sanitized, error: null };
     } catch (error) {
         return {
-            html: '<div class="formation-status">Train formation could not be loaded.</div>',
+            html: `<div class="formation-status">${escapeHtml(String(formationErrorText || "Train formation could not be loaded."))}</div>`,
             error
         };
     } finally {

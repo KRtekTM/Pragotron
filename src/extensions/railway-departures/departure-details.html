@@ -1,400 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{LANG}}">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{TITLE}}</title>
-<style>
-:root {
-    color-scheme: light;
-    --blue: #07549d;
-    --ink: #003b7a;
-    --muted: #5b7da8;
-    --page: #edf8fe;
-    --surface: #cce8fa;
-    --surface-light: #e0f2fc;
-    --rule: #b9dced;
-    --link: #006ee6;
-    --green: #27aa5c;
-}
-* { box-sizing: border-box; }
-html, body { min-height: 100%; }
-body {
-    margin: 0;
-    padding: 0;
-    overflow-x: hidden;
-    background: #d8edf9;
-    color: var(--ink);
-    font: 13px/1.15 Arial, "Segoe UI", sans-serif;
-}
-.card {
-    width: min(1000px, 100%);
-    min-width: 0;
-    margin: 0 auto;
-    overflow: hidden;
-    border-radius: 0;
-    background: var(--page);
-    box-shadow: 0 8px 24px rgba(0, 59, 122, .17);
-}
-.header {
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    height: 68px;
-    align-items: center;
-    padding: 0 24px;
-    color: #fff;
-    background: var(--blue);
-}
-.header::after {
-    position: absolute;
-    top: 0;
-    right: 176px;
-    width: 112px;
-    height: 68px;
-    background: linear-gradient(124deg, transparent 0 33%, rgba(43, 143, 232, .62) 33% 52%, transparent 52% 61%, rgba(43, 143, 232, .62) 61% 81%, transparent 81%);
-    content: "";
-    pointer-events: none;
-}
-.carrier {
-    display: flex;
-    min-width: 0;
-    height: 44px;
-    align-items: center;
-    gap: 16px;
-}
-.carrier-logo { display: block; width: 48px; height: 38px; object-fit: contain; }
-.carrier-name {
-    padding-left: 17px;
-    border-left: 1px solid rgba(255, 255, 255, .78);
-    color: #fff;
-    font-size: 16px;
-    font-weight: 700;
-    white-space: nowrap;
-}
-.carrier-code { display: none; }
-.header-train {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-left: auto;
-}
-.train-icon {
-    display: block;
-    width: 31px;
-    height: 31px;
-    object-fit: contain;
-}
-.header-train-type,
-.header-train-number {
-    display: block;
-    color: #fff;
-    font-weight: 700;
-    white-space: nowrap;
-}
-.header-train-type { font-size: 11px; letter-spacing: .05em; }
-.header-train-number { margin-top: 3px; font-size: 15px; }
-.header-title { display: none; }
-.content { padding: 0 13px 13px; }
-.fields {
-    display: grid;
-    grid-template-columns: 113px 143px 192px 216px minmax(0, 1fr);
-    min-height: 106px;
-    border-bottom: 1px solid var(--rule);
-}
-.field {
-    display: flex;
-    min-width: 0;
-    align-items: flex-start;
-    gap: 7px;
-    padding: 18px 10px 9px;
-    border-left: 1px solid var(--rule);
-}
-.field:first-child { border-left: 0; }
-.field-copy { min-width: 0; }
-.field-icon {
-    display: inline-grid;
-    flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
-    place-items: center;
-    color: var(--blue);
-    font-size: 19px;
-    font-weight: 700;
-    line-height: 1;
-}
-.field-icon-image { width: 18px; height: 24px; object-fit: contain; }
-.field-icon-image.time { width: 18px; height: 18px; margin-top: 1px; }
-.field-icon-image.calendar { width: 17px; height: 19px; margin-top: 1px; }
-.field-icon-image.location { width: 15px; height: 22px; margin-top: 1px; }
-.field-icon-image.via { width: 23px; height: 20px; margin-top: 1px; }
-.icon-delay {
-    width: 10px;
-    height: 10px;
-    margin: 4px 5px 0 2px;
-    border-radius: 50%;
-    background: var(--green);
-    font-size: 0;
-}
-.field-label, .note-label {
-    overflow: hidden;
-    color: var(--muted);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: .06em;
-    text-overflow: ellipsis;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-.field-value {
-    overflow: hidden;
-    margin-top: 7px;
-    color: var(--ink);
-    font-size: 16px;
-    font-weight: 700;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.fields > .field:nth-child(1) .field-value,
-.fields > .field:nth-child(2) .field-value,
-.fields > .field:nth-child(3) .field-value {
-    margin-top: 9px;
-    font-size: 40px;
-    line-height: .9;
-}
-.status-field {
-    display: block;
-    padding-top: 17px;
-}
-.status-line {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 7px;
-}
-.status-line .field-value { margin: 0 0 0 auto; font-size: 18px; }
-.actual-line {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 7px;
-    margin-top: 8px;
-}
-.actual-line .field-icon-image { width: 15px; height: 16px; }
-.actual-line .field-label { margin-right: 4px; }
-.actual-line .field-value { margin: 0; font-size: 14px; }
-.field.delay .field-value { color: var(--green); }
-.station-field { display: block; padding-left: 14px; }
-.station-field > .field-copy { display: flex; align-items: flex-start; gap: 8px; }
-.station-field > .field-copy .field-value { margin-top: 0; }
-.station-meta {
-    display: grid;
-    grid-template-columns: repeat(3, auto);
-    gap: 5px 13px;
-    margin-top: 11px;
-    color: var(--muted);
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-}
-.station-marker { color: #f25d21; font-size: 15px; font-weight: 900; }
-.station-meta strong {
-    display: block;
-    margin-top: 3px;
-    color: var(--ink);
-    font-size: 13px;
-    text-transform: none;
-}
-.route {
-    min-height: 73px;
-    padding: 14px 0 12px;
-    border-bottom: 1px solid var(--rule);
-}
-.route-grid {
-    display: grid;
-    grid-template-columns: 112px 217px minmax(0, 1fr);
-    min-height: 45px;
-}
-.route-cell {
-    min-width: 0;
-    padding: 0 14px;
-    border-left: 1px solid var(--rule);
-}
-.route-cell:first-child { padding-left: 0; border-left: 0; }
-.route-label {
-    color: var(--muted);
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-}
-.route-line { margin-top: 7px; color: var(--ink); font-size: 17px; font-weight: 700; }
-.route-line { font-size: 30px; line-height: .95; }
-.route-destination {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--ink);
-    font-size: 28px;
-    font-weight: 700;
-}
-.route-destination .field-icon { width: 22px; height: 22px; font-size: 19px; }
-.route-via { display: flex; min-width: 0; align-items: flex-start; gap: 8px; }
-.route-via strong {
-    display: block;
-    overflow: hidden;
-    margin-top: 7px;
-    color: var(--ink);
-    font-size: 14px;
-    font-weight: 700;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.note, .formation { border-radius: 8px; }
-.note {
-    display: flex;
-    min-height: 77px;
-    align-items: center;
-    gap: 10px;
-    margin-top: 12px;
-    padding: 10px 14px;
-    background: var(--surface);
-}
-.note .field-icon {
-    width: 28px;
-    height: 28px;
-}
-.note .field-icon-image {
-    width: 28px;
-    height: 28px;
-}
-.note-label { margin-bottom: 5px; }
-.note-text { color: var(--ink); font-size: 12px; font-weight: 700; text-transform: uppercase; }
-.formation {
-    display: grid;
-    grid-template-columns: 252px minmax(0, 1fr);
-    height: 115px;
-    align-items: stretch;
-    margin-top: 16px;
-    background: var(--surface-light);
-}
-.formation-info {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    justify-content: center;
-    padding: 12px 17px;
-    border-right: 1px solid var(--rule);
-}
-.section-heading {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-}
-.section-heading .field-icon { width: 25px; height: 25px; font-size: 21px; }
-.section-heading .field-icon-image { width: 25px; height: 25px; }
-.formation-link {
-    display: inline-block;
-    align-self: flex-start;
-    margin: 9px 0 0 33px;
-    color: var(--link);
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 1.35;
-    text-decoration: underline;
-}
-.formation-source {
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 13px 10px 7px;
-    color: var(--ink);
-    scrollbar-color: #8cb9d7 transparent;
-}
-.formation-source > * { margin: 0; }
-.formation-source #planovane_razeni {
-    display: block;
-    width: max-content;
-    min-width: 100%;
-    height: 94px;
-    overflow: visible;
-    white-space: nowrap;
-}
-.formation-source #planovane_razeni > div,
-.formation-source #planovane_razeni > p,
-.formation-source #planovane_razeni > table {
-    display: inline-block;
-    vertical-align: middle;
-    width: max-content !important;
-    min-width: 0 !important;
-    max-width: none !important;
-}
-.formation-source #planovane_razeni table {
-    width: max-content !important;
-    max-width: none !important;
-    border-collapse: collapse;
-    table-layout: auto;
-}
-.formation-source #planovane_razeni table table { display: inline-table; vertical-align: middle; }
-.formation-source #planovane_razeni tr { height: 80px; }
-.formation-source #planovane_razeni td,
-.formation-source #planovane_razeni th {
-    width: auto !important;
-    max-width: none !important;
-    padding: 0 2px;
-    vertical-align: middle;
-    white-space: nowrap;
-}
-.formation-source #planovane_razeni img {
-    display: inline-block;
-    width: auto !important;
-    height: auto !important;
-    max-width: none !important;
-    max-height: 76px !important;
-    vertical-align: middle;
-}
-.formation-source #planovane_razeni br { display: none; }
-.formation-source a { color: var(--link); }
-.formation-status { padding: 20px; color: var(--muted); }
-.is-empty { display: none; }
-@media (max-width: 760px) {
-    body { padding: 8px; }
-    .header { padding: 0 15px; }
-    .content { padding: 0 8px 8px; }
-    .fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .field { min-height: 82px; }
-    .station-field { grid-column: span 2; }
-    .route-grid { grid-template-columns: 92px 180px minmax(0, 1fr); }
-    .formation { grid-template-columns: 205px minmax(0, 1fr); }
-}
-@media (max-width: 560px) {
-    .header { min-height: 68px; height: auto; padding-top: 12px; padding-bottom: 12px; }
-    .carrier-name { font-size: 14px; }
-    .header-train { gap: 5px; }
-    .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .station-field { grid-column: span 2; }
-    .route { overflow: hidden; }
-    .route-grid { grid-template-columns: 78px 160px minmax(230px, 1fr); width: 500px; }
-    .formation { grid-template-columns: 1fr; height: auto; min-height: 210px; }
-    .formation-info { min-height: 92px; border-right: 0; border-bottom: 1px solid var(--rule); }
-    .formation-source { min-height: 115px; }
-    .formation-link { margin-top: 5px; }
-}
-</style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{TITLE}}</title>
+    <link rel="stylesheet" href="departure_details.css" type="text/css">
+    <link rel="stylesheet" href="vagonweb.css" type="text/css">
 </head>
 <body>
 <main class="card">
     <header class="header">
         <div class="carrier">
             <img class="carrier-logo" src="{{ICON_SPRZEL}}" alt="">
-            <div class="carrier-name" data-label="{{LABEL_OPERATOR}}">&#268;esk&#233; dr&#225;hy</div>
+            <div class="carrier-name" data-label="{{LABEL_OPERATOR}}">{{CARRIER_NAME}}</div>
             <div class="carrier-code" data-code="{{CARRIER_CODE}}">{{OPERATOR}}</div>
         </div>
         <div class="header-train">
@@ -405,30 +23,30 @@ body {
     </header>
     <div class="content">
         <section class="fields">
-            <div class="field"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_DARK}}" alt=""><div class="field-copy"><div class="field-label" data-i18n="{{LABEL_TRAIN}}">VLAK</div><div class="field-value">{{TRAIN}}</div></div></div>
-            <div class="field"><span class="field-icon" aria-hidden="true">#</span><div class="field-copy"><div class="field-label" data-i18n="{{LABEL_TRAIN_NUMBER}}">&#268;ÍSLO VLAKU</div><div class="field-value">{{TRAIN_NUMBER}}</div></div></div>
-            <div class="field"><img class="field-icon field-icon-image time" src="{{ICON_TIME}}" alt=""><div class="field-copy"><div class="field-label" data-i18n="{{LABEL_DEPARTURE}}">ODJEZD</div><div class="field-value">{{DEPARTURE}}</div></div></div>
+            <div class="field"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_DARK}}" alt=""><div class="field-copy"><div class="field-label">{{LABEL_TRAIN}}</div><div class="field-value">{{TRAIN}}</div></div></div>
+            <div class="field"><span class="field-icon" aria-hidden="true">#</span><div class="field-copy"><div class="field-label">{{LABEL_TRAIN_NUMBER}}</div><div class="field-value">{{TRAIN_NUMBER}}</div></div></div>
+            <div class="field"><img class="field-icon field-icon-image time" src="{{ICON_TIME}}" alt=""><div class="field-copy"><div class="field-label">{{LABEL_DEPARTURE}}</div><div class="field-value">{{DEPARTURE}}</div></div></div>
             <div class="field status-field">
-                <div class="status-line"><span class="field-icon icon-delay" aria-hidden="true">&nbsp;</span><div class="field-label" data-i18n="{{LABEL_DELAY}}">ZPO&#381;D&#282;N&#205;</div><div class="field-value">{{DELAY}}</div></div>
-                <div class="actual-line"><img class="field-icon field-icon-image calendar" src="{{ICON_CALENDAR}}" alt=""><div class="field-label" data-i18n="{{LABEL_ACTUAL}}">SKUTE&#268;N&#221; ODJEZD</div><div class="field-value">{{ACTUAL_DEPARTURE}}</div></div>
+                <div class="status-line"><span class="field-icon icon-delay" aria-hidden="true">&nbsp;</span><div class="field-label">{{LABEL_DELAY}}</div><div class="field-value">{{DELAY}}</div></div>
+                <div class="actual-line"><img class="field-icon field-icon-image calendar" src="{{ICON_CALENDAR}}" alt=""><div class="field-label">{{LABEL_ACTUAL}}</div><div class="field-value">{{ACTUAL_DEPARTURE}}</div></div>
             </div>
-            <div class="field station-field"><div class="field-copy"><span class="station-marker" aria-hidden="true">&#8801;</span><div class="field-label" data-i18n="{{LABEL_STATION}}">STANICE</div><div class="field-value">{{STATION}}</div></div><div class="station-meta"><span data-i18n="{{LABEL_PLATFORM}}">N&#193;STUPI&#352;T&#282;<strong>{{PLATFORM}}</strong></span><span data-i18n="{{LABEL_TRACK}}">KOLEJ<strong>{{TRACK}}</strong></span><span data-i18n="{{LABEL_SECTOR}}">SEKTOR<strong>{{SECTOR}}</strong></span></div></div>
+            <div class="field station-field"><div class="field-copy"><span class="station-marker" aria-hidden="true">&#8801;</span><div class="field-label">{{LABEL_STATION}}</div><div class="field-value">{{STATION}}</div></div><div class="station-meta"><span>{{LABEL_PLATFORM}}<strong>{{PLATFORM}}</strong></span><span>{{LABEL_TRACK}}<strong>{{TRACK}}</strong></span><span>{{LABEL_SECTOR}}<strong>{{SECTOR}}</strong></span></div></div>
         </section>
         <section class="route">
             <div class="route-grid">
-                <div class="route-cell"><div class="route-label" data-i18n="{{LABEL_LINE}}">LINKA</div><div class="route-line">{{LINE}}</div></div>
-                <div class="route-cell route-destination"><img class="field-icon field-icon-image location" src="{{ICON_LOCATION}}" alt=""><span><span class="route-label" data-i18n="{{LABEL_DESTINATION}}">C&#205;LOV&#193; STANICE</span><br>{{DESTINATION}}</span></div>
-                <div class="route-cell route-via"><img class="field-icon field-icon-image via" src="{{ICON_VIA}}" alt=""><div><div class="route-label" data-i18n="{{LABEL_VIA}}">TRASA</div><strong>{{VIA}}</strong></div></div>
+                <div class="route-cell"><div class="route-label">{{LABEL_LINE}}</div><div class="route-line">{{LINE}}</div></div>
+                <div class="route-cell route-destination"><img class="field-icon field-icon-image location" src="{{ICON_LOCATION}}" alt=""><span><span class="route-label">{{LABEL_DESTINATION}}</span><br>{{DESTINATION}}</span></div>
+                <div class="route-cell route-via"><img class="field-icon field-icon-image via" src="{{ICON_VIA}}" alt=""><div><div class="route-label">{{LABEL_VIA}}</div><strong>{{VIA}}</strong></div></div>
             </div>
         </section>
         <section class="note {{NOTE_CLASS}}">
             <img class="field-icon field-icon-image" src="{{ICON_INFO}}" alt="">
-            <div><div class="note-label" data-i18n="{{LABEL_NOTE}}">POZN&#193;MKA</div><div class="note-text">{{NOTE}}</div></div>
+            <div><div class="note-label">{{LABEL_NOTE}}</div><div class="note-text">{{NOTE}}</div></div>
         </section>
         <section class="formation {{FORMATION_CLASS}}">
             <div class="formation-info">
-                <div class="section-heading"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_CIRCLE}}" alt=""><span data-i18n="{{LABEL_COMPOSITION}}">&#344;AZEN&#205; VLAKU</span></div>
-                <a class="formation-link" href="{{VAGONWEB_URL}}" target="_blank" rel="noopener noreferrer">Zobrazit řazení<br>na vagonWEBu &#8594;</a>
+                <div class="section-heading"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_CIRCLE}}" alt=""><span>{{LABEL_COMPOSITION}}</span></div>
+                <a class="formation-link" href="{{VAGONWEB_URL}}" target="_blank" rel="noopener noreferrer">{{FORMATION_LINK_FIRST}}<br>{{FORMATION_LINK_SECOND}}</a>
             </div>
             <div class="formation-source"><!-- PRAGOTRON_FORMATION_START -->{{FORMATION_HTML}}<!-- PRAGOTRON_FORMATION_END --></div>
         </section>

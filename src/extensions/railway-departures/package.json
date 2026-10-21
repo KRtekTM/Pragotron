@@ -2,10 +2,14 @@
   "name": "tabule-sprzel-extension",
   "version": "1.1.0",
   "private": true,
+  "scripts": {
+    "prepare:release": "node prepare-release.mjs"
+  },
   "bundleDependencies": [
     "webview-node"
   ],
   "dependencies": {
+    "@fontsource/open-sans": "5.3.0",
     "webview-node": "0.1.41"
   }
 }

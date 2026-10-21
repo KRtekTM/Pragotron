@@ -7,7 +7,7 @@ import { fetchVagonwebFormation } from "./departure-formation.mjs";
 
 const require = createRequire(import.meta.url);
 const extensionDirectory = dirname(fileURLToPath(import.meta.url));
-const [htmlPath, directory, title, vagonwebUrl] = process.argv.slice(2);
+const [htmlPath, directory, title, vagonwebUrl, formationErrorText] = process.argv.slice(2);
 
 const POWERSHELL = "powershell.exe";
 const WINDOW_WIDTH = 1014;
@@ -126,8 +126,6 @@ try {
         icon: join(extensionDirectory, "sprzel.ico"),
         minWidth: 760,
         minHeight: 420,
-        maxWidth: 1400,
-        maxHeight: 1100,
         resizable: true,
         maximizable: true,
         minimizable: true,
@@ -194,7 +192,7 @@ try {
     window.show();
     if (vagonwebUrl) {
         void (async () => {
-            const formation = await fetchVagonwebFormation(vagonwebUrl);
+            const formation = await fetchVagonwebFormation(vagonwebUrl, formationErrorText);
             if (windowClosed || !window || window.isDestroyed()) return;
             const current = await readFile(htmlPath, "utf8");
             const marker = /<!-- PRAGOTRON_FORMATION_START -->[\s\S]*?<!-- PRAGOTRON_FORMATION_END -->/;

@@ -1,0 +1,184 @@
+/* Formation styles retained from VagonWEB. */
+.smer_jizdy_vlaku { width: auto; }
+
+.tr_razeni:hover { cursor: pointer; background-color: var(--surface-light); }
+.tr_razeni td:first-child { padding-right: 10px; }
+
+/* Semantic formation states: keep the original VagonWEB colors. */
+.skut_raz { color: rgb(225, 95, 95); }
+.skut_raz2 { color: rgb(150, 105, 105); }
+.plan_raz2 { color: gray; }
+
+.bunka_vozu:hover { background-color: var(--surface-light); }
+.vyber_vozu { float: left; width: 160px; height: 30px; margin: 0 10px 10px 0; padding: 5px; }
+.vagonek { margin: 0; padding: 0; height: 65px; vertical-align: bottom; }
+.obrazek_vagonu { vertical-align: bottom; padding-bottom: 3px; }
+.bunka_vozu div { margin-bottom: 0.8em; }
+
+.razeni_index td { padding: 3px; }
+.razeni_index tr:hover { background-color: var(--surface-light); }
+.seznam { display: list-item; margin: -0.15em 0 -0.15em 1em; }
+
+.skutecneEVN {
+    font-family: "Open Sans", sans-serif;
+    background-color: var(--surface);
+    color: var(--ink);
+    padding: 1px;
+    font-size: 9.5pt;
+    white-space: nowrap;
+}
+.kratky_vuz .skutecneEVN { font-variation-settings: normal; }
+.kratky_vuz2 .skutecneEVN { font-family: "Open Sans", sans-serif; }
+
+.max_width_95vw { max-width: 95vw; text-align: justify; }
+div.hr33 { border-bottom: 1px solid var(--rule); width: 33%; margin-bottom: 5px; }
+
+/* Semantic formation colors: keep the original VagonWEB colors. */
+.color-z { color: rgb(190, 220, 190); }
+.color-reko { color: rgb(145, 145, 170); }
+.color-ex { color: rgb(170, 145, 145); }
+
+.pointer { cursor: pointer; }
+a img.svg_odkaz { filter: brightness(0.75); }
+a:hover img.svg_odkaz { filter: brightness(0); }
+a img.svg_odkaz2 { filter: brightness(20%); }
+a:hover img.svg_odkaz2 { filter: brightness(45%); }
+
+.vysvet { text-decoration: none; border-bottom: 1px dotted var(--muted); cursor: help; }
+.color-z .vysvet { border-bottom-color: rgb(190, 220, 190); }
+.color-ex .vysvet { border-bottom-color: rgb(170, 145, 145); }
+.vysvet2 { background-color: var(--surface-light); color: var(--ink); padding: 2px; border-radius: 1px; margin-bottom: 5px; }
+
+.hover:hover { background-color: var(--surface-light); }
+.hover2:hover { filter: brightness(110%); }
+.no_hover:hover { background-color: initial; }
+
+sub, sup { vertical-align: baseline; position: relative; top: 0.4em; }
+sup { top: -0.4em; }
+
+.velky10 { font-size: 10pt; font-weight: 600; }
+.velky11 { font-size: 11pt; font-weight: 600; }
+.velky12 { font-size: 12pt; font-weight: 400; }
+.velky11 li { padding-bottom: 8px; }
+.velky13 { font-size: 13pt; font-weight: 600; }
+.velky15 { font-size: 15pt; font-weight: 600; }
+.maly9 { font-size: 7pt; }
+.maly9 a { display: none; }
+.maly { font-size: 8pt; }
+.maly li { padding-bottom: 1px; }
+.maly7 { font-size: 7pt; }
+.mini { font-size: 2pt; }
+.b { font-weight: 600; }
+.center { text-align: center; }
+.modry { color: rgb(164, 164, 204); }
+.sedy { color: var(--muted); }
+.width400 { font-weight: 400; }
+.velky13 a { text-decoration: none; border-bottom: 1px solid currentColor; }
+.translit { font-size: 80%; font-weight: 400; }
+h1.translit { font-size: 16pt; font-weight: 400; letter-spacing: 1px; }
+
+/* Formation service and note colors: keep the original VagonWEB colors. */
+.tab-ram, .tab-ram- { background-color: rgb(110, 140, 110); color: black; font-weight: 600; padding: 1px; }
+.tab-ram-reko { background-color: rgb(110, 110, 140); color: black; font-weight: 600; padding: 1px; }
+.tab-ram-ex { background-color: rgb(140, 110, 110); color: black; font-weight: 600; padding: 1px; }
+.tab-nadpis- { background-color: rgb(140, 170, 140); color: #222; font-size: 9pt; padding: 2px; }
+.tab-nadpis-reko { background-color: rgb(140, 140, 170); color: #222; font-size: 9pt; padding: 2px; }
+.tab-nadpis-ex { background-color: rgb(170, 140, 140); color: #222; font-size: 9pt; padding: 2px; }
+.tab-nadpis- a, .tab-nadpis-reko a, .tab-nadpis-ex a { color: rgb(15, 45, 15); }
+.tab-nadpis- a:link, .tab-nadpis-reko a:link, .tab-nadpis-ex a:link { color: rgb(15, 45, 15); }
+.tab-nadpis- a:visited, .tab-nadpis-reko a:visited, .tab-nadpis-ex a:visited { color: rgb(15, 45, 15); }
+.tab-nadpis- a:hover, .tab-nadpis-reko a:hover, .tab-nadpis-ex a:hover { color: rgb(35, 105, 35); }
+/*.tab- { border-top: 3px solid rgb(15, 51, 15); }
+.tab-club { border-top: 3px solid darkorange; }
+.tab-1tr { border-top: 3px solid yellow; }
+.tab-2tr { border-top: 3px solid green; }
+.tab-2ptr { border-top: 3px solid lime; }
+.tab-3tr { border-top: 3px solid rgb(139, 69, 19); }
+.tab-jidel { border-top: 3px solid red; }
+.tab-luzk { border-top: 3px solid blue; }
+.tab-lehat { border-top: 3px solid deepskyblue; }
+.tab-lehat1 { border-top: 3px solid rgb(0, 120, 255); }
+.tab-sleep { border-top: 3px solid cyan; }
+.tab-salon { border-top: 3px solid darkmagenta; }
+.tab-sluz { border-top: 3px solid rgb(128, 128, 128); }*/
+.tab-rada, .tab-rada2, .tab-radam, .tab-rezim, .tab-incis, .tab-zelez, .tab-inter, .tab-kov {
+    font-weight: 600;
+}
+.tab-rada { font-size: 17pt; font-family: "Open Sans", sans-serif; white-space: nowrap; line-height: 110%; }
+.tab-rada2 { font-size: 13pt; font-family: "Open Sans", sans-serif; white-space: nowrap; line-height: 160%; }
+.tab-radam { font-size: 12pt; font-family: "Open Sans", sans-serif; white-space: nowrap; }
+.tab-rezim { font-size: 10pt; text-align: right; padding-right: 10px; line-height: 180%; white-space: nowrap; }
+.tab-incis { font-size: 10pt; line-height: 180%; white-space: nowrap; }
+.tab-zelez, .tab-inter { font-size: 10pt; }
+.tab-vyrobce, .tab-provoz { line-height: 180%; padding-right: 3px; }
+.tab-kov { font-size: 10pt; line-height: 180%; }
+.tab-pocmist { font-size: 12pt; font-weight: 600; }
+.tab-odkazy { font-size: 9pt; vertical-align: top; text-align: right; }
+.tab-linka { border-top: 1px solid #407040; }
+.tab-mala-ikona { height: 10px; margin: 0 4px 0 2px; }
+
+.zanikla, .zanikla2 { filter: brightness(0.8) grayscale(0.3); }
+.rada_v_popisu { position: relative; }
+.rok_v_rade, .rok_v_rade2 { position: absolute; left: 4px; font-size: 8pt; font-weight: 400; color: var(--muted); }
+.rok_v_rade { top: 12px; }
+.rok_v_rade2 { top: 17px; left: 1px; }
+.tr-linka td { border-top: 1px solid #304830; }
+.cernobile { filter: contrast(0.8) brightness(0.8) grayscale(0.95); }
+.cernobile2 { filter: contrast(0.7) brightness(0.9) grayscale(0.95); }
+.cernobile2:hover { background-color: inherit !important; }
+.zesvetlit img { filter: brightness(70%); }
+
+.pop_obrazek_vozu { overflow-x: auto; max-width: 500px; mask-image: linear-gradient(to right, black 0%, black calc(100% - 60px), transparent 100%); }
+.pop_obrazek_vozu img { padding: 10px 0 0; }
+.raz-cislo, .raz-cislo-velke {
+    background-color: var(--surface-light);
+    color: var(--ink);
+    font-weight: 600;
+    padding: 1px;
+    border: 1px solid var(--rule);
+}
+.raz-cislo { font-size: 8pt; }
+.raz-cislo-velke { font-size: 13pt; padding: 1px 6px; }
+
+/* Semantic formation note colors: keep the original VagonWEB colors. */
+.info1r, .info1j, .info1i, .info1s, .info1d { font-weight: 600; padding: 0 5px 1px; border-radius: 5px; font-size: 8pt; }
+.info1r { background-color: #33AA33; color: white; }
+.info1j { background-color: #AA3333; color: white; }
+.info1i { background-color: #444; color: white; }
+.info1s { background-color: #22CCCC; color: black; }
+.info1d { background-color: #CCCC22; color: black; }
+.info1p { background-color: #29ba4b; color: black; font-weight: 600; padding: 0 3px 1px; border-radius: 5px; font-size: 8pt; }
+
+.info { padding: 3px; display: table; border-radius: 5px; border: 1px solid var(--rule); }
+.info div { margin: 2px; }
+.info div:hover { background-color: var(--surface-light); }
+.info1 { color: #77F; font-size: 150%; margin-top: -9px; }
+.info1 a, .info2 a, .info3 a { cursor: pointer; color: var(--link); }
+.info1 a:link, .info2 a:link, .info3 a:link { color: var(--link); }
+.info1 a:visited, .info2 a:visited, .info3 a:visited { color: var(--link); }
+.info1 a:hover, .info2 a:hover, .info3 a:hover,
+.info1 a:active, .info2 a:active, .info3 a:active { color: var(--blue); }
+
+a.td-none { text-decoration: none; }
+.dotted { border-bottom: 1px dotted var(--muted); }
+
+.pikto { border-radius: 6px; vertical-align: middle; margin-bottom: 4px; }
+img.pikto_odkazy { height: 22px; margin-right: 5px; }
+table.razeni_text { background-color: var(--surface-light); color: var(--ink); font-size: 9pt; }
+table.razeni_text td { padding: 0 7px; border-bottom: 1px solid var(--rule); }
+table.razeni_text td.ikonky { padding: 0; filter: sepia(70%) saturate(300%) hue-rotate(70deg) brightness(20%); }
+table.razeni_text td.ikonky img { width: 15px; height: 15px; }
+tr.razeni_text_poznamka td { padding: 0; border: 0; }
+
+.cislo_vozu { display: block; position: relative; float: left; top: -3px; left: -3px; max-width: 50px; padding: 4px 2px 2px; text-align: center; border-right: 1px solid var(--rule); }
+.trasa_vuz, .trasa_lok { padding: 3px; max-width: 260px; margin: 5px 2px; }
+.trasa_vuz { background-color: var(--surface); color: var(--ink); border: 1px solid var(--rule); }
+.trasa_lok { background-color: var(--surface-light); color: var(--ink); border: 1px solid var(--rule); }
+table.vlacek div.maly { margin: 7px 0; }
+table.vlacek div.maly p { margin: 7px 0; }
+table.vlacek div.piktogramy { margin: 6px 0; }
+.vlacek img.pikto, .vlacek img.sipka, .vlacek img.pikto_odkazy { max-height: 24px; }
+.vlacek .bunka_vozu div div div { float: right; margin-right: 5px; }
+.vlacek img.sipka { margin-top: 44px; }
+.vlacek td.bunka_vozu table:first-of-type { display: none; }
+.vlacek td.bunka_vozu table:nth-of-type(2) { margin-bottom: 10px; }

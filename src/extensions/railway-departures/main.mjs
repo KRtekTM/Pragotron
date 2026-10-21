@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
@@ -7,6 +7,20 @@ import { tmpdir } from "node:os";
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = join(EXTENSION_DIR, "config.json");
 const DEPARTURE_DETAILS_TEMPLATE = join(EXTENSION_DIR, "departure-details.html");
+const DETAIL_FONT_FILES = Object.freeze([
+    "fonts/open-sans-latin-400-normal.woff2",
+    "fonts/open-sans-latin-ext-400-normal.woff2",
+    "fonts/open-sans-latin-600-normal.woff2",
+    "fonts/open-sans-latin-ext-600-normal.woff2",
+    "fonts/open-sans-latin-800-normal.woff2",
+    "fonts/open-sans-latin-ext-800-normal.woff2",
+    "fonts/open-sans-latin-400-italic.woff2",
+    "fonts/open-sans-latin-ext-400-italic.woff2",
+    "fonts/open-sans-latin-600-italic.woff2",
+    "fonts/open-sans-latin-ext-600-italic.woff2",
+    "fonts/open-sans-latin-800-italic.woff2",
+    "fonts/open-sans-latin-ext-800-italic.woff2"
+]);
 const DEFAULT_REFRESH_MS = 30000;
 const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
 const VAGONWEB_HTML_LIMIT = 8 * 1024 * 1024;
@@ -400,38 +414,53 @@ function normalizeOperatorIconKey(operator) {
         .replace(/[^A-Z0-9]+/g, "");
 }
 
-const VAGONWEB_CARRIER_CODES = [
-    ["CD", ["CD", "CESKEDRAHY"]],
-    ["RJ", ["RJ", "RJET", "REGIOJET"]],
-    ["LE", ["LE", "LEOEXPRESS"]],
-    ["ARV", ["ARR", "ARRIVA", "ARRIVAVLAKY"]],
-    ["AŽD", ["AZD", "AZDPRAHA"]],
-    ["DLB", ["DLB", "LANDERBAHN", "DIELANDERBAHN"]],
-    ["GWTR", ["GWTR", "GWTRAIN", "GWTRAINREGIO"]],
-    ["OÚD", ["OUD", "OSOBLAZSKAUZKOROZCHODNIDRAHA"]],
-    ["KŽC", ["KZC", "KZCDOPRAVA"]],
-    ["GE", ["GE", "GEPARDEXPRESS"]],
-    ["ZSSK", ["ZSSK", "ZELEZNICNASPOLOCNOSTSLOVENSKO"]],
-    ["RJSK", ["RJSK", "REGIOJETSLOVENSKO"]],
-    ["LESK", ["LESK", "LEOEXPRESSSLOVENSKO"]],
-    ["TREŽ", ["TREZ", "TRENCIANSKAELEKTRICKAZELEZNICA"]],
-    ["PKPIC", ["PKP", "PKPIC", "PKPINTERCITY"]],
-    ["PREG", ["PREG", "POLREGIO"]],
-    ["RJPL", ["RJPL", "REGIOJETPOLSKA"]],
-    ["LEPL", ["LEPL", "LEOEXPRESSPOLSKA"]],
-    ["ÖBB", ["OBB", "OEBB", "OSTERREICHISCHEBUNDESBAHNEN"]],
-    ["DB", ["DB", "DEUTSCHEBAHN"]],
-    ["MÁV", ["MAV", "MAVSZEMELYSZALLITASIZRT"]]
-];
+// `sourceCode` is the value returned by the Správa železnic board and is the
+// value shown in the departure detail. `vagonwebCode` is intentionally kept
+// separate because VagonWEB uses different codes for some carriers.
+const CARRIER_PROFILES = Object.freeze([
+    { name: "České dráhy", vagonwebCode: "CD", aliases: ["CD", "ČD", "CESKEDRAHY"] },
+    { name: "RegioJet", vagonwebCode: "RJ", aliases: ["RJ", "RJET", "REGIOJET"] },
+    { name: "Leo Express", vagonwebCode: "LE", aliases: ["LE", "LEOEXPRESS"] },
+    { name: "Arriva vlaky", vagonwebCode: "ARV", aliases: ["ARR", "ARV", "ARRIVA", "ARRIVAVLAKY"] },
+    { name: "AŽD Praha", vagonwebCode: "AŽD", aliases: ["AZD", "AŽD", "AZDPRAHA"] },
+    { name: "Die Länderbahn", vagonwebCode: "DLB", aliases: ["DLB", "LANDERBAHN", "DIELANDERBAHN"] },
+    { name: "GW Train Regio", vagonwebCode: "GWTR", aliases: ["GWTR", "GWTRAIN", "GWTRAINREGIO"] },
+    { name: "Osoblažská úzkorozchodná dráha", vagonwebCode: "OÚD", aliases: ["OUD", "OÚD", "OSOBLAZSKAUZKOROZCHODNIDRAHA"] },
+    { name: "KŽC Doprava", vagonwebCode: "KŽC", aliases: ["KZC", "KŽC", "KZCDOPRAVA"] },
+    { name: "Gepard Express", vagonwebCode: "GE", aliases: ["GE", "GEPARDEXPRESS"] },
+    { name: "Železničná spoločnosť Slovensko", vagonwebCode: "ZSSK", aliases: ["ZSSK", "ZELEZNICNASPOLOCNOSTSLOVENSKO"] },
+    { name: "RegioJet Slovensko", vagonwebCode: "RJSK", aliases: ["RJSK", "REGIOJETSLOVENSKO"] },
+    { name: "Leo Express Slovensko", vagonwebCode: "LESK", aliases: ["LESK", "LEOEXPRESSSLOVENSKO"] },
+    { name: "Trenčianska elektrická železnica", vagonwebCode: "TREŽ", aliases: ["TREZ", "TREŽ", "TRENCIANSKAELEKTRICKAZELEZNICA"] },
+    { name: "PKP Intercity", vagonwebCode: "PKPIC", aliases: ["PKP", "PKPIC", "PKPINTERCITY"] },
+    { name: "Polregio", vagonwebCode: "PREG", aliases: ["PREG", "POLREGIO"] },
+    { name: "RegioJet Polska", vagonwebCode: "RJPL", aliases: ["RJPL", "REGIOJETPOLSKA"] },
+    { name: "Leo Express Polska", vagonwebCode: "LEPL", aliases: ["LEPL", "LEOEXPRESSPOLSKA"] },
+    { name: "Österreichische Bundesbahnen", vagonwebCode: "ÖBB", aliases: ["OBB", "ÖBB", "OEBB", "OSTERREICHISCHEBUNDESBAHNEN"] },
+    { name: "Deutsche Bahn", vagonwebCode: "DB", aliases: ["DB", "DEUTSCHEBAHN"] },
+    { name: "MÁV", vagonwebCode: "MÁV", aliases: ["MAV", "MÁV", "MAVSZEMELYSZALLITASIZRT"] }
+]);
 
-const vagonwebCarrierCode = (operator) => {
+const findCarrierProfile = (operator) => {
     const key = normalizeOperatorIconKey(operator);
-    const exact = VAGONWEB_CARRIER_CODES.find(([, aliases]) => aliases.includes(key));
-    if (exact) return exact[0];
-    return VAGONWEB_CARRIER_CODES.find(([, aliases]) =>
-        aliases.some((alias) => alias.length > 3 && key.includes(alias))
-    )?.[0] || "";
+    if (!key) return null;
+    return CARRIER_PROFILES.find(({ aliases }) => aliases.some((alias) => {
+        const normalizedAlias = normalizeOperatorIconKey(alias);
+        return key === normalizedAlias || (normalizedAlias.length > 3 && key.includes(normalizedAlias));
+    })) || null;
 };
+
+const resolveCarrier = (operator) => {
+    const sourceCode = departureHtmlValue(operator, "");
+    const profile = findCarrierProfile(sourceCode);
+    return {
+        sourceCode,
+        name: profile?.name || sourceCode,
+        vagonwebCode: profile?.vagonwebCode || ""
+    };
+};
+
+const vagonwebCarrierCode = (operator) => resolveCarrier(operator).vagonwebCode;
 
 const vagonwebCategory = (train) => {
     const key = normalizeOperatorIconKey(train);
@@ -507,7 +536,7 @@ const isSafeVagonwebUrl = (value) => {
 };
 
 const VAGONWEB_ALLOWED_TAGS = new Set([
-    "a", "b", "br", "div", "em", "i", "img", "p", "small", "span", "strong",
+    "a", "b", "br", "div", "em", "i", "img", "p", "small", "span", "strong", "sub", "sup",
     "table", "tbody", "td", "tfoot", "th", "thead", "tr"
 ]);
 const VAGONWEB_VOID_TAGS = new Set(["br", "img"]);
@@ -593,7 +622,7 @@ const sanitizeVagonwebFormation = (html, baseUrl) => {
     }).replace(/Pl[áa]novan[ée] [rŘ]azen[íi]/gi, "");
 };
 
-async function fetchVagonwebFormation(vagonwebUrl) {
+async function fetchVagonwebFormation(vagonwebUrl, formationErrorText = "Train formation could not be loaded.") {
     if (!isSafeVagonwebUrl(vagonwebUrl)) {
         return { html: "", error: null };
     }
@@ -698,7 +727,7 @@ async function fetchVagonwebFormation(vagonwebUrl) {
         return { html: sanitized, error: null };
     } catch (error) {
         return {
-            html: '<div class="formation-status">Train formation could not be loaded.</div>',
+            html: `<div class="formation-status">${escapeHtml(String(formationErrorText || "Train formation could not be loaded."))}</div>`,
             error
         };
     } finally {
@@ -706,19 +735,47 @@ async function fetchVagonwebFormation(vagonwebUrl) {
     }
 }
 
+let departureDetailsTemplatePromise = null;
+const departureDetailsIconPromises = new Map();
+
+const readDepartureDetailsTemplate = () => {
+    if (!departureDetailsTemplatePromise) {
+        departureDetailsTemplatePromise = readFile(DEPARTURE_DETAILS_TEMPLATE, "utf8")
+            .catch((error) => {
+                departureDetailsTemplatePromise = null;
+                throw error;
+            });
+    }
+    return departureDetailsTemplatePromise;
+};
+
+const readDepartureDetailsIcon = (relativePath) => {
+    if (!departureDetailsIconPromises.has(relativePath)) {
+        const promise = readFile(join(EXTENSION_DIR, "icons", relativePath))
+            .then((content) => content.toString("base64"))
+            .catch((error) => {
+                departureDetailsIconPromises.delete(relativePath);
+                throw error;
+            });
+        departureDetailsIconPromises.set(relativePath, promise);
+    }
+    return departureDetailsIconPromises.get(relativePath);
+};
+
 const renderDepartureDetailsTemplate = (template, values) => template.replace(
     /\{\{([A-Z0-9_]+)\}\}/g,
     (full, key) => Object.prototype.hasOwnProperty.call(values, key) ? values[key] : full
 );
 
 async function buildDepartureDetailsFromTemplate(details, strings, title, vagonwebUrl, formation) {
-    const template = await readFile(DEPARTURE_DETAILS_TEMPLATE, "utf8");
+    const template = await readDepartureDetailsTemplate();
     const value = (input, fallback) => escapeHtml(departureHtmlValue(input, fallback));
     const label = (input, fallback) => departureHtmlLabel(input, fallback);
     const icon = async (relativePath) => escapeHtml(
-        `data:image/svg+xml;base64,${(await readFile(join(EXTENSION_DIR, "icons", relativePath))).toString("base64")}`
+        `data:image/svg+xml;base64,${await readDepartureDetailsIcon(relativePath)}`
     );
     const operator = departureHtmlValue(details.operator, "");
+    const carrier = resolveCarrier(operator);
     const operatorKey = operator.toUpperCase();
     var operatorIcon = "sprzel.svg";
     switch (operatorKey) {
@@ -747,12 +804,14 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         icon("picto/picto-via.svg"),
         icon("picto/picto-info.svg")
     ]);
-    const carrierCode = departureHtmlValue(vagonwebCarrierCode(operator), operator.slice(0, 4).toUpperCase());
+    const carrierName = departureHtmlValue(carrier.name, "Carrier");
     const safeUrl = isSafeVagonwebUrl(vagonwebUrl) ? escapeHtml(vagonwebUrl) : "";
     const hasFormationUrl = Boolean(safeUrl);
     const values = {
+        LANG: value(strings.detailPageLanguage, "en"),
         TITLE: escapeHtml(title),
-        CARRIER_CODE: value(carrierCode),
+        CARRIER_CODE: value(operatorKey || "—"),
+        CARRIER_NAME: value(carrierName),
         OPERATOR: value(operator),
         TRAIN: value(details.train, "Train"),
         TRAIN_NUMBER: value(details.trainNumber),
@@ -780,6 +839,8 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         ICON_LOCATION: location,
         ICON_VIA: via,
         ICON_INFO: info,
+        FORMATION_LINK_FIRST: value(strings.detailFormationLinkFirst, "View formation"),
+        FORMATION_LINK_SECOND: value(strings.detailFormationLinkSecond, "on vagonWEB →"),
         LABEL_TRAIN: label(strings.detailTrain, "Train:"),
         LABEL_TRAIN_NUMBER: label(strings.detailTrainNumber, "Train No.:"),
         LABEL_DEPARTURE: label(strings.detailDepartureTime, "Departure:"),
@@ -837,7 +898,7 @@ function findOperatorIcon(operatorKey, suffix, operatorIconFiles) {
     return candidates[0]?.file || null;
 }
 
-function buildItems(departures, operatorIconFiles = new Set()) {
+function buildItems(departures, operatorIconFiles = new Set(), stationName = "") {
     const now = new Date();
     const items = departures.map((d) => {
         const operatorKey = normalizeOperatorIconKey(d.operator);
@@ -895,7 +956,7 @@ function buildItems(departures, operatorIconFiles = new Set()) {
             via: d.via || d.stations?.[1] || "",
             note: d.note || "",
             operator: d.operator || "",
-            station: d.station || ""
+            station: d.station || stationName || ""
         });
     }
 
@@ -983,6 +1044,12 @@ async function getStringsAsync(locale = "en") {
         errorFetch: "Failed to fetch departures from URL",
         fetchFailed: "Failed to fetch departures",
         settingsTitle: "Tabule SprŽel Settings",
+        detailPageLanguage: "en",
+        detailCarrierName: "Czech Railways",
+        detailFormationLinkFirst: "View formation",
+        detailFormationLinkSecond: "on vagonWEB →",
+        detailFormationLoading: "Loading train formation...",
+        detailFormationError: "Train formation could not be loaded.",
         detailTrain: "Train:",
         detailTrainNumber: "Train No.:",
         detailDepartureTime: "Departure:",
@@ -1286,14 +1353,14 @@ async function handleListDepartures() {
         // Station view: show departures for this station.
         const stationId = stationIdFor(activeStation);
         const departures = activeStation.departures || [];
-        const stationName = activeStation.station || "Stanice";
+        const stationName = stationNameFor(activeStation) || "Stanice";
 
         const now = new Date();
 
         const operatorIconFiles = await getOperatorIconFiles();
         if (requestId !== listRequestId) return;
 
-        const items = buildItems(departures, operatorIconFiles);
+        const items = buildItems(departures, operatorIconFiles, stationName);
         currentView = stationId;
 
         if (requestId !== listRequestId) return;
@@ -1320,7 +1387,7 @@ async function handleListDepartures() {
                         via: d.via || d.stations?.[1] || "",
                         note: d.note || "",
                         operator: d.operator || "",
-                        station: d.station || ""
+                        station: d.station || stationName || ""
                     })
                 );
             } catch { }
@@ -1419,14 +1486,19 @@ async function handleViewDeparture() {
             "bin",
             "webview2-host.exe"
         );
-        await access(packageHostPath);
         const launcherPath = join(EXTENSION_DIR, "departure-window.mjs");
-        await access(launcherPath);
+        await Promise.all([
+            access(packageHostPath),
+            access(launcherPath)
+        ]);
 
         directory = await mkdtemp(join(tmpdir(), "pragotron-departure-"));
         const htmlPath = join(directory, "details.html");
+        const formationErrorText = String(
+            strings.detailFormationError || "Train formation could not be loaded."
+        );
         const formation = vagonwebUrl
-            ? { html: '<div class="formation-status">Loading train formation...</div>' }
+            ? { html: `<div class="formation-status">${escapeHtml(departureHtmlValue(strings.detailFormationLoading, "Loading train formation..."))}</div>` }
             : { html: "" };
         const html = await buildDepartureDetailsFromTemplate(details, strings, title, vagonwebUrl, formation);
         if (
@@ -1438,9 +1510,17 @@ async function handleViewDeparture() {
         ) {
             throw new Error("Invalid departure details document");
         }
+        await mkdir(join(directory, "fonts"), { recursive: true });
+        await Promise.all([
+            copyFile(join(EXTENSION_DIR, "departure_details.css"), join(directory, "departure_details.css")),
+            copyFile(join(EXTENSION_DIR, "vagonweb.css"), join(directory, "vagonweb.css")),
+            ...DETAIL_FONT_FILES.map((relativePath) =>
+                copyFile(join(EXTENSION_DIR, relativePath), join(directory, relativePath))
+            )
+        ]);
         await writeFile(htmlPath, html, "utf8");
 
-        const child = spawn(process.execPath, [launcherPath, htmlPath, directory, title, vagonwebUrl], {
+        const child = spawn(process.execPath, [launcherPath, htmlPath, directory, title, vagonwebUrl, formationErrorText], {
             detached: true,
             windowsHide: true,
             stdio: "ignore"
