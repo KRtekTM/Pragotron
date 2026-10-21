@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{TITLE}}</title>
+    <link rel="stylesheet" href="colors-light.css" type="text/css">
     <link rel="stylesheet" href="departure_details.css" type="text/css">
     <link rel="stylesheet" href="vagonweb.css" type="text/css">
 </head>
@@ -15,6 +16,7 @@
             <div class="carrier-name" data-label="{{LABEL_OPERATOR}}">{{CARRIER_NAME}}</div>
             <div class="carrier-code" data-code="{{CARRIER_CODE}}">{{OPERATOR}}</div>
         </div>
+        <img class="header-stripes" src="{{ICON_HEADER_STRIPES}}" alt="">
         <div class="header-train">
             <img class="train-icon" src="{{ICON_TRAIN_WHITE}}" alt="">
             <div><span class="header-train-type">{{CARRIER_CODE}}</span><span class="header-train-number">{{TRAIN}} {{TRAIN_NUMBER}}</span></div>
@@ -23,20 +25,20 @@
     </header>
     <div class="content">
         <section class="fields">
-            <div class="field"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_DARK}}" alt=""><div class="field-copy"><div class="field-label">{{LABEL_TRAIN}}</div><div class="field-value">{{TRAIN}}</div></div></div>
-            <div class="field"><span class="field-icon" aria-hidden="true">#</span><div class="field-copy"><div class="field-label">{{LABEL_TRAIN_NUMBER}}</div><div class="field-value">{{TRAIN_NUMBER}}</div></div></div>
-            <div class="field"><img class="field-icon field-icon-image time" src="{{ICON_TIME}}" alt=""><div class="field-copy"><div class="field-label">{{LABEL_DEPARTURE}}</div><div class="field-value">{{DEPARTURE}}</div></div></div>
+            <div class="field"><div class="field-heading"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_DARK}}" alt=""><div class="field-label">{{LABEL_TRAIN}}</div></div><div class="field-value">{{TRAIN}}</div></div>
+            <div class="field"><div class="field-heading"><span class="field-icon" aria-hidden="true">#</span><div class="field-label">{{LABEL_TRAIN_NUMBER}}</div></div><div class="field-value">{{TRAIN_NUMBER}}</div></div>
+            <div class="field"><div class="field-heading"><img class="field-icon field-icon-image time" src="{{ICON_TIME}}" alt=""><div class="field-label">{{LABEL_DEPARTURE}}</div></div><div class="field-value">{{DEPARTURE}}</div></div>
             <div class="field status-field">
                 <div class="status-line"><span class="field-icon icon-delay" aria-hidden="true">&nbsp;</span><div class="field-label">{{LABEL_DELAY}}</div><div class="field-value">{{DELAY}}</div></div>
-                <div class="actual-line"><img class="field-icon field-icon-image calendar" src="{{ICON_CALENDAR}}" alt=""><div class="field-label">{{LABEL_ACTUAL}}</div><div class="field-value">{{ACTUAL_DEPARTURE}}</div></div>
+                <div class="actual-line"><img class="field-icon field-icon-image calendar" src="{{ICON_CALENDAR}}" alt=""><div class="actual-copy"><div class="field-label">{{LABEL_ACTUAL}}</div><div class="field-value">{{ACTUAL_DEPARTURE}}</div></div></div>
             </div>
-            <div class="field station-field"><div class="field-copy"><span class="station-marker" aria-hidden="true">&#8801;</span><div class="field-label">{{LABEL_STATION}}</div><div class="field-value">{{STATION}}</div></div><div class="station-meta"><span>{{LABEL_PLATFORM}}<strong>{{PLATFORM}}</strong></span><span>{{LABEL_TRACK}}<strong>{{TRACK}}</strong></span><span>{{LABEL_SECTOR}}<strong>{{SECTOR}}</strong></span></div></div>
+            <div class="field station-field"><div class="station-heading"><img class="field-icon field-icon-image station-icon" src="{{ICON_STATION}}" alt=""><div class="field-label">{{LABEL_STATION}}</div><div class="field-value">{{STATION}}</div></div><div class="station-meta"><span>{{LABEL_PLATFORM}}<strong>{{PLATFORM}}</strong></span><span>{{LABEL_TRACK}}<strong>{{TRACK}}</strong></span><span>{{LABEL_SECTOR}}<strong>{{SECTOR}}</strong></span></div></div>
         </section>
         <section class="route">
             <div class="route-grid">
-                <div class="route-cell"><div class="route-label">{{LABEL_LINE}}</div><div class="route-line">{{LINE}}</div></div>
-                <div class="route-cell route-destination"><img class="field-icon field-icon-image location" src="{{ICON_LOCATION}}" alt=""><span><span class="route-label">{{LABEL_DESTINATION}}</span><br>{{DESTINATION}}</span></div>
-                <div class="route-cell route-via"><img class="field-icon field-icon-image via" src="{{ICON_VIA}}" alt=""><div><div class="route-label">{{LABEL_VIA}}</div><strong>{{VIA}}</strong></div></div>
+                <div class="route-cell route-line-cell"><div class="route-heading"><img class="route-icon" src="{{ICON_LINE}}" alt=""><div class="route-label">{{LABEL_LINE}}</div></div><div class="route-line">{{LINE}}</div></div>
+                <div class="route-cell route-destination"><div class="route-heading"><img class="route-icon location" src="{{ICON_LOCATION}}" alt=""><div class="route-label">{{LABEL_DESTINATION}}</div></div><div class="route-destination-value">{{DESTINATION}}</div></div>
+                <div class="route-cell route-via"><div class="route-heading"><img class="route-icon via" src="{{ICON_VIA}}" alt=""><div class="route-label">{{LABEL_VIA}}</div></div><strong>{{VIA}}</strong></div>
             </div>
         </section>
         <section class="note {{NOTE_CLASS}}">

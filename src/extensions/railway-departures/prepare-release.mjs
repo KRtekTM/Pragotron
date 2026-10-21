@@ -12,6 +12,8 @@ const ROOT_RUNTIME_FILES = [
     "departure-window.mjs",
     "departure-formation.mjs",
     "departure-details.html",
+    "colors-light.css",
+    "colors-dark.css",
     "departure_details.css",
     "vagonweb.css",
     "config.json",

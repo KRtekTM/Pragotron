@@ -21,5 +21,8 @@
     "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3223",
     "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3228"
   ],
-  "refreshMs": 60000
+  "refreshMs": 60000,
+  "departureDetails": {
+    "colors": "light"
+  }
 }

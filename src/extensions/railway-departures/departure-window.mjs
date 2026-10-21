@@ -10,8 +10,8 @@ const extensionDirectory = dirname(fileURLToPath(import.meta.url));
 const [htmlPath, directory, title, vagonwebUrl, formationErrorText] = process.argv.slice(2);
 
 const POWERSHELL = "powershell.exe";
-const WINDOW_WIDTH = 1014;
-const WINDOW_HEIGHT = 520;
+const WINDOW_WIDTH = 975;
+const WINDOW_HEIGHT = 665;
 
 const nativeWindowScript = `
 $ErrorActionPreference = 'SilentlyContinue'

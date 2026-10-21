@@ -1,15 +1,3 @@
-:root {
-    color-scheme: light;
-    --blue: #07549d;
-    --ink: #003b7a;
-    --muted: #5b7da8;
-    --page: #edf8fe;
-    --surface: #cce8fa;
-    --surface-light: #e0f2fc;
-    --rule: #b9dced;
-    --link: #006ee6;
-    --green: #27aa5c;
-}
 @font-face {
     font-family: "Open Sans";
     font-style: normal;
@@ -111,18 +99,18 @@ html, body { min-height: 100%; }
 body {
     margin: 0;
     padding: 0;
-    overflow-x: hidden;
-    background: #d8edf9;
+    overflow-x: auto;
+    background: var(--page);
     color: var(--ink);
     font: 13px/1.15 "Open Sans", sans-serif;
 }
 .card {
-    min-width: 0;
+    width: max-content;
+    min-width: 100%;
     margin: 0 auto;
     overflow: hidden;
     border-radius: 0;
     background: var(--page);
-    box-shadow: 0 8px 24px rgba(0, 59, 122, .17);
 }
 .header {
     position: relative;
@@ -135,13 +123,16 @@ body {
     background: var(--blue);
 }
 .header::after {
+    display: none;
+}
+.header-stripes {
     position: absolute;
     top: 0;
     right: 176px;
+    z-index: 0;
     width: 112px;
     height: 68px;
-    background: linear-gradient(124deg, transparent 0 33%, rgba(43, 143, 232, .62) 33% 52%, transparent 52% 61%, rgba(43, 143, 232, .62) 61% 81%, transparent 81%);
-    content: "";
+    object-fit: cover;
     pointer-events: none;
 }
 .carrier {
@@ -151,12 +142,12 @@ body {
     align-items: center;
     gap: 16px;
 }
-.carrier-logo { display: block; width: 48px; height: 38px; object-fit: contain; }
+.carrier-logo { display: block; max-width: 48px; max-height: 48px; height: 48px; width: auto;object-fit: contain; }
 .carrier-name {
     padding-left: 17px;
     border-left: 1px solid rgba(255, 255, 255, .78);
     color: #fff;
-    font-size: 16px;
+    font-size: 20px;
     font-weight: 600;
     white-space: nowrap;
 }
@@ -166,13 +157,13 @@ body {
     z-index: 1;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     margin-left: auto;
 }
 .train-icon {
     display: block;
-    width: 31px;
-    height: 31px;
+    width: 40px;
+    height: 40px;
     object-fit: contain;
 }
 .header-train-type,
@@ -182,15 +173,23 @@ body {
     font-weight: 600;
     white-space: nowrap;
 }
-.header-train-type { font-size: 11px; letter-spacing: .05em; }
-.header-train-number { margin-top: 3px; font-size: 15px; }
+.header-train-type { font-size: 16px; letter-spacing: .05em; }
+.header-train-number { margin-top: 2px; font-size: 18px; }
 .header-title { display: none; }
-.content { padding: 0 13px 13px; }
+.content {
+    width: max-content;
+    min-width: 100%;
+    padding: 0 13px 13px;
+}
 .fields {
     display: grid;
-    grid-template-columns: 113px 143px 192px 216px minmax(0, 1fr);
+    width: max-content;
+    min-width: 100%;
+    grid-template-columns: minmax(90px, max-content) minmax(135px, max-content) minmax(150px, max-content) minmax(185px, max-content) max-content;
     min-height: 106px;
     border-bottom: 1px solid var(--rule);
+    justify-content: space-around;
+    justify-items: center;
 }
 .field {
     display: flex;
@@ -202,6 +201,13 @@ body {
 }
 .field:first-child { border-left: 0; }
 .field-copy { min-width: 0; }
+.field-heading {
+    display: flex;
+    min-width: 0;
+    min-height: 24px;
+    align-items: center;
+    gap: 7px;
+}
 .field-icon {
     display: inline-grid;
     flex: 0 0 auto;
@@ -229,7 +235,7 @@ body {
 .field-label, .note-label {
     overflow: hidden;
     color: var(--muted);
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: .06em;
     text-overflow: ellipsis;
@@ -237,12 +243,12 @@ body {
     white-space: nowrap;
 }
 .field-value {
-    overflow: hidden;
+    overflow: visible;
     margin-top: 7px;
     color: var(--ink);
     font-size: 16px;
     font-weight: 600;
-    text-overflow: ellipsis;
+    text-overflow: clip;
     white-space: nowrap;
 }
 .fields > .field:nth-child(1) .field-value,
@@ -252,6 +258,12 @@ body {
     font-size: 40px;
     line-height: .9;
 }
+.fields > .field:nth-child(-n+3) { display: block; }
+.fields > .field:nth-child(-n+3) .field-value {
+    position: static;
+    margin: 9px 0 0 8px;
+    font-weight: 800;
+}
 .status-field {
     display: block;
     padding-top: 17px;
@@ -259,32 +271,49 @@ body {
 .status-line {
     display: flex;
     min-width: 0;
+    min-height: 24px;
     align-items: center;
     gap: 7px;
 }
-.status-line .field-value { margin: 0 0 0 auto; font-size: 18px; }
+.status-line .field-value { margin: 0 0 0 auto; font-size: 18px; font-weight: 800; }
 .actual-line {
     display: flex;
     min-width: 0;
     align-items: center;
     gap: 7px;
-    margin-top: 8px;
+    margin-top: 14px;
 }
+.actual-copy { min-width: 0; }
 .actual-line .field-icon-image { width: 15px; height: 16px; }
 .actual-line .field-label { margin-right: 4px; }
-.actual-line .field-value { margin: 0; font-size: 14px; }
+.actual-line .field-value { margin: 4px 0 0; font-size: 18px; font-weight: 800; }
 .field.delay .field-value { color: var(--green); }
 .station-field { display: block; padding-left: 14px; }
-.station-field > .field-copy { display: flex; align-items: flex-start; gap: 8px; }
-.station-field > .field-copy .field-value { margin-top: 0; }
+.station-heading {
+    display: flex;
+    min-width: 0;
+    min-height: 24px;
+    align-items: center;
+    gap: 8px;
+}
+.station-icon { width: 22px; height: 22px; }
+.station-heading .field-value {
+    min-width: 0;
+    overflow: visible;
+    margin: -2px 0 0 8px;
+    font-size: 16px;
+    text-overflow: clip;
+    font-weight: 800;
+}
 .station-meta {
     display: grid;
-    grid-template-columns: repeat(3, auto);
-    gap: 5px 13px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px 8px;
     margin-top: 11px;
     color: var(--muted);
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 600;
+    text-align: center;
     text-transform: uppercase;
 }
 .station-marker { color: #f25d21; font-size: 15px; font-weight: 600; }
@@ -292,53 +321,98 @@ body {
     display: block;
     margin-top: 3px;
     color: var(--ink);
-    font-size: 13px;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    text-align: center;
     text-transform: none;
 }
 .route {
     min-height: 73px;
-    padding: 14px 0 12px;
     border-bottom: 1px solid var(--rule);
 }
 .route-grid {
     display: grid;
-    grid-template-columns: 112px 217px minmax(0, 1fr);
+    width: max-content;
+    min-width: 100%;
+    grid-template-columns: minmax(100px, max-content) minmax(180px, max-content) minmax(0, max-content) max-content;
     min-height: 45px;
+    justify-content: space-between;
+    justify-items: center;
 }
 .route-cell {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
-    padding: 0 14px;
+    padding: 14px 14px 10px 14px;
     border-left: 1px solid var(--rule);
 }
-.route-cell:first-child { padding-left: 0; border-left: 0; }
+.route-cell:first-child { padding-left: 14px; border-left: 0; }
+.route-heading {
+    display: flex;
+    min-height: 22px;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 10px;
+}
+.route-icon {
+    display: block;
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+}
+.route-icon.location { width: 20px; height: 23px; }
+.route-icon.via { width: 23px; height: 20px; }
 .route-label {
     color: var(--muted);
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: .06em;
     text-transform: uppercase;
 }
-.route-line { margin-top: 7px; color: var(--ink); font-size: 17px; font-weight: 600; }
-.route-line { font-size: 30px; line-height: .95; }
+.route-line {
+    height: 30px;
+    margin-top: auto;
+    color: var(--ink);
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 30px;
+}
 .route-destination {
     display: flex;
-    align-items: center;
-    gap: 6px;
+    flex-direction: column;
+    align-items: flex-start;
+}
+.route-destination > span { min-width: 0; }
+.route-destination-value {
+    width: max-content;
+    height: 30px;
+    min-width: 0;
+    margin-top: auto;
+    display: block;
+    overflow: visible;
     color: var(--ink);
     font-size: 28px;
-    font-weight: 600;
+    font-weight: 800;
+    line-height: 30px;
+    text-overflow: clip;
+    white-space: nowrap;
 }
-.route-destination .field-icon { width: 22px; height: 22px; font-size: 19px; }
-.route-via { display: flex; min-width: 0; align-items: flex-start; gap: 8px; }
+.route-via { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; }
 .route-via strong {
+    width: 100%;
+    min-height: 30px;
     display: block;
-    overflow: hidden;
-    margin-top: 7px;
+    overflow: visible;
+    margin-top: auto;
     color: var(--ink);
     font-size: 14px;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-weight: 800;
+    line-height: 30px;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .note, .formation { border-radius: 8px; }
 .note {
@@ -359,10 +433,10 @@ body {
     height: 28px;
 }
 .note-label { margin-bottom: 5px; }
-.note-text { color: var(--ink); font-size: 12px; font-weight: 600; text-transform: uppercase; }
+.note-text { color: var(--ink); font-size: 14px; font-weight: 600; text-transform: uppercase; }
 .formation {
     display: grid;
-    grid-template-columns: 252px minmax(0, 1fr);
+    grid-template-columns: 222px minmax(0, 1fr);
     align-items: stretch;
     margin-top: 16px;
     background: var(--surface-light);
@@ -371,8 +445,7 @@ body {
     display: flex;
     min-width: 0;
     flex-direction: column;
-    justify-content: center;
-    padding: 12px 17px;
+    padding: 17px 14px;
     border-right: 1px solid var(--rule);
 }
 .section-heading {
@@ -380,7 +453,7 @@ body {
     align-items: center;
     gap: 8px;
     color: var(--muted);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -392,7 +465,7 @@ body {
     align-self: flex-start;
     margin: 9px 0 0 33px;
     color: var(--link);
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     line-height: 1.35;
     text-decoration: underline;
@@ -404,6 +477,7 @@ body {
     padding: 13px 10px 7px;
     color: var(--ink);
     scrollbar-color: #8cb9d7 transparent;
+    max-width: calc(100vw - 265px);
 }
 
 

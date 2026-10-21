@@ -793,7 +793,7 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         default:
             operatorIcon = "sprzel.svg";
     }
-    const [sprzel, trainDark, trainWhite, trainCircle, time, calendar, location, via, info] = await Promise.all([
+    const [sprzel, trainDark, trainWhite, trainCircle, time, calendar, location, via, info, headerStripes, line, station] = await Promise.all([
         icon(operatorIcon),
         icon("picto/picto-train-darkblue.svg"),
         icon("picto/picto-train-white.svg"),
@@ -802,7 +802,10 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         icon("picto/picto-calendar.svg"),
         icon("picto/picto-location.svg"),
         icon("picto/picto-via.svg"),
-        icon("picto/picto-info.svg")
+        icon("picto/picto-info.svg"),
+        icon("picto/picto-header-stripes.svg"),
+        icon("picto/picto-line.svg"),
+        icon("sprzel.svg")
     ]);
     const carrierName = departureHtmlValue(carrier.name, "Carrier");
     const safeUrl = isSafeVagonwebUrl(vagonwebUrl) ? escapeHtml(vagonwebUrl) : "";
@@ -839,6 +842,9 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         ICON_LOCATION: location,
         ICON_VIA: via,
         ICON_INFO: info,
+        ICON_HEADER_STRIPES: headerStripes,
+        ICON_LINE: line,
+        ICON_STATION: station,
         FORMATION_LINK_FIRST: value(strings.detailFormationLinkFirst, "View formation"),
         FORMATION_LINK_SECOND: value(strings.detailFormationLinkSecond, "on vagonWEB →"),
         LABEL_TRAIN: label(strings.detailTrain, "Train:"),
@@ -1512,6 +1518,8 @@ async function handleViewDeparture() {
         }
         await mkdir(join(directory, "fonts"), { recursive: true });
         await Promise.all([
+            copyFile(join(EXTENSION_DIR, "colors-light.css"), join(directory, "colors-light.css")),
+            copyFile(join(EXTENSION_DIR, "colors-dark.css"), join(directory, "colors-dark.css")),
             copyFile(join(EXTENSION_DIR, "departure_details.css"), join(directory, "departure_details.css")),
             copyFile(join(EXTENSION_DIR, "vagonweb.css"), join(directory, "vagonweb.css")),
             ...DETAIL_FONT_FILES.map((relativePath) =>
