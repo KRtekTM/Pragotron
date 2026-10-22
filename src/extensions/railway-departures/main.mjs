@@ -1,26 +1,19 @@
-import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = join(EXTENSION_DIR, "config.json");
 const DEPARTURE_DETAILS_TEMPLATE = join(EXTENSION_DIR, "departure-details.html");
-const DETAIL_FONT_FILES = Object.freeze([
-    "fonts/open-sans-latin-400-normal.woff2",
-    "fonts/open-sans-latin-ext-400-normal.woff2",
-    "fonts/open-sans-latin-600-normal.woff2",
-    "fonts/open-sans-latin-ext-600-normal.woff2",
-    "fonts/open-sans-latin-800-normal.woff2",
-    "fonts/open-sans-latin-ext-800-normal.woff2",
-    "fonts/open-sans-latin-400-italic.woff2",
-    "fonts/open-sans-latin-ext-400-italic.woff2",
-    "fonts/open-sans-latin-600-italic.woff2",
-    "fonts/open-sans-latin-ext-600-italic.woff2",
-    "fonts/open-sans-latin-800-italic.woff2",
-    "fonts/open-sans-latin-ext-800-italic.woff2"
-]);
+const DEPARTURE_RUNTIME_DIR = join(tmpdir(), "pragotron-departure-runtime");
+const DEPARTURE_DETAILS_CACHE_FILE = join(DEPARTURE_RUNTIME_DIR, "details.json");
+const DEPARTURE_LIVE_FEED_FILE = join(DEPARTURE_RUNTIME_DIR, "details-feed.js");
+const DEPARTURE_DETAILS_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "details.html");
+const DEPARTURE_DETAILS_STATE_FILE = join(DEPARTURE_RUNTIME_DIR, "details-window.json");
+const DEPARTURE_DETAILS_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "details-webview-data");
 const DEFAULT_REFRESH_MS = 30000;
 const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
 const VAGONWEB_HTML_LIMIT = 8 * 1024 * 1024;
@@ -316,9 +309,17 @@ function makeDepartureId(departure) {
     ];
     const base64 = typeof btoa === "function"
         ? btoa(parts.join("|"))
-        : Buffer.from(parts.join("|")).toString("base64");
-    return "dep-" + base64.replace(/[+/=]/g, (c) =>
-        c === "+" ? "-" : c === "/" ? "_" : "");
+        : Buffer.from(parts.join("|"), "utf8").toString("base64");
+    return "dep-" + base64.replace(/[+/=]/g, (c) => c === "+" ? "-" : c === "/" ? "_" : "");
+}
+
+function departureNavigationKey(departure) {
+    return [
+        departure.trainNumber || "",
+        departure.departureTime || "",
+        departure.destination || departure.stations?.[0] || "",
+        departure.station || ""
+    ].join("|");
 }
 
 function formatDelay(minutes) {
@@ -404,6 +405,7 @@ function normalizeDepartures(raw, stationName) {
         destination: d.destination || d.stations?.[0] || "",
         via: d.via || d.stations?.[1] || "",
         note: d.note || "",
+        operator: d.operator || "",
         station: stationName || ""
     }));
 }
@@ -505,6 +507,21 @@ function buildVagonwebUrl(details) {
         rok: String(new Date().getFullYear())
     });
     return `https://www.vagonweb.cz/razeni/vlak.php?${params}`;
+}
+
+function getCarrierDetailIconPath(operator) {
+    switch (String(operator || "").toUpperCase()) {
+        case "RJET":
+            return "operators/RJET_details.svg";
+        case "ARV":
+        case "ARR":
+            return "operators/ARR_details.svg";
+        case "CD":
+        case "ČD":
+            return "operators/CD_details.svg";
+        default:
+            return "sprzel.svg";
+    }
 }
 
 const escapeHtml = (value) => String(value ?? "")
@@ -767,7 +784,14 @@ const renderDepartureDetailsTemplate = (template, values) => template.replace(
     (full, key) => Object.prototype.hasOwnProperty.call(values, key) ? values[key] : full
 );
 
-async function buildDepartureDetailsFromTemplate(details, strings, title, vagonwebUrl, formation) {
+async function buildDepartureDetailsFromTemplate(
+    details,
+    strings,
+    title,
+    vagonwebUrl,
+    formation,
+    { itemId = "", liveFeedFile = "" } = {}
+) {
     const template = await readDepartureDetailsTemplate();
     const value = (input, fallback) => escapeHtml(departureHtmlValue(input, fallback));
     const label = (input, fallback) => departureHtmlLabel(input, fallback);
@@ -777,22 +801,7 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
     const operator = departureHtmlValue(details.operator, "");
     const carrier = resolveCarrier(operator);
     const operatorKey = operator.toUpperCase();
-    var operatorIcon = "sprzel.svg";
-    switch (operatorKey) {
-        case "RJET":
-            operatorIcon = "operators/RJET_details.svg";
-            break;
-        case "ARV":
-        case "ARR":
-            operatorIcon = "operators/ARR_details.svg";
-            break;
-        case "CD":
-        case "ČD":
-            operatorIcon = "operators/CD_details.svg";
-            break;
-        default:
-            operatorIcon = "sprzel.svg";
-    }
+    const operatorIcon = getCarrierDetailIconPath(operatorKey);
     const [sprzel, trainDark, trainWhite, trainCircle, time, calendar, location, via, info, headerStripes, line, station] = await Promise.all([
         icon(operatorIcon),
         icon("picto/picto-train-darkblue.svg"),
@@ -811,6 +820,15 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
     const config = await readConfigFile();
     const colors = String(config.departureDetails?.colors || "light");
     const colorsCss = colors === "dark" ? "colors-dark.css" : "colors-light.css";
+    const stylesheet = (relativePath) => escapeHtml(
+        pathToFileURL(join(EXTENSION_DIR, relativePath)).href
+    );
+    const scriptValue = (input) => JSON.stringify(String(input ?? ""))
+        .replace(/</g, "\\u003c")
+        .replace(/>/g, "\\u003e")
+        .replace(/&/g, "\\u0026")
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
     const safeUrl = isSafeVagonwebUrl(vagonwebUrl) ? escapeHtml(vagonwebUrl) : "";
     const hasFormationUrl = Boolean(safeUrl);
     let delayMinutes = Number(details.delayMinutes ?? 0);
@@ -842,7 +860,9 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         FORMATION_CLASS: hasFormationUrl ? "" : "is-empty",
         FORMATION_HTML: formation?.html || "",
         VAGONWEB_URL: safeUrl,
-        COLORS_CSS: colorsCss,
+        COLORS_CSS: stylesheet(colorsCss),
+        DETAILS_CSS: stylesheet("departure_details.css"),
+        VAGONWEB_CSS: stylesheet("vagonweb.css"),
         DELAY_CLASS: delayClass,
         ICON_SPRZEL: sprzel,
         ICON_TRAIN_DARK: trainDark,
@@ -858,6 +878,10 @@ async function buildDepartureDetailsFromTemplate(details, strings, title, vagonw
         ICON_STATION: station,
         FORMATION_LINK_FIRST: value(strings.detailFormationLinkFirst, "View formation"),
         FORMATION_LINK_SECOND: value(strings.detailFormationLinkSecond, "on vagonWEB →"),
+        LIVE_ITEM_ID: scriptValue(itemId),
+        LIVE_ITEM_KEY: scriptValue(departureNavigationKey(details)),
+        LIVE_FEED_URL: scriptValue(pathToFileURL(liveFeedFile).href),
+        LIVE_FORMATION_ENDPOINT: scriptValue("__PRAGOTRON_FORMATION_ENDPOINT__"),
         LABEL_TRAIN: label(strings.detailTrain, "Train:"),
         LABEL_TRAIN_NUMBER: label(strings.detailTrainNumber, "Train No.:"),
         LABEL_DEPARTURE: label(strings.detailDepartureTime, "Departure:"),
@@ -952,7 +976,8 @@ function buildItems(departures, operatorIconFiles = new Set(), stationName = "")
                 destination: d.destination || d.stations?.[0] || "",
                 via: d.via || d.stations?.[1] || "",
                 note: d.note || "",
-                operator: d.operator || ""
+                operator: d.operator || "",
+                station: d.station || stationName || ""
             }
         };
     });
@@ -1005,8 +1030,23 @@ async function writeConfigFile(config) {
 }
 
 async function getConfiguredUrls() {
+    return (await getConfiguredStations()).map((station) => station.url);
+}
+
+async function getConfiguredStations() {
     const config = await readConfigFile();
-    return Array.isArray(config.urls) ? config.urls : [];
+    if (!Array.isArray(config.urls)) return [];
+    return config.urls
+        .map((entry) => {
+            if (typeof entry === "string") {
+                return { url: entry.trim(), name: "" };
+            }
+            return {
+                url: String(entry?.url || "").trim(),
+                name: String(entry?.name || "").trim()
+            };
+        })
+        .filter((entry) => entry.url);
 }
 
 async function getRefreshInterval() {
@@ -1093,10 +1133,10 @@ async function handleConfigureUrl(strings) {
     }
 
     const config = await readConfigFile();
-    const currentUrls = Array.isArray(config.urls) ? config.urls : [];
+    const currentStations = await getConfiguredStations();
     const currentRefresh = config.refreshMs || DEFAULT_REFRESH_MS;
-    const urlsText = currentUrls.length
-        ? currentUrls.join("\n  ")
+    const urlsText = currentStations.length
+        ? currentStations.map(({ name, url }) => `${name || "(unnamed)"}: ${url}`).join("\n  ")
         : strings.urlsNotConfigured || "(not configured)";
 
     await Salamander.ui.messageBox(
@@ -1114,10 +1154,22 @@ let scraperError = null;
 let panelOpen = false;
 let lastPanelActivity = 0;
 let currentView = null;
+let activeStationConfig = null;
 let stationRefreshPromise = null;
+let stationRefreshUrl = null;
+let scraperGeneration = 0;
 let listRequestId = 0;
+let fileSystemItemsPromise = Promise.resolve();
 const departureDetailsById = new Map();
 const PANEL_INACTIVITY_MS = 5 * 60 * 1000;
+
+const addFileSystemItems = (items) => {
+    const update = fileSystemItemsPromise
+        .catch(() => { })
+        .then(() => Salamander.fileSystem.addItems(items));
+    fileSystemItemsPromise = update;
+    return update;
+};
 
 const saveCache = async (cache) => {
     try {
@@ -1134,114 +1186,125 @@ const loadCache = async () => {
     }
 };
 
-const cacheMatchesConfiguredUrls = (cache, urls) => {
-    const configuredUrls = urls
-        .map((url) => String(url ?? "").trim())
-        .filter(Boolean);
-    const cachedUrls = Array.isArray(cache?.stations)
-        ? cache.stations
-            .map((station) => String(station?.url ?? "").trim())
-            .filter(Boolean)
-        : [];
-    const cachedNames = Array.isArray(cache?.stations)
-        ? cache.stations.map((station) => String(station?.station ?? "").trim())
-        : [];
-
-    if (configuredUrls.length !== cachedUrls.length) return false;
-    if (
-        cachedNames.length !== cachedUrls.length
-        || cachedNames.some((name) => !name || /^station-[A-Za-z0-9_-]+$/i.test(name))
-    ) return false;
-
-    const cachedUrlSet = new Set(cachedUrls);
-    return configuredUrls.every((url) => cachedUrlSet.has(url));
-};
-
-const fetchConfiguredStations = async ({ urls, strings, fallbackCache, reportError }) => {
-    const results = await Promise.all(urls.map(async (url) => {
+const refreshConfiguredStation = ({ station, fallbackStation, strings, reportError = false } = {}) => {
+    if (stationRefreshPromise && stationRefreshUrl === station.url) return stationRefreshPromise;
+    const refreshUrl = station.url;
+    const refreshPromise = (async () => {
         try {
-            const result = await fetchStationTable({ url });
-            return {
-                station: result.station,
-                stationKey: result.stationKey,
+            const result = await fetchStationTable({ url: refreshUrl });
+            const refreshedStation = {
+                station: station.name || result.station,
+                stationKey: result.stationKey || deriveStationKeyFromUrl(refreshUrl),
                 departures: result.departures,
                 fetchedAt: Date.now(),
-                url: result.url
+                url: refreshUrl
             };
+            if (activeStationConfig?.url === refreshUrl) {
+                lastCache = { stations: [refreshedStation] };
+                void saveCache(lastCache);
+                void saveLocalDepartureSnapshot(lastCache);
+            }
+            return refreshedStation;
         } catch (error) {
-            return { url, error };
+            if (fallbackStation) {
+                const fallback = {
+                    ...fallbackStation,
+                    station: station.name || fallbackStation.station,
+                    stationKey: fallbackStation.stationKey || deriveStationKeyFromUrl(refreshUrl),
+                    url: refreshUrl
+                };
+                if (activeStationConfig?.url === refreshUrl) {
+                    lastCache = { stations: [fallback] };
+                    void saveLocalDepartureSnapshot(lastCache);
+                }
+                return fallback;
+            }
+            if (reportError) {
+                await Salamander.ui.messageBox(
+                    `${strings.fetchFailed || "Failed to fetch departures"}:\n${String(error)}`,
+                    strings.name || "Tabule SprŽel",
+                    "OK",
+                    "Error"
+                );
+            }
+            return null;
         }
-    }));
-
-    const fallbackByUrl = new Map((fallbackCache?.stations || [])
-        .map((station) => [String(station.url || "").trim(), station]));
-    const stations = results.map((result) => result.error
-        ? fallbackByUrl.get(String(result.url).trim())
-        : result).filter(Boolean);
-
-    if (!stations.length) {
-        if (reportError) {
-            const firstError = results.find((result) => result.error)?.error;
-            await Salamander.ui.messageBox(
-                `${strings.fetchFailed || "Failed to fetch departures"}:\n${String(firstError || "No station data was returned.")}`,
-                strings.name || "Tabule SprŽel",
-                "OK",
-                "Error"
-            );
+    })().finally(() => {
+        if (stationRefreshPromise === refreshPromise) {
+            stationRefreshPromise = null;
+            stationRefreshUrl = null;
         }
-        return null;
-    }
-
-    const refreshed = { stations };
-    lastCache = refreshed;
-    void saveCache(refreshed);
-    return refreshed;
-};
-
-const refreshConfiguredStations = ({ urls, strings, reportError = false } = {}) => {
-    if (stationRefreshPromise) return stationRefreshPromise;
-    stationRefreshPromise = fetchConfiguredStations({
-        urls,
-        strings,
-        fallbackCache: lastCache,
-        reportError
-    }).finally(() => {
-        stationRefreshPromise = null;
     });
-    return stationRefreshPromise;
+    stationRefreshPromise = refreshPromise;
+    stationRefreshUrl = refreshUrl;
+    return refreshPromise;
 };
 
-const startScraper = async () => {
+const refreshConfiguredStations = ({ station, fallbackStation, strings, reportError = false } = {}) => {
+    return refreshConfiguredStation({
+        station,
+        fallbackStation,
+        strings,
+        reportError
+    });
+};
+
+const startScraper = async ({ fallbackStation: configuredFallbackStation = null, strings = {}, reportError = false } = {}) => {
     if (scraperRunning) return { ok: false, reason: "alreadyRunning" };
-    const urls = await getConfiguredUrls();
-    if (!urls.length) {
+    if (!activeStationConfig) {
         return { ok: false, reason: "noUrl" };
     }
     scraperRunning = true;
     scraperError = null;
+    const generation = ++scraperGeneration;
+
+    const isCurrentRun = () => scraperRunning
+        && generation === scraperGeneration
+        && activeStationConfig;
+    const scheduleNextTick = async () => {
+        const delay = await getRefreshInterval();
+        if (isCurrentRun()) {
+            scraperTimer = setTimeout(() => void tick(), delay);
+        }
+    };
 
     const tick = async () => {
+        if (!isCurrentRun()) return;
         try {
-            const refreshed = await refreshConfiguredStations({ urls });
+            const station = activeStationConfig;
+            const cachedFallbackStation = lastCache?.stations?.find((station) =>
+                station.url === activeStationConfig.url
+            ) || configuredFallbackStation;
+            const refreshed = await refreshConfiguredStations({
+                station,
+                fallbackStation: cachedFallbackStation,
+                strings,
+                reportError
+            });
+            if (!isCurrentRun()) return;
             if (!refreshed) scraperError = "No station data was returned.";
             const now = Date.now();
             if (panelOpen && now - lastPanelActivity > PANEL_INACTIVITY_MS) {
                 stopScraper();
                 panelOpen = false;
             } else {
-                scraperTimer = setTimeout(() => void tick(), await getRefreshInterval());
+                void scheduleNextTick();
             }
+            return refreshed;
         } catch (error) {
+            if (!isCurrentRun()) return;
             scraperError = String(error);
-            scraperTimer = setTimeout(() => void tick(), await getRefreshInterval());
+            void scheduleNextTick();
+            return null;
         }
     };
 
-    void tick();
-    return { ok: true };
+    const firstStation = await tick();
+    return { ok: true, station: firstStation };
 };
 
 const stopScraper = () => {
+    scraperGeneration += 1;
     if (scraperTimer) {
         clearTimeout(scraperTimer);
         scraperTimer = null;
@@ -1256,6 +1319,119 @@ const getCachedDepartures = (stationKey) => lastCache
     ? lastCache.stations.find((s) => s.stationKey === stationKey)?.departures || null
     : null;
 
+const getCachedDepartureDetails = (cache, id) => {
+    const now = new Date();
+    for (const station of cache?.stations || []) {
+        const departure = (station.departures || []).find((candidate) =>
+            makeDepartureId(candidate) === id
+        );
+        if (!departure) continue;
+        return {
+            train: departure.train,
+            trainNumber: departure.trainNumber,
+            departureTime: departure.departureTime,
+            delay: formatDelay(departure.delay),
+            delayMinutes: Number(departure.delay || 0),
+            actualDepartureTime: formatActualDepartureWithDate(
+                departure.departureTime,
+                departure.delay,
+                now
+            ),
+            platform: departure.platform,
+            track: departure.track,
+            sector: departure.sector,
+            line: departure.line || "",
+            destination: departure.destination || departure.stations?.[0] || "",
+            via: departure.via || departure.stations?.[1] || "",
+            note: departure.note || "",
+            operator: departure.operator || "",
+            station: departure.station || station.station || ""
+        };
+    }
+    return null;
+};
+
+const saveLocalDepartureDetails = async (items) => {
+    try {
+        await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true });
+        const liveItems = await Promise.all(items.map(async (item) => {
+            const details = item.columns || {};
+            const carrier = resolveCarrier(details.operator || "");
+            const carrierIcon = await readDepartureDetailsIcon(
+                getCarrierDetailIconPath(details.operator || "")
+            );
+            return {
+                id: item.id,
+                key: departureNavigationKey(details),
+                details: {
+                    ...details,
+                    carrierName: carrier.name || "Carrier",
+                    carrierLogo: `data:image/svg+xml;base64,${carrierIcon}`,
+                    vagonwebUrl: buildVagonwebUrl(details)
+                }
+            };
+        }));
+        const details = Object.fromEntries(liveItems.map((item) => [item.id, item.details]));
+        const feed = `window.__PRAGOTRON_LIVE_DATA__ = ${JSON.stringify({ items: liveItems })
+            .replace(/</g, "\\u003c")
+            .replace(/>/g, "\\u003e")
+            .replace(/&/g, "\\u0026")
+            .replace(/\u2028/g, "\\u2028")
+            .replace(/\u2029/g, "\\u2029")};`;
+        const detailsTemporaryPath = `${DEPARTURE_DETAILS_CACHE_FILE}.${randomUUID()}.tmp`;
+        const feedTemporaryPath = `${DEPARTURE_LIVE_FEED_FILE}.${randomUUID()}.tmp`;
+        await writeFile(detailsTemporaryPath, JSON.stringify(details), "utf8");
+        await writeFile(feedTemporaryPath, feed, "utf8");
+        await rename(detailsTemporaryPath, DEPARTURE_DETAILS_CACHE_FILE);
+        await rename(feedTemporaryPath, DEPARTURE_LIVE_FEED_FILE);
+    } catch { }
+};
+
+const saveLocalDepartureSnapshot = async (cache) => {
+    const now = new Date();
+    const items = [];
+    for (const station of cache?.stations || []) {
+        const stationName = station.station || `Station ${station.stationKey || ""}`.trim();
+        for (const departure of station.departures || []) {
+            items.push({
+                id: makeDepartureId(departure),
+                columns: {
+                    train: departure.train,
+                    trainNumber: departure.trainNumber,
+                    departureTime: departure.departureTime,
+                    delay: formatDelay(departure.delay),
+                    delayMinutes: Number(departure.delay || 0),
+                    actualDepartureTime: formatActualDepartureWithDate(
+                        departure.departureTime,
+                        departure.delay,
+                        now
+                    ),
+                    platform: departure.platform,
+                    track: departure.track,
+                    sector: departure.sector,
+                    line: departure.line || "",
+                    destination: departure.destination || departure.stations?.[0] || "",
+                    via: departure.via || departure.stations?.[1] || "",
+                    note: departure.note || "",
+                    operator: departure.operator || "",
+                    station: departure.station || stationName || ""
+                }
+            });
+        }
+    }
+    await saveLocalDepartureDetails(items);
+};
+
+const loadLocalDepartureDetails = async (id) => {
+    try {
+        const raw = await readFile(DEPARTURE_DETAILS_CACHE_FILE, "utf8");
+        const details = JSON.parse(raw);
+        return details && typeof details[id] === "object" ? details[id] : null;
+    } catch {
+        return null;
+    }
+};
+
 const stripDiacritics = (s) => String(s ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
@@ -1269,16 +1445,16 @@ async function handleListDepartures() {
     const requestId = ++listRequestId;
     let strings = null;
     try {
-        strings = await getStringsAsync(await detectLocale());
-
         panelOpen = true;
         lastPanelActivity = Date.now();
 
-        const item = Salamander.invocation.item || {};
-        const invPath = Salamander.invocation.path || "";
+        const invocation = Salamander.invocation || {};
+        const item = invocation.item || {};
+        const rawInvocationPath = invocation.path || "";
 
-        const urls = await getConfiguredUrls();
-        if (!urls.length) {
+        const configuredStations = await getConfiguredStations();
+        if (!configuredStations.length) {
+            strings = await getStringsAsync(await detectLocale());
             await Salamander.ui.messageBox(
                 strings.errorInvalidUrl || "No board URLs configured. Use Configure URL.",
                 strings.name || "Tabule SprŽel",
@@ -1288,90 +1464,118 @@ async function handleListDepartures() {
             return;
         }
 
-        let stored = await loadCache();
-        lastCache = stored && cacheMatchesConfiguredUrls(stored, urls)
-            ? stored
-            : null;
-
-        // Load data before resolving the current path. A station path must
-        // still resolve when the persisted cache is missing or outdated.
-        if (!lastCache?.stations?.length) {
-            const refreshed = await refreshConfiguredStations({
-                urls,
-                strings,
-                reportError: true
-            });
-            if (!refreshed || requestId !== listRequestId) return;
-        }
-
-        const cache = lastCache;
-        if (!cache?.stations?.length || requestId !== listRequestId) return;
-
         const stationNameFor = (s) => {
-            const name = String(s.station ?? "").trim();
+            const name = String(s.name ?? s.station ?? "").trim();
+            const stationKey = s.stationKey || deriveStationKeyFromUrl(s.url);
             return name && !/^station-[A-Za-z0-9_-]+$/i.test(name)
                 ? name
-                : `Station ${s.stationKey || ""}`.trim();
+                : `Station ${stationKey || ""}`.trim();
         };
         const stationIdFor = (s) => {
-            const nameId = normalizeId(stationNameFor(s));
-            const namePart = nameId || normalizeId(s.stationKey) || "unknown";
-            const keyPart = s.stationKey ? `!station-${normalizeId(s.stationKey)}` : "";
-            return `station-${namePart}${keyPart}`;
+            return stationNameFor(s);
         };
         const legacyStationIdFor = (s) =>
-            s.stationKey ? `station-${s.stationKey}` : "";
+            (s.stationKey || deriveStationKeyFromUrl(s.url))
+                ? `station-${s.stationKey || deriveStationKeyFromUrl(s.url)}`
+                : "";
         const previousStationIdFor = (s) =>
             `station-${normalizeId(stationNameFor(s))}`;
+        const previousCompositeStationIdFor = (s) => {
+            const stationKey = s.stationKey || deriveStationKeyFromUrl(s.url);
+            return stationKey
+                ? `station-${normalizeId(stationNameFor(s))}!station-${normalizeId(stationKey)}`
+                : "";
+        };
 
         // Determine what view we're in: root or a specific station
         let activeStation = null;
-        let effectiveInvPath = invPath;
-        if (!invPath && String(item.id || "").startsWith("station-")) {
-            effectiveInvPath = String(item.id);
-        }
-        const pathParts = String(effectiveInvPath)
-            .split(/[\\/]/)
-            .filter(Boolean);
-        const stationPathIds = pathParts.filter((part) => part.startsWith("station-"));
+        const invocationValues = [];
+        const collectInvocationValue = (value) => {
+            if (Array.isArray(value)) {
+                value.forEach(collectInvocationValue);
+            } else if (value !== undefined && value !== null && value !== "") {
+                invocationValues.push(value);
+            }
+        };
+        collectInvocationValue(rawInvocationPath);
+        collectInvocationValue(item.id);
+        collectInvocationValue(item.path);
+        collectInvocationValue(item.name);
+        const pathParts = invocationValues.flatMap((value) => String(value)
+            .split(/[\\/!]/)
+            .filter(Boolean));
+        const stationSelectors = new Set(pathParts.flatMap((part) => {
+            try {
+                return [part, decodeURIComponent(part)];
+            } catch {
+                return [part];
+            }
+        }));
 
-        if (stationPathIds.length) {
-            for (const s of cache.stations) {
-                const sid = stationIdFor(s);
-                const legacySid = legacyStationIdFor(s);
-                const previousSid = previousStationIdFor(s);
-                if (
-                    stationPathIds.includes(sid)
-                    || stationPathIds.includes(legacySid)
-                    || stationPathIds.includes(previousSid)
-                ) {
-                    activeStation = s;
-                    break;
-                }
+        for (const s of configuredStations) {
+            const knownSelectors = [
+                stationIdFor(s),
+                legacyStationIdFor(s),
+                previousStationIdFor(s),
+                previousCompositeStationIdFor(s),
+                stationNameFor(s)
+            ].filter(Boolean);
+            if (knownSelectors.some((selector) => stationSelectors.has(selector))) {
+                activeStation = s;
+                break;
             }
         }
 
         if (!activeStation) {
             // Root view: show station folders
+            activeStationConfig = null;
+            stopScraper();
             currentView = "root";
-            const stationItems = cache.stations.map((s) => ({
+            const stationItems = configuredStations.map((s) => ({
                 id: stationIdFor(s),
                 name: stationNameFor(s),
                 directory: true,
                 enabled: true,
                 icon: "icon.svg",
-                iconDark: "icon.svg",
-                columns: {}
+                iconDark: "icon.svg"
             }));
             if (requestId === listRequestId) {
-                await Salamander.fileSystem.addItems(stationItems);
+                await addFileSystemItems(stationItems);
             }
             return;
         }
 
-        // Station view: show departures for this station.
-        const stationId = stationIdFor(activeStation);
-        const departures = activeStation.departures || [];
+        // Station view: fetch departures only for the selected station.
+        stopScraper();
+        activeStationConfig = activeStation;
+        const stationId = stationIdFor(activeStationConfig);
+        const stringsPromise = detectLocale().then((locale) => getStringsAsync(locale));
+        const storedPromise = loadCache();
+        const scraperResult = await startScraper({
+            strings: {},
+            reportError: false
+        });
+        let refreshedStation = scraperResult.station;
+        if (!refreshedStation) {
+            const stored = await storedPromise;
+            refreshedStation = stored?.stations?.find((station) =>
+                station.url === activeStationConfig.url
+            ) || null;
+        }
+        if (!refreshedStation) {
+            strings = await stringsPromise;
+            await Salamander.ui.messageBox(
+                `${strings.fetchFailed || "Failed to fetch departures"}.`,
+                strings.name || "Tabule SprŽel",
+                "OK",
+                "Error"
+            );
+        }
+        if (!refreshedStation || requestId !== listRequestId) return;
+
+        const cache = { stations: [refreshedStation] };
+        lastCache = cache;
+        const departures = refreshedStation.departures || [];
         const stationName = stationNameFor(activeStation) || "Stanice";
 
         const now = new Date();
@@ -1383,7 +1587,11 @@ async function handleListDepartures() {
         currentView = stationId;
 
         if (requestId !== listRequestId) return;
-        await Salamander.fileSystem.addItems(items);
+        // The detail action may run in another Node context. Persist in the
+        // background so the departure list is visible as soon as it is built.
+        void saveLocalDepartureDetails(items);
+        void saveCache(cache);
+        await addFileSystemItems(items);
 
         // Do not block the panel on per-departure persistence. The in-memory
         // map serves the immediate action; storage is only the cross-context fallback.
@@ -1412,6 +1620,7 @@ async function handleListDepartures() {
             } catch { }
         }));
     } catch (error) {
+        if (!strings) strings = await getStringsAsync("en");
         await Salamander.ui.notify(
             `${strings.error || "Error:"} ${String(error)}`,
             strings.name || "Tabule SprŽel",
@@ -1442,6 +1651,61 @@ const describeDepartureDetailsError = (error) => {
     return message.replace(/\s+/g, " ").trim().slice(0, 500) || "Unknown WebView error";
 };
 
+const readDetailsWindowState = async () => {
+    try {
+        const state = JSON.parse(await readFile(DEPARTURE_DETAILS_STATE_FILE, "utf8"));
+        if (!Number.isInteger(state.port) || state.port < 1 || state.port > 65535) return null;
+        if (typeof state.token !== "string" || !state.token) return null;
+        return state;
+    } catch {
+        return null;
+    }
+};
+
+const requestDetailsWindow = async (state, title) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+    try {
+        const response = await fetch(`http://127.0.0.1:${state.port}/show`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ token: state.token, title }),
+            signal: controller.signal
+        });
+        return response.ok;
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const showExistingDetailsWindow = async (title) => {
+    const state = await readDetailsWindowState();
+    if (!state) return false;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+        try {
+            if (await requestDetailsWindow(state, title)) return true;
+        } catch {
+            await rm(DEPARTURE_DETAILS_STATE_FILE, { force: true }).catch(() => { });
+            return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return false;
+};
+
+const waitForDetailsWindow = async (title) => {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+        const state = await readDetailsWindowState();
+        if (state) {
+            try {
+                if (await requestDetailsWindow(state, title)) return true;
+            } catch { }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("The departure details window did not become ready.");
+};
+
 async function departureDetailsFallback(detailsText, title, vagonwebUrl, strings, error = null) {
     const errorText = error
         ? `\r\n\r\n${strings.error || "Error:"} ${describeDepartureDetailsError(error)}`
@@ -1470,6 +1734,20 @@ async function handleViewDeparture() {
             if (raw) details = JSON.parse(raw);
         } catch { }
     }
+    if (!details || !details.train) {
+        details = await loadLocalDepartureDetails(id) || details;
+    }
+    if (!details || !details.train) {
+        let cache = lastCache;
+        if (!cache) cache = await loadCache();
+        details = getCachedDepartureDetails(cache, id) || details;
+    }
+    if ((!details || !details.train) && item.columns && typeof item.columns === "object") {
+        details = {
+            ...item.columns,
+            station: item.columns.station || item.station || ""
+        };
+    }
     details = details || {};
 
     const detailRows = [
@@ -1496,7 +1774,7 @@ async function handleViewDeparture() {
         : strings.name || "Tabule SprŽel";
     const vagonwebUrl = buildVagonwebUrl(details);
     const detailsText = detailRows.join("\r\n");
-    let directory = null;
+    let htmlPath = DEPARTURE_DETAILS_HTML_FILE;
     try {
         const packageHostPath = join(
             EXTENSION_DIR,
@@ -1511,15 +1789,21 @@ async function handleViewDeparture() {
             access(launcherPath)
         ]);
 
-        directory = await mkdtemp(join(tmpdir(), "pragotron-departure-"));
-        const htmlPath = join(directory, "details.html");
+        await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true });
         const formationErrorText = String(
             strings.detailFormationError || "Train formation could not be loaded."
         );
         const formation = vagonwebUrl
             ? { html: `<div class="formation-status"><span class="loader"></span>${escapeHtml(departureHtmlValue(strings.detailFormationLoading, "Loading train formation..."))}</div>` }
             : { html: "" };
-        const html = await buildDepartureDetailsFromTemplate(details, strings, title, vagonwebUrl, formation);
+        const html = await buildDepartureDetailsFromTemplate(
+            details,
+            strings,
+            title,
+            vagonwebUrl,
+            formation,
+            { itemId: id, liveFeedFile: DEPARTURE_LIVE_FEED_FILE }
+        );
         if (
             typeof html !== "string"
             || html.length === 0
@@ -1529,19 +1813,23 @@ async function handleViewDeparture() {
         ) {
             throw new Error("Invalid departure details document");
         }
-        await mkdir(join(directory, "fonts"), { recursive: true });
-        await Promise.all([
-            copyFile(join(EXTENSION_DIR, "colors-light.css"), join(directory, "colors-light.css")),
-            copyFile(join(EXTENSION_DIR, "colors-dark.css"), join(directory, "colors-dark.css")),
-            copyFile(join(EXTENSION_DIR, "departure_details.css"), join(directory, "departure_details.css")),
-            copyFile(join(EXTENSION_DIR, "vagonweb.css"), join(directory, "vagonweb.css")),
-            ...DETAIL_FONT_FILES.map((relativePath) =>
-                copyFile(join(EXTENSION_DIR, relativePath), join(directory, relativePath))
-            )
-        ]);
         await writeFile(htmlPath, html, "utf8");
 
-        const child = spawn(process.execPath, [launcherPath, htmlPath, directory, title, vagonwebUrl, formationErrorText], {
+        if (await showExistingDetailsWindow(title)) return;
+
+        await rm(DEPARTURE_DETAILS_STATE_FILE, { force: true }).catch(() => { });
+        const webviewDataFolder = DEPARTURE_DETAILS_WEBVIEW_DATA;
+
+        const child = spawn(process.execPath, [
+            launcherPath,
+            htmlPath,
+            DEPARTURE_RUNTIME_DIR,
+            title,
+            vagonwebUrl,
+            formationErrorText,
+            webviewDataFolder,
+            DEPARTURE_DETAILS_STATE_FILE
+        ], {
             detached: true,
             windowsHide: true,
             stdio: "ignore"
@@ -1558,6 +1846,7 @@ async function handleViewDeparture() {
             child.once("spawn", onSpawn);
             child.once("error", onError);
         });
+        await waitForDetailsWindow(title);
         let fallbackShown = false;
         const showFallback = (error) => {
             if (fallbackShown) return;
@@ -1575,18 +1864,21 @@ async function handleViewDeparture() {
             }
         });
         child.unref();
-        directory = null;
         return;
     } catch (error) {
         try {
             console.error(`[TabuleSprZel] failed to open departure details: ${describeDepartureDetailsError(error)}`);
         } catch { }
-        if (directory) await rm(directory, { recursive: true, force: true }).catch(() => { });
+        await rm(`${DEPARTURE_DETAILS_HTML_FILE}.error`, { force: true }).catch(() => { });
         await departureDetailsFallback(detailsText, title, vagonwebUrl, strings, error);
     }
 }
 
 const handler = Salamander.commandHandler || Salamander.command_handler;
+
+if (handler === "viewDeparture" || handler === "configureUrl" || handler === "configure") {
+    stopScraper();
+}
 
 if (handler === "listDepartures") {
     await handleListDepartures();
@@ -1596,11 +1888,4 @@ if (handler === "listDepartures") {
     await handleViewDeparture();
 } else if (handler === "configureUrl" || handler === "configure") {
     await handleConfigureUrl();
-}
-
-if (handler === "listDepartures" && !scraperRunning) {
-    const urls = await getConfiguredUrls();
-    if (urls.length) {
-        void startScraper();
-    }
 }

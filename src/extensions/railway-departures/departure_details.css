@@ -230,10 +230,16 @@ body {
     margin: 4px 5px 0 2px;
     border-radius: 50%;
     font-size: 0;
+    animation: pragotron-delay-pulse 1.6s ease-in-out infinite;
+    transform-origin: center;
 }
 .icon-delay--green { background: var(--green); }
 .icon-delay--yellow { background: var(--yellow); }
 .icon-delay--red { background: var(--red); }
+@keyframes pragotron-delay-pulse {
+    0%, 100% { opacity: .65; transform: scale(.9); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
 .status-line .field-label {
     margin-top: 1px;
 }

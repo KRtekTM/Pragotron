@@ -65,7 +65,6 @@
       "iconDark": "icon.svg",
       "spinner": true,
       "listHandler": "listDepartures",
-      "refreshIntervalMs": 30000,
       "refreshDepth": 1,
       "columns": [
         {

@@ -1,13 +1,15 @@
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchVagonwebFormation } from "./departure-formation.mjs";
 
 const require = createRequire(import.meta.url);
 const extensionDirectory = dirname(fileURLToPath(import.meta.url));
-const [htmlPath, directory, title, vagonwebUrl, formationErrorText] = process.argv.slice(2);
+const [htmlPath, directory, title, vagonwebUrl, formationErrorText, webviewDataFolder, statePath] = process.argv.slice(2);
 
 const POWERSHELL = "powershell.exe";
 const WINDOW_WIDTH = 975;
@@ -90,7 +92,149 @@ while ($true) {
     return monitor;
 };
 
-const errorPath = directory ? join(directory, "webview-error.txt") : "";
+const errorPath = htmlPath ? `${htmlPath}.error` : "";
+const userDataPath = webviewDataFolder || (directory ? join(directory, "webview-data") : "");
+let formationServer = null;
+let formationEndpoint = "";
+let controlServer = null;
+let window = null;
+let allowWindowClose = false;
+let escapeMonitor = null;
+let exitCode = 0;
+let windowClosed = false;
+const controlToken = randomUUID();
+
+const startFormationServer = () => new Promise((resolve, reject) => {
+    const server = createServer(async (request, response) => {
+        response.setHeader("Access-Control-Allow-Origin", "*");
+        response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+        if (request.method === "OPTIONS") {
+            response.writeHead(204);
+            response.end();
+            return;
+        }
+        try {
+            const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
+            if (request.method !== "GET" || requestUrl.pathname !== "/formation") {
+                response.writeHead(404, { "content-type": "application/json" });
+                response.end(JSON.stringify({ html: "", error: "Not found." }));
+                return;
+            }
+            const result = await fetchVagonwebFormation(
+                requestUrl.searchParams.get("url") || "",
+                formationErrorText
+            );
+            response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+            response.end(JSON.stringify({
+                html: result.html || "",
+                error: result.error ? describeError(result.error) : null
+            }));
+        } catch (error) {
+            response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+            response.end(JSON.stringify({ html: "", error: describeError(error) }));
+        }
+    });
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+        formationServer = server;
+        const address = server.address();
+        resolve(`http://127.0.0.1:${address.port}/formation`);
+    });
+});
+
+const stopFormationServer = async () => {
+    if (!formationServer) return;
+    const server = formationServer;
+    formationServer = null;
+    await new Promise((resolve) => server.close(() => resolve()));
+};
+
+const readRequestBody = (request) => new Promise((resolve, reject) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 64 * 1024) {
+            reject(new Error("Control request is too large."));
+            request.destroy();
+        }
+    });
+    request.on("end", () => resolve(body));
+    request.on("error", reject);
+});
+
+const startControlServer = () => new Promise((resolve, reject) => {
+    const server = createServer(async (request, response) => {
+        try {
+            const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
+            if (request.method !== "POST" || requestUrl.pathname !== "/show") {
+                response.writeHead(404);
+                response.end();
+                return;
+            }
+            const payload = JSON.parse(await readRequestBody(request));
+            if (payload.token !== controlToken) {
+                response.writeHead(403);
+                response.end();
+                return;
+            }
+            if (!window || window.isDestroyed()) {
+                response.writeHead(503);
+                response.end();
+                return;
+            }
+            const currentHtml = await readFile(htmlPath, "utf8");
+            const updatedHtml = currentHtml.replaceAll("__PRAGOTRON_FORMATION_ENDPOINT__", formationEndpoint);
+            if (updatedHtml !== currentHtml) await writeFile(htmlPath, updatedHtml, "utf8");
+            const nextTitle = String(payload.title || title).slice(0, 300);
+            window.setTitle(nextTitle);
+            window.loadFile(htmlPath);
+            window.show();
+            window.focus();
+            response.writeHead(204);
+            response.end();
+        } catch {
+            response.writeHead(400);
+            response.end();
+        }
+    });
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", async () => {
+        controlServer = server;
+        try {
+            const address = server.address();
+            await writeFile(statePath, JSON.stringify({
+                port: address.port,
+                token: controlToken
+            }), "utf8");
+            resolve();
+        } catch (error) {
+            reject(error);
+        }
+    });
+});
+
+const stopControlServer = async () => {
+    if (controlServer) {
+        const server = controlServer;
+        controlServer = null;
+        await new Promise((resolve) => server.close(() => resolve()));
+    }
+    if (statePath) await rm(statePath, { force: true }).catch(() => { });
+};
+
+const cleanup = async () => {
+    await stopControlServer();
+    await stopFormationServer();
+    if (htmlPath) await rm(htmlPath, { force: true }).catch(() => { });
+    if (errorPath) await rm(errorPath, { force: true }).catch(() => { });
+    if (webviewDataFolder) {
+        await rm(webviewDataFolder, { recursive: true, force: true }).catch(() => { });
+    } else if (directory) {
+        await rm(directory, { recursive: true, force: true }).catch(() => { });
+    }
+};
 
 const describeError = (error) => {
     const message = error instanceof Error ? error.message : String(error ?? "Unknown WebView error");
@@ -104,14 +248,15 @@ const reportError = async (error) => {
     } catch { }
 };
 
-let window = null;
-let escapeMonitor = null;
-let exitCode = 0;
-let windowClosed = false;
 try {
-    if (!htmlPath || !directory || !title) {
+    if (!htmlPath || !directory || !title || !statePath) {
         throw new Error("The departure WebView launcher received incomplete arguments.");
     }
+
+    formationEndpoint = await startFormationServer();
+    const currentHtml = await readFile(htmlPath, "utf8");
+    const updatedHtml = currentHtml.replaceAll("__PRAGOTRON_FORMATION_ENDPOINT__", formationEndpoint);
+    if (updatedHtml !== currentHtml) await writeFile(htmlPath, updatedHtml, "utf8");
 
     const { WebView } = require(join(extensionDirectory, "node_modules", "webview-node"));
     if (typeof WebView !== "function") {
@@ -132,7 +277,7 @@ try {
         closable: true,
         center: true,
         backgroundColor: "#eff8fe",
-        userDataFolder: join(directory, "webview-data"),
+        userDataFolder: userDataPath,
         windowsHide: true,
         ...(position || {})
     });
@@ -147,6 +292,7 @@ try {
     };
     const reportStartupFailure = (error) => {
         startupFailed = true;
+        allowWindowClose = true;
         reportOnce(error);
     };
     let startupTimer = setTimeout(() => {
@@ -171,6 +317,11 @@ try {
             } catch { }
         }
     });
+    window.on("close", (event) => {
+        if (allowWindowClose) return;
+        event.preventDefault();
+        window.hide();
+    });
     window.on("closed", () => {
         windowClosed = true;
         if (startupTimer) clearTimeout(startupTimer);
@@ -180,34 +331,20 @@ try {
         }
         void (async () => {
             if (!ready) reportStartupFailure(new Error("The WebView window closed before it became ready."));
-            await rm(directory, { recursive: true, force: true }).catch(() => { });
+            await cleanup();
             process.exit(startupFailed ? 1 : exitCode);
         })();
     });
 
+    await startControlServer();
     escapeMonitor = startEscapeMonitor(() => {
-        if (window && !window.isDestroyed()) window.close({ force: true });
+        if (window && !window.isDestroyed()) window.hide();
     });
     window.loadFile(htmlPath);
     window.show();
-    if (vagonwebUrl) {
-        void (async () => {
-            const formation = await fetchVagonwebFormation(vagonwebUrl, formationErrorText);
-            if (windowClosed || !window || window.isDestroyed()) return;
-            const current = await readFile(htmlPath, "utf8");
-            const marker = /<!-- PRAGOTRON_FORMATION_START -->[\s\S]*?<!-- PRAGOTRON_FORMATION_END -->/;
-            if (!marker.test(current)) return;
-            const updated = current.replace(
-                marker,
-                () => `<!-- PRAGOTRON_FORMATION_START -->${formation.html}<!-- PRAGOTRON_FORMATION_END -->`
-            );
-            if (updated === current) return;
-            await writeFile(htmlPath, updated, "utf8");
-            if (!windowClosed && window && !window.isDestroyed()) window.loadFile(htmlPath);
-        })().catch(reportOnce);
-    }
 } catch (error) {
     exitCode = 1;
+    allowWindowClose = true;
     await reportError(error);
     try {
         if (window && !window.isDestroyed()) window.close({ force: true });
@@ -215,6 +352,6 @@ try {
     try {
         if (escapeMonitor) escapeMonitor.kill();
     } catch { }
-    if (directory) await rm(directory, { recursive: true, force: true }).catch(() => { });
+    await cleanup();
     process.exitCode = 1;
 }

@@ -1,3 +1,5 @@
 node_modules/
 
 src/extensions/railway-departures/release/
+
+src/extensions/railway-departures/bug-report/

@@ -5,54 +5,186 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{TITLE}}</title>
     <link rel="stylesheet" href="{{COLORS_CSS}}" type="text/css">
-    <link rel="stylesheet" href="departure_details.css" type="text/css">
-    <link rel="stylesheet" href="vagonweb.css" type="text/css">
+    <link rel="stylesheet" href="{{DETAILS_CSS}}" type="text/css">
+    <link rel="stylesheet" href="{{VAGONWEB_CSS}}" type="text/css">
 </head>
 <body>
 <main class="card">
     <header class="header">
         <div class="carrier">
-            <img class="carrier-logo" src="{{ICON_SPRZEL}}" alt="">
-            <div class="carrier-name" data-label="{{LABEL_OPERATOR}}">{{CARRIER_NAME}}</div>
-            <div class="carrier-code" data-code="{{CARRIER_CODE}}">{{OPERATOR}}</div>
+            <img class="carrier-logo" src="{{ICON_SPRZEL}}" data-live-carrier-logo alt="">
+            <div class="carrier-name" data-label="{{LABEL_OPERATOR}}" data-live-field="carrier-name">{{CARRIER_NAME}}</div>
+            <div class="carrier-code" data-code="{{CARRIER_CODE}}" data-live-field="operator">{{OPERATOR}}</div>
         </div>
         <img class="header-stripes" src="{{ICON_HEADER_STRIPES}}" alt="">
         <div class="header-train">
             <img class="train-icon" src="{{ICON_TRAIN_WHITE}}" alt="">
-            <div><span class="header-train-type">{{CARRIER_CODE}}</span><span class="header-train-number">{{TRAIN}} {{TRAIN_NUMBER}}</span></div>
+            <div><span class="header-train-type" data-live-field="carrier-code">{{CARRIER_CODE}}</span><span class="header-train-number" data-live-field="header-train">{{TRAIN}} {{TRAIN_NUMBER}}</span></div>
         </div>
         <div class="header-title">{{TITLE}}</div>
     </header>
     <div class="content">
         <section class="fields">
-            <div class="field"><div class="field-heading"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_DARK}}" alt=""><div class="field-label">{{LABEL_TRAIN}}</div></div><div class="field-value">{{TRAIN}}</div></div>
-            <div class="field"><div class="field-heading"><span class="field-icon" aria-hidden="true">#</span><div class="field-label">{{LABEL_TRAIN_NUMBER}}</div></div><div class="field-value">{{TRAIN_NUMBER}}</div></div>
-            <div class="field"><div class="field-heading"><img class="field-icon field-icon-image time" src="{{ICON_TIME}}" alt=""><div class="field-label">{{LABEL_DEPARTURE}}</div></div><div class="field-value">{{DEPARTURE}}</div></div>
+            <div class="field"><div class="field-heading"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_DARK}}" alt=""><div class="field-label">{{LABEL_TRAIN}}</div></div><div class="field-value" data-live-field="train">{{TRAIN}}</div></div>
+            <div class="field"><div class="field-heading"><span class="field-icon" aria-hidden="true">#</span><div class="field-label">{{LABEL_TRAIN_NUMBER}}</div></div><div class="field-value" data-live-field="train-number">{{TRAIN_NUMBER}}</div></div>
+            <div class="field"><div class="field-heading"><img class="field-icon field-icon-image time" src="{{ICON_TIME}}" alt=""><div class="field-label">{{LABEL_DEPARTURE}}</div></div><div class="field-value" data-live-field="departure-time">{{DEPARTURE}}</div></div>
             <div class="field status-field">
-                <div class="status-line"><span class="field-icon icon-delay {{DELAY_CLASS}}" aria-hidden="true">&nbsp;</span><div class="field-label">{{LABEL_DELAY}}</div><div class="field-value">{{DELAY}}</div></div>
-                <div class="actual-line"><img class="field-icon field-icon-image calendar" src="{{ICON_CALENDAR}}" alt=""><div class="actual-copy"><div class="field-label">{{LABEL_ACTUAL}}</div><div class="field-value">{{ACTUAL_DEPARTURE}}</div></div></div>
+                <div class="status-line"><span class="field-icon icon-delay {{DELAY_CLASS}}" data-live-delay-icon aria-hidden="true">&nbsp;</span><div class="field-label">{{LABEL_DELAY}}</div><div class="field-value" data-live-field="delay">{{DELAY}}</div></div>
+                <div class="actual-line"><img class="field-icon field-icon-image calendar" src="{{ICON_CALENDAR}}" alt=""><div class="actual-copy"><div class="field-label">{{LABEL_ACTUAL}}</div><div class="field-value" data-live-field="actual-departure">{{ACTUAL_DEPARTURE}}</div></div></div>
             </div>
-            <div class="field station-field"><div class="station-heading"><img class="field-icon field-icon-image station-icon" src="{{ICON_STATION}}" alt=""><div class="field-label">{{LABEL_STATION}}</div><div class="field-value">{{STATION}}</div></div><div class="station-meta"><span>{{LABEL_PLATFORM}}<strong>{{PLATFORM}}</strong></span><span>{{LABEL_TRACK}}<strong>{{TRACK}}</strong></span><span>{{LABEL_SECTOR}}<strong>{{SECTOR}}</strong></span></div></div>
+            <div class="field station-field"><div class="station-heading"><img class="field-icon field-icon-image station-icon" src="{{ICON_STATION}}" alt=""><div class="field-label">{{LABEL_STATION}}</div><div class="field-value" data-live-field="station">{{STATION}}</div></div><div class="station-meta"><span>{{LABEL_PLATFORM}}<strong data-live-field="platform">{{PLATFORM}}</strong></span><span>{{LABEL_TRACK}}<strong data-live-field="track">{{TRACK}}</strong></span><span>{{LABEL_SECTOR}}<strong data-live-field="sector">{{SECTOR}}</strong></span></div></div>
         </section>
         <section class="route">
             <div class="route-grid">
-                <div class="route-cell route-line-cell"><div class="route-heading"><img class="route-icon" src="{{ICON_LINE}}" alt=""><div class="route-label">{{LABEL_LINE}}</div></div><div class="route-line">{{LINE}}</div></div>
-                <div class="route-cell route-destination"><div class="route-heading"><img class="route-icon location" src="{{ICON_LOCATION}}" alt=""><div class="route-label">{{LABEL_DESTINATION}}</div></div><div class="route-destination-value">{{DESTINATION}}</div></div>
-                <div class="route-cell route-via"><div class="route-heading"><img class="route-icon via" src="{{ICON_VIA}}" alt=""><div class="route-label">{{LABEL_VIA}}</div></div><strong>{{VIA}}</strong></div>
+                <div class="route-cell route-line-cell"><div class="route-heading"><img class="route-icon" src="{{ICON_LINE}}" alt=""><div class="route-label">{{LABEL_LINE}}</div></div><div class="route-line" data-live-field="line">{{LINE}}</div></div>
+                <div class="route-cell route-destination"><div class="route-heading"><img class="route-icon location" src="{{ICON_LOCATION}}" alt=""><div class="route-label">{{LABEL_DESTINATION}}</div></div><div class="route-destination-value" data-live-field="destination">{{DESTINATION}}</div></div>
+                <div class="route-cell route-via"><div class="route-heading"><img class="route-icon via" src="{{ICON_VIA}}" alt=""><div class="route-label">{{LABEL_VIA}}</div></div><strong data-live-field="via">{{VIA}}</strong></div>
             </div>
         </section>
         <section class="note {{NOTE_CLASS}}">
             <img class="field-icon field-icon-image" src="{{ICON_INFO}}" alt="">
-            <div><div class="note-label">{{LABEL_NOTE}}</div><div class="note-text">{{NOTE}}</div></div>
+            <div><div class="note-label">{{LABEL_NOTE}}</div><div class="note-text" data-live-field="note">{{NOTE}}</div></div>
         </section>
-        <section class="formation {{FORMATION_CLASS}}">
+        <section class="formation {{FORMATION_CLASS}}" data-live-formation>
             <div class="formation-info">
                 <div class="section-heading"><img class="field-icon field-icon-image" src="{{ICON_TRAIN_CIRCLE}}" alt=""><span>{{LABEL_COMPOSITION}}</span></div>
-                <a class="formation-link" href="{{VAGONWEB_URL}}" target="_blank" rel="noopener noreferrer">{{FORMATION_LINK_FIRST}}<br>{{FORMATION_LINK_SECOND}}</a>
+                <a class="formation-link" data-live-formation-link href="{{VAGONWEB_URL}}" target="_blank" rel="noopener noreferrer">{{FORMATION_LINK_FIRST}}<br>{{FORMATION_LINK_SECOND}}</a>
             </div>
-            <div class="formation-source"><!-- PRAGOTRON_FORMATION_START -->{{FORMATION_HTML}}<!-- PRAGOTRON_FORMATION_END --></div>
+            <div class="formation-source" data-live-formation-source><!-- PRAGOTRON_FORMATION_START -->{{FORMATION_HTML}}<!-- PRAGOTRON_FORMATION_END --></div>
         </section>
     </div>
 </main>
+<script>
+(() => {
+    const feedUrl = {{LIVE_FEED_URL}};
+    const formationEndpoint = {{LIVE_FORMATION_ENDPOINT}};
+    let currentId = {{LIVE_ITEM_ID}};
+    let currentKey = {{LIVE_ITEM_KEY}};
+    let feedScript = null;
+    let formationUrl = null;
+    let formationRequest = 0;
+
+    const text = (value, fallback = "—") => {
+        const result = String(value ?? "").trim();
+        return result || fallback;
+    };
+
+    const setField = (name, value, fallback) => {
+        document.querySelectorAll(`[data-live-field="${name}"]`).forEach((element) => {
+            element.textContent = text(value, fallback);
+        });
+    };
+
+    const loadFormation = async (url) => {
+        const request = ++formationRequest;
+        formationUrl = url || null;
+        const formation = document.querySelector("[data-live-formation]");
+        const source = document.querySelector("[data-live-formation-source]");
+        const link = document.querySelector("[data-live-formation-link]");
+        if (link) link.href = url || "#";
+        if (!source) return;
+        if (!url || !formationEndpoint) {
+            formation?.classList.add("is-empty");
+            source.innerHTML = "";
+            return;
+        }
+        formation?.classList.remove("is-empty");
+        source.innerHTML = '<div class="formation-status"><span class="loader"></span>Loading train formation...</div>';
+        try {
+            const response = await fetch(`${formationEndpoint}?url=${encodeURIComponent(url)}`, { cache: "no-store" });
+            if (!response.ok) throw new Error(`Formation request returned HTTP ${response.status}.`);
+            const result = await response.json();
+            if (request !== formationRequest) return;
+            source.innerHTML = result.html || "";
+        } catch {
+            if (request !== formationRequest) return;
+            source.textContent = "Train formation could not be loaded.";
+        }
+    };
+
+    const applyDeparture = (entry) => {
+        if (!entry || !entry.details) return;
+        const details = entry.details;
+        currentId = entry.id || currentId;
+        currentKey = entry.key || currentKey;
+        const operator = text(details.operator, "—");
+        const operatorCode = operator === "—" ? "—" : operator.toUpperCase();
+        const carrierName = details.carrierName || (
+            operatorCode === "CD" || operatorCode === "ČD" ? "České dráhy" :
+                operatorCode === "RJ" || operatorCode === "RJET" ? "RegioJet" :
+                    operatorCode === "LE" ? "Leo Express" :
+                        operatorCode === "ARR" || operatorCode === "ARV" ? "Arriva vlaky" : "Carrier"
+        );
+        const delayValue = details.delayMinutes ?? String(details.delay || "").match(/-?\d+/)?.[0] ?? 0;
+        const delayMinutes = Number(delayValue);
+        const delayClass = delayMinutes > 20 ? "icon-delay--red" : delayMinutes > 0 ? "icon-delay--yellow" : "icon-delay--green";
+
+        setField("carrier-name", carrierName, "Carrier");
+        setField("operator", details.operator, "—");
+        setField("carrier-code", operatorCode, "—");
+        setField("header-train", `${text(details.train, "Train")} ${text(details.trainNumber, "")}`.trim(), "Train");
+        setField("train", details.train, "Train");
+        setField("train-number", details.trainNumber);
+        setField("departure-time", details.departureTime);
+        setField("delay", details.delay);
+        setField("actual-departure", details.actualDepartureTime);
+        setField("station", details.station);
+        setField("platform", details.platform);
+        setField("track", details.track);
+        setField("sector", details.sector);
+        setField("line", details.line);
+        setField("destination", details.destination);
+        setField("via", details.via);
+        setField("note", details.note);
+        const titlePrefix = document.title.split(" — ")[0] || "Tabule SprŽel";
+        document.title = `${titlePrefix} — ${text(details.train, "Train")} ${text(details.trainNumber, "")}`.trim();
+        document.querySelectorAll("[data-live-delay-icon]").forEach((element) => {
+            element.classList.remove("icon-delay--green", "icon-delay--yellow", "icon-delay--red");
+            element.classList.add(delayClass);
+        });
+        const logo = document.querySelector("[data-live-carrier-logo]");
+        if (logo && details.carrierLogo) logo.src = details.carrierLogo;
+        const nextFormationUrl = details.vagonwebUrl || "";
+        if (nextFormationUrl !== formationUrl) void loadFormation(nextFormationUrl);
+    };
+
+    const findCurrent = (feed) => feed?.items?.find((entry) =>
+        entry.id === currentId || (currentKey && entry.key === currentKey)
+    ) || null;
+
+    const navigate = (direction) => {
+        const feed = window.__PRAGOTRON_LIVE_DATA__;
+        if (!feed?.items?.length) return;
+        const currentIndex = feed.items.findIndex((entry) =>
+            entry.id === currentId || (currentKey && entry.key === currentKey)
+        );
+        if (currentIndex < 0) return;
+        const nextIndex = currentIndex + direction;
+        if (nextIndex < 0 || nextIndex >= feed.items.length) return;
+        applyDeparture(feed.items[nextIndex]);
+    };
+
+    const loadFeed = () => {
+        if (feedScript) feedScript.remove();
+        feedScript = document.createElement("script");
+        feedScript.src = `${feedUrl}?t=${Date.now()}`;
+        feedScript.onload = () => applyDeparture(findCurrent(window.__PRAGOTRON_LIVE_DATA__));
+        document.head.appendChild(feedScript);
+    };
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Backspace") {
+            event.preventDefault();
+            navigate(-1);
+        } else if (event.code === "Space") {
+            event.preventDefault();
+            navigate(1);
+        }
+    });
+
+    loadFeed();
+    window.setInterval(loadFeed, 2000);
+})();
+</script>
 </body>
 </html>
