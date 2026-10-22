@@ -14,6 +14,7 @@ const DEPARTURE_LIVE_FEED_FILE = join(DEPARTURE_RUNTIME_DIR, "details-feed.js");
 const DEPARTURE_DETAILS_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "details.html");
 const DEPARTURE_DETAILS_STATE_FILE = join(DEPARTURE_RUNTIME_DIR, "details-window.json");
 const DEPARTURE_DETAILS_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "details-webview-data");
+const DEPARTURE_FORMATION_CACHE_FILE = join(DEPARTURE_RUNTIME_DIR, "formation-cache.json");
 const DEFAULT_REFRESH_MS = 30000;
 const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
 const VAGONWEB_HTML_LIMIT = 8 * 1024 * 1024;
@@ -1849,7 +1850,8 @@ async function handleViewDeparture() {
             DEPARTURE_DETAILS_STATE_FILE,
             DEPARTURE_LIVE_FEED_FILE,
             id,
-            departureNavigationKey(details)
+            departureNavigationKey(details),
+            DEPARTURE_FORMATION_CACHE_FILE
         ], {
             detached: true,
             windowsHide: true,

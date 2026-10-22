@@ -9,7 +9,7 @@ import { fetchVagonwebFormation } from "./departure-formation.mjs";
 
 const require = createRequire(import.meta.url);
 const extensionDirectory = dirname(fileURLToPath(import.meta.url));
-const [htmlPath, directory, title, vagonwebUrl, formationErrorText, webviewDataFolder, statePath, liveFeedPath, initialId, initialKey] = process.argv.slice(2);
+const [htmlPath, directory, title, vagonwebUrl, formationErrorText, webviewDataFolder, statePath, liveFeedPath, initialId, initialKey, formationCachePath] = process.argv.slice(2);
 
 const POWERSHELL = "powershell.exe";
 const WINDOW_WIDTH = 975;
@@ -149,7 +149,8 @@ const startFormationServer = () => new Promise((resolve, reject) => {
             }
             const result = await fetchVagonwebFormation(
                 requestUrl.searchParams.get("url") || "",
-                formationErrorText
+                formationErrorText,
+                formationCachePath
             );
             response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
             response.end(JSON.stringify({

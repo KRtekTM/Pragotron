@@ -1,5 +1,12 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+
 const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
 const VAGONWEB_HTML_LIMIT = 8 * 1024 * 1024;
+const FORMATION_CACHE_VERSION = 1;
+const formationCache = new Map();
+const formationRequests = new Map();
+let formationCacheLoadPromise = null;
 
 const HTML_ENTITIES = Object.freeze({
     amp: "&",
@@ -129,7 +136,64 @@ const escapeHtml = (value) => String(value ?? "")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-export async function fetchVagonwebFormation(vagonwebUrl, formationErrorText = "Train formation could not be loaded.") {
+const localDateKey = () => {
+    const date = new Date();
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const normalizeFormationUrl = (value) => {
+    try {
+        const url = new URL(value);
+        return isSafeVagonwebUrl(url.href) ? url.href : "";
+    } catch {
+        return "";
+    }
+};
+
+const loadFormationCache = async (cachePath) => {
+    if (formationCacheLoadPromise) return formationCacheLoadPromise;
+    formationCacheLoadPromise = (async () => {
+        if (!cachePath) return;
+        try {
+            const stored = JSON.parse(await readFile(cachePath, "utf8"));
+            if (stored?.version !== FORMATION_CACHE_VERSION || !stored.entries || typeof stored.entries !== "object") return;
+            const today = localDateKey();
+            for (const [url, entry] of Object.entries(stored.entries)) {
+                if (entry?.date === today && typeof entry.html === "string" && entry.html) {
+                    formationCache.set(url, { date: today, html: entry.html });
+                }
+            }
+        } catch { }
+    })();
+    return formationCacheLoadPromise;
+};
+
+const saveFormationCache = async (cachePath) => {
+    if (!cachePath) return;
+    const today = localDateKey();
+    const entries = Object.fromEntries(
+        [...formationCache]
+            .filter(([, entry]) => entry.date === today && entry.html)
+            .map(([url, entry]) => [url, entry])
+    );
+    const temporaryPath = `${cachePath}.${process.pid}.tmp`;
+    try {
+        await mkdir(dirname(cachePath), { recursive: true });
+        await writeFile(temporaryPath, JSON.stringify({
+            version: FORMATION_CACHE_VERSION,
+            entries
+        }), "utf8");
+        await rename(temporaryPath, cachePath);
+    } catch {
+        await writeFile(cachePath, JSON.stringify({
+            version: FORMATION_CACHE_VERSION,
+            entries
+        }), "utf8").catch(() => { });
+    }
+};
+
+const fetchVagonwebFormationUncached = async (vagonwebUrl, formationErrorText = "Train formation could not be loaded.") => {
     if (!isSafeVagonwebUrl(vagonwebUrl)) return { html: "", error: null };
 
     const controller = new AbortController();
@@ -151,6 +215,7 @@ export async function fetchVagonwebFormation(vagonwebUrl, formationErrorText = "
                 else cookies.set(name, cookieValue);
             }
         };
+
         const request = async (url, options = {}) => {
             const headers = new Headers(options.headers);
             headers.set("user-agent", "TabuleSprZel/1.1 (train departure details)");
@@ -235,4 +300,37 @@ export async function fetchVagonwebFormation(vagonwebUrl, formationErrorText = "
     } finally {
         clearTimeout(timeout);
     }
+}
+
+export async function fetchVagonwebFormation(
+    vagonwebUrl,
+    formationErrorText = "Train formation could not be loaded.",
+    cachePath = ""
+) {
+    const cacheKey = normalizeFormationUrl(vagonwebUrl);
+    if (!cacheKey) return fetchVagonwebFormationUncached(vagonwebUrl, formationErrorText);
+
+    await loadFormationCache(cachePath);
+    const today = localDateKey();
+    const cached = formationCache.get(cacheKey);
+    if (cached?.date === today && cached.html) {
+        return { html: cached.html, error: null, cached: true };
+    }
+
+    const activeRequest = formationRequests.get(cacheKey);
+    if (activeRequest) return activeRequest;
+
+    const request = fetchVagonwebFormationUncached(cacheKey, formationErrorText)
+        .then(async (result) => {
+            if (!result.error && result.html) {
+                formationCache.set(cacheKey, { date: today, html: result.html });
+                await saveFormationCache(cachePath);
+            }
+            return result;
+        })
+        .finally(() => {
+            formationRequests.delete(cacheKey);
+        });
+    formationRequests.set(cacheKey, request);
+    return request;
 }
