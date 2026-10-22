@@ -9,6 +9,8 @@ const releaseDirectory = join(extensionDirectory, "release");
 const ROOT_RUNTIME_FILES = [
     "extension.json",
     "main.mjs",
+    "configuration-window.mjs",
+    "configuration.html",
     "departure-window.mjs",
     "departure-formation.mjs",
     "departure-details.html",

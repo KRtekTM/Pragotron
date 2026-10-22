@@ -58,8 +58,11 @@
   "detailNote": "Poznámka:",
   "error": "Chyba:",
   "configTitle": "Konfigurace",
-  "urlsLabel": "URL tabulí:",
-  "refreshLabel": "Interval obnovení (ms):",
+  "stationsCountLabel": "Počet nastavených stanic:",
+  "stationsLabel": "Stanice:",
+  "stationKeyLabel": "klíč",
+  "unnamedStation": "(bez názvu)",
+  "refreshLabel": "Interval obnovení:",
   "configHint": "Upravte soubor config.json ve složce rozšíření a restartujte Salamander.",
   "urlsNotConfigured": "(není nastaveno)"
 }

@@ -58,8 +58,11 @@
   "detailNote": "Note:",
   "error": "Error:",
   "configTitle": "Configuration",
-  "urlsLabel": "Board URLs:",
-  "refreshLabel": "Refresh interval (ms):",
+  "stationsCountLabel": "Configured stations:",
+  "stationsLabel": "Stations:",
+  "stationKeyLabel": "Key",
+  "unnamedStation": "(unnamed)",
+  "refreshLabel": "Refresh interval:",
   "configHint": "Edit the config.json file in the extension folder and restart Salamander.",
   "urlsNotConfigured": "(not configured)"
 }

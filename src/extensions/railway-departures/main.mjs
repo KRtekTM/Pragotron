@@ -15,6 +15,10 @@ const DEPARTURE_DETAILS_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "details.html");
 const DEPARTURE_DETAILS_STATE_FILE = join(DEPARTURE_RUNTIME_DIR, "details-window.json");
 const DEPARTURE_DETAILS_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "details-webview-data");
 const DEPARTURE_FORMATION_CACHE_FILE = join(DEPARTURE_RUNTIME_DIR, "formation-cache.json");
+const CONFIGURATION_DIALOG_TEMPLATE = join(EXTENSION_DIR, "configuration.html");
+const CONFIGURATION_DIALOG_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "configuration.html");
+const CONFIGURATION_DIALOG_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "configuration-webview-data");
+const CONFIGURATION_DIALOG_LAUNCHER = join(EXTENSION_DIR, "configuration-window.mjs");
 const DEFAULT_REFRESH_MS = 30000;
 const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
 const VAGONWEB_HTML_LIMIT = 8 * 1024 * 1024;
@@ -1099,8 +1103,11 @@ async function getStringsAsync(locale = "en") {
         name: "Tabule SprŽel",
         error: "Error:",
         configTitle: "Configuration",
-        urlsLabel: "Board URLs:",
-        refreshLabel: "Refresh interval (ms):",
+        stationsCountLabel: "Configured stations:",
+        stationsLabel: "Stations:",
+        stationKeyLabel: "Key",
+        unnamedStation: "(unnamed)",
+        refreshLabel: "Refresh interval:",
         configHint: "Edit the config.json file in the extension folder and restart Salamander.",
         urlsNotConfigured: "(not configured)",
         errorInvalidUrl: "No board URLs configured. Use Configure URL.",
@@ -1138,17 +1145,80 @@ async function handleConfigureUrl(strings) {
 
     const config = await readConfigFile();
     const currentStations = await getConfiguredStations();
-    const currentRefresh = config.refreshMs || DEFAULT_REFRESH_MS;
-    const urlsText = currentStations.length
-        ? currentStations.map(({ name, url }) => `${name || "(unnamed)"}: ${url}`).join("\n  ")
+    const configuredRefresh = Number(config.refreshMs);
+    const currentRefresh = Number.isFinite(configuredRefresh) && configuredRefresh > 0
+        ? configuredRefresh
+        : DEFAULT_REFRESH_MS;
+    const refreshText = currentRefresh % 1000 === 0
+        ? `${currentRefresh / 1000} s`
+        : `${currentRefresh} ms`;
+    const stationNumberWidth = String(currentStations.length || 1).length;
+    const stationRows = currentStations.map(({ name, url }, index) => {
+            const stationName = name || strings.unnamedStation || "(unnamed)";
+            const stationKey = deriveStationKeyFromUrl(url);
+            const identifier = stationKey
+                ? `${strings.stationKeyLabel || "Key"}=${stationKey}`
+                : url;
+            const number = String(index + 1).padStart(stationNumberWidth, "0");
+            return { number, name: stationName, identifier };
+        });
+    const stationsText = stationRows.length
+        ? stationRows.map(({ number, name, identifier }) => `${number}. ${name} (${identifier})`).join("\n  ")
         : strings.urlsNotConfigured || "(not configured)";
+    const title = strings.settingsTitle || "Tabule SprŽel Settings";
+    const fallbackText = `${strings.configTitle || "Configuration"}\n\n${strings.stationsCountLabel || "Configured stations:"} ${currentStations.length}\n${strings.refreshLabel || "Refresh interval:"} ${refreshText}\n\n${strings.stationsLabel || "Stations:"}\n  ${stationsText}\n\n${strings.configHint || "Edit the config.json file in the extension folder and restart Salamander."}`;
 
-    await Salamander.ui.messageBox(
-        `${strings.configTitle || "Configuration"}:\n\n${strings.urlsLabel || "Board URLs:"}\n  ${urlsText}\n${strings.refreshLabel || "Refresh interval (ms):"} ${currentRefresh}\n\n${strings.configHint || "Edit the config.json file in the extension folder and restart Salamander."}`,
-        strings.settingsTitle || "Tabule SprŽel Settings",
-        "OK",
-        "Information"
-    );
+    try {
+        await access(join(EXTENSION_DIR, "node_modules", "webview-node", "bin", "webview2-host.exe"));
+        await access(CONFIGURATION_DIALOG_LAUNCHER);
+        const configurationTemplate = await readFile(CONFIGURATION_DIALOG_TEMPLATE, "utf8");
+        await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true });
+        const listHtml = stationRows.length
+            ? stationRows.map(({ number, name, identifier }) => `<li><span class="station-number">${escapeHtml(number)}.</span><span class="station-name">${escapeHtml(name)}</span><span class="station-key">${escapeHtml(identifier)}</span></li>`).join("")
+            : `<li class="empty">${escapeHtml(strings.urlsNotConfigured || "(not configured)")}</li>`;
+        const configHtml = Object.entries({
+            "__CONFIG_LANGUAGE__": escapeHtml(strings.detailPageLanguage || "en"),
+            "__CONFIG_TITLE__": escapeHtml(strings.configTitle || "Configuration"),
+            "__STATIONS_COUNT_LABEL__": escapeHtml(strings.stationsCountLabel || "Configured stations:"),
+            "__STATIONS_COUNT__": currentStations.length,
+            "__REFRESH_LABEL__": escapeHtml(strings.refreshLabel || "Refresh interval:"),
+            "__REFRESH_TEXT__": escapeHtml(refreshText),
+            "__STATIONS_LABEL__": escapeHtml(strings.stationsLabel || "Stations:"),
+            "__STATION_ROWS__": listHtml,
+            "__CONFIG_HINT__": escapeHtml(strings.configHint || "Edit the config.json file in the extension folder and restart Salamander.")
+        }).reduce((html, [placeholder, value]) => html.replaceAll(placeholder, String(value)), configurationTemplate);
+        await writeFile(CONFIGURATION_DIALOG_HTML_FILE, configHtml, "utf8");
+        await rm(CONFIGURATION_DIALOG_WEBVIEW_DATA, { recursive: true, force: true }).catch(() => { });
+        const child = spawn(process.execPath, [
+            CONFIGURATION_DIALOG_LAUNCHER,
+            CONFIGURATION_DIALOG_HTML_FILE,
+            title,
+            CONFIGURATION_DIALOG_WEBVIEW_DATA
+        ], {
+            detached: true,
+            windowsHide: true,
+            stdio: "ignore"
+        });
+        await new Promise((resolve, reject) => {
+            const onSpawn = () => {
+                child.removeListener("error", onError);
+                resolve();
+            };
+            const onError = (error) => {
+                child.removeListener("spawn", onSpawn);
+                reject(error);
+            };
+            child.once("spawn", onSpawn);
+            child.once("error", onError);
+        });
+        child.unref();
+        return;
+    } catch (error) {
+        try {
+            console.error(`[TabuleSprZel] configuration dialog fallback: ${error instanceof Error ? error.message : String(error)}`);
+        } catch { }
+        await Salamander.ui.messageBox(fallbackText, title, "OK", "Information");
+    }
 }
 
 let scraperTimer = null;
