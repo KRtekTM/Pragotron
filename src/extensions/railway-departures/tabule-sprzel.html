@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Tabule SprŽel: živé odjezdy vlaků, detail spoje a řazení vlaku pro Salamander.">
+    <title>Tabule SprŽel | Živé odjezdy pro Salamander</title>
+    <link rel="stylesheet" href="tabule-sprzel.css">
+</head>
+<body>
+    <header class="site-header">
+        <a class="brand" href="#top" aria-label="Tabule SprŽel domů">
+            <span class="brand-mark" aria-hidden="true"><img src="../../../images/tabule/sprzel_bile.svg" alt=""></span>
+            <span class="brand-copy"><strong>Tabule SprŽel</strong></span>
+        </a>
+        <nav class="site-nav" aria-label="Hlavní navigace">
+            <a href="#prehled">Funkce</a>
+            <a href="#detail">Detail spoje</a>
+            <a class="nav-button button button-primary" href="#nastaveni">Stáhnout rozšíření</a>
+        </nav>
+    </header>
+
+    <main id="top">
+        <section class="hero section-shell">
+            <div class="hero-copy">
+                <p class="eyebrow">&nbsp;</p>
+                <h1>Odjezdy<br><em>vlaků</em></h1>
+                <p class="hero-lede">Tabule SprŽel jako rozšíření pro <a href="https://samandarin.net/">Open Samandarin</a>.<br><br>Přináší živá data, přehled odjezdů ze zvolené stanice, detaily spojů i řazení vlaku bez přepínání mezi službami.</p>
+                <div class="hero-actions">
+                    <a class="button button-primary" href="#prehled">Prohlédnout funkce <span aria-hidden="true">↓</span></a>
+                    <!--<a class="text-link" href="extension.json">Manifest extensionu <span aria-hidden="true">↗</span></a>-->
+                </div>
+            </div>
+
+            <figure class="detail-preview">
+                <div class="preview-header">
+                    <span class="preview-label">TABULE SPRŽEL PRO OPEN SAMANDARIN</span>
+                    <span class="preview-state"><i></i> AKTUÁLNÍ DATA</span>
+                </div>
+                <div class="preview-image">
+                    <img src="open_samandarin_prev2.png" alt="Detail odjezdu vlaku s trasou, provozními údaji a řazením soupravy">
+                </div>
+            </figure>
+        </section>
+
+        <section class="overview section-shell" id="prehled">
+            <div class="section-intro">
+                <p class="eyebrow">&nbsp;<br><br></p>
+                <h2>Informace,<br><em>které využijete.</em></h2>
+                <p>Extension vytvoří panel <code>departures</code>, který se obnovuje podle nastaveného intervalu a z každého odjezdu otevře jeho detail.</p>
+            </div>
+            <div class="feature-grid">
+                <article class="feature-card feature-card-blue">
+                    <div class="feature-heading"><span class="feature-icon">●</span><span>ŽIVÁ DATA</span></div>
+                    <h3>Aktuální odjezdy<br>ze zvolené stanice</h3>
+                    <p>Aktuální údaje z Tabule Správy železnic, výběr ze všech dostupných stanic, možnost konfigurace intervalu obnovy.</p>
+                </article>
+                <article class="feature-card">
+                    <div class="feature-heading"><span class="feature-icon">≡</span><span>PANEL ODJEZDŮ</span></div>
+                    <h3>Všechny údaje v&nbsp;<a href="https://samandarin.net/" target="_blank" rel="noopener noreferrer">Samandarinu</a></h3>
+                    <p>Zobrazuje číslo vlaku, čas odjezdu včetně zpoždění, nástupiště a kolej, cílovou destinaci a nácestné stanice, dopravce i poznámku.</p>
+                </article>
+                <article class="feature-card">
+                    <div class="feature-heading"><span class="feature-icon">↗</span><span>DETAIL SPOJE</span></div>
+                    <h3>Detail spoje<br>na jeden krok</h3>
+                    <p>Detailní zobrazení odjezdu obsahuje všechny provozní údaje. Mezi odjezdy přepnete myší, Backspace nebo mezerníkem.</p>
+                </article>
+                <article class="feature-card feature-card-dark">
+                    <div class="feature-heading"><span class="feature-icon">▣</span><span>ŘAZENÍ VLAKU</span></div>
+                    <h3>Řazení vlaku<br>z <a href="https://vagonweb.cz" target="_blank" rel="noopener noreferrer">VagonWEBu</a></h3>
+                    <p>Automaticky načítá grafické zobrazení předpokládaného řazení vlaku včetně typu vagónu, vysvětlivek i odkazu na plánky míst.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="detail section-shell" id="detail">
+            <div class="detail-image">
+                <span class="image-label">ODJEZD / DETAIL</span>
+                <img src="departure_details.png" alt="Detail odjezdu vlaku s cílovou stanicí, provozními údaji, poznámkou a řazením">
+            </div>
+            <div class="detail-copy">
+                <h2>Nejen kdy.<br><em>Ale také kam.</em></h2>
+                <p>Každý řádek v panelu může otevřít detail spoje. Ten soustředí všechny údaje důležité před odjezdem do jednoho přehledného pohledu.</p>
+                <dl class="detail-specs">
+                    <div><dt>VLAK</dt><dd>Typ, číslo, dopravce a logo</dd></div>
+                    <div><dt>ODJEZD</dt><dd>Plánovaný i skutečný čas a zpoždění</dd></div>
+                    <div><dt>STANICE</dt><dd>Nástupiště, kolej, sektor a poznámka</dd></div>
+                    <div><dt>TRASA</dt><dd>Linka, cíl a celá hodnota „přes“</dd></div>
+                    <div><dt>OVLÁDÁNÍ</dt><dd>Myš, Backspace a mezerník pro další odjezd</dd></div>
+                </dl>
+                <a class="text-link text-link-dark" href="#">Stáhnout rozšíření <span aria-hidden="true">↗</span></a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer section-shell">
+        <div class="footer-brand"><img src="../../../images/tabule/sprzel_bile.svg" alt=""><span>Tabule SprŽel</span></div>
+        <span class="footer-note">© 2026 Ondřej Kotas (KRtekTM)</span>
+        <a href="#top" class="back-top" aria-label="Zpět nahoru">↑</a>
+    </footer>
+</body>
+</html>
