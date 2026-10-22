@@ -70,6 +70,10 @@
     let feedScript = null;
     let formationUrl = null;
     let formationRequest = 0;
+    let mousePointerNavigationHandled = false;
+    let mousePointerNavigationReset = null;
+    let navigationRequestSequence = 0;
+    let pendingNavigationRequest = 0;
 
     const text = (value, fallback = "—") => {
         const result = String(value ?? "").trim();
@@ -181,10 +185,12 @@
 
     const loadSelection = async () => {
         if (!selectionEndpoint) return;
+        const navigationSequenceAtStart = navigationRequestSequence;
         try {
             const response = await fetch(selectionEndpoint, { cache: "no-store" });
             if (!response.ok) return;
             const selection = await response.json();
+            if (navigationRequestSequence !== navigationSequenceAtStart || pendingNavigationRequest) return;
             if (!selection.id || selection.id === currentId) return;
             currentId = selection.id;
             currentKey = selection.key || "";
@@ -193,19 +199,51 @@
     };
 
     const requestNavigation = (direction) => {
+        const requestSequence = ++navigationRequestSequence;
+        pendingNavigationRequest = requestSequence;
+        navigate(direction);
         if (navigateEndpoint) {
             void fetch(navigateEndpoint, {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({ direction })
-            }).catch(() => { });
+            }).then((response) => {
+                if (!response.ok) throw new Error(`Navigation request returned HTTP ${response.status}.`);
+            }).catch(() => {
+            }).finally(() => {
+                if (pendingNavigationRequest !== requestSequence) return;
+                pendingNavigationRequest = 0;
+                void loadSelection();
+            });
         }
-        navigate(direction);
+        else {
+            pendingNavigationRequest = 0;
+        }
     };
 
     document.querySelectorAll("area[data-navigation-direction]").forEach((area) => {
+        area.addEventListener("pointerup", (event) => {
+            if (event.pointerType === "mouse" && event.button !== 0) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (mousePointerNavigationHandled) return;
+            mousePointerNavigationHandled = true;
+            if (mousePointerNavigationReset) clearTimeout(mousePointerNavigationReset);
+            mousePointerNavigationReset = setTimeout(() => {
+                mousePointerNavigationHandled = false;
+                mousePointerNavigationReset = null;
+            }, 1000);
+            requestNavigation(Number(area.dataset.navigationDirection));
+        });
         area.addEventListener("click", (event) => {
             event.preventDefault();
+            event.stopImmediatePropagation();
+            if (mousePointerNavigationHandled) return;
+            mousePointerNavigationHandled = true;
+            mousePointerNavigationReset = setTimeout(() => {
+                mousePointerNavigationHandled = false;
+                mousePointerNavigationReset = null;
+            }, 1000);
             requestNavigation(Number(area.dataset.navigationDirection));
         });
     });
