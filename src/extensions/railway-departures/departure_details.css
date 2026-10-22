@@ -95,20 +95,23 @@
     unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 * { box-sizing: border-box; }
-html, body { min-height: 100%; }
+html {
+    min-height: 100%;
+    scrollbar-gutter: stable;
+}
 body {
     margin: 0;
     padding: 0;
-    overflow-x: auto;
+    width: 100%;
+    overflow-x: hidden;
     background: var(--page);
     color: var(--ink);
     font: 13px/1.15 "Open Sans", sans-serif;
 }
 .card {
-    width: max-content;
-    min-width: 100%;
+    width: 100%;
+    min-width: 0;
     margin: 0 auto;
-    overflow: hidden;
     border-radius: 0;
     background: var(--page);
 }
@@ -177,15 +180,15 @@ body {
 .header-train-number { margin-top: 2px; font-size: 18px; }
 .header-title { display: none; }
 .content {
-    width: max-content;
-    min-width: 100%;
+    width: 100%;
+    min-width: 0;
     padding: 0 13px 13px;
 }
 .fields {
     display: grid;
-    width: max-content;
-    min-width: 100%;
-    grid-template-columns: minmax(90px, max-content) minmax(135px, max-content) minmax(150px, max-content) minmax(185px, max-content) max-content;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 0.6fr) minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.25fr) minmax(0, 1.65fr);
     min-height: 106px;
     border-bottom: 1px solid var(--rule);
     justify-content: space-around;
@@ -193,6 +196,7 @@ body {
 }
 .field {
     display: flex;
+    width: 100%;
     min-width: 0;
     align-items: flex-start;
     gap: 7px;
@@ -233,6 +237,8 @@ body {
     animation: pragotron-delay-pulse 1.6s ease-in-out infinite;
     transform-origin: center;
 }
+.field-heading > .field-label,
+.station-heading > .field-label { min-width: 0; }
 .icon-delay--green { background: var(--green); }
 .icon-delay--yellow { background: var(--yellow); }
 .icon-delay--red { background: var(--red); }
@@ -244,23 +250,25 @@ body {
     margin-top: 1px;
 }
 .field-label, .note-label {
-    overflow: hidden;
+    overflow: visible;
     color: var(--muted);
     font-size: 12px;
     font-weight: 600;
     letter-spacing: .06em;
-    text-overflow: ellipsis;
     text-transform: uppercase;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .field-value {
     overflow: visible;
+    min-width: 0;
     margin-top: 7px;
     color: var(--ink);
     font-size: 16px;
     font-weight: 600;
     text-overflow: clip;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .fields > .field:nth-child(1) .field-value,
 .fields > .field:nth-child(2) .field-value,
@@ -283,7 +291,7 @@ body {
     display: flex;
     min-width: 0;
     min-height: 24px;
-    align-items: center;
+    align-items: flex-start;
     gap: 7px;
 }
 .status-line .field-value { margin: 0 0 0 auto; font-size: 18px; font-weight: 800; }
@@ -344,15 +352,16 @@ body {
 }
 .route-grid {
     display: grid;
-    width: max-content;
-    min-width: 100%;
-    grid-template-columns: minmax(100px, max-content) minmax(180px, max-content) minmax(0, max-content) max-content;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 0.3fr) minmax(0, 1.0fr) minmax(0, 1.1fr);
     min-height: 45px;
     justify-content: space-between;
-    justify-items: center;
+    justify-items: stretch;
 }
 .route-cell {
     display: flex;
+    width: 100%;
     flex-direction: column;
     min-width: 0;
     padding: 14px 14px 10px 14px;
@@ -383,12 +392,14 @@ body {
     text-transform: uppercase;
 }
 .route-line {
-    height: 30px;
+    min-height: 30px;
     margin-top: auto;
     color: var(--ink);
-    font-size: 30px;
+    font-size: 40px;
     font-weight: 800;
-    line-height: 30px;
+    line-height: 1.05;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .route-destination {
     display: flex;
@@ -397,18 +408,19 @@ body {
 }
 .route-destination > span { min-width: 0; }
 .route-destination-value {
-    width: max-content;
-    height: 30px;
+    width: 100%;
+    min-height: 30px;
     min-width: 0;
     margin-top: auto;
     display: block;
     overflow: visible;
     color: var(--ink);
-    font-size: 28px;
+    font-size: 40px;
     font-weight: 800;
-    line-height: 30px;
+    line-height: 1.05;
     text-overflow: clip;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .route-via { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; }
 .route-via strong {
@@ -420,7 +432,7 @@ body {
     color: var(--ink);
     font-size: 14px;
     font-weight: 800;
-    line-height: 30px;
+    line-height: 20px;
     text-overflow: clip;
     white-space: normal;
     overflow-wrap: anywhere;
@@ -435,6 +447,7 @@ body {
     padding: 10px 14px;
     background: var(--surface);
 }
+.note > div { min-width: 0; flex: 1 1 auto; }
 .note .field-icon {
     width: 28px;
     height: 28px;
@@ -444,7 +457,14 @@ body {
     height: 28px;
 }
 .note-label { margin-bottom: 5px; }
-.note-text { color: var(--ink); font-size: 14px; font-weight: 600; text-transform: uppercase; }
+.note-text {
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
 .formation {
     display: grid;
     grid-template-columns: 222px minmax(0, 1fr);
@@ -482,13 +502,13 @@ body {
     text-decoration: underline;
 }
 .formation-source {
+    width: 100%;
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
     padding: 13px 10px 7px;
     color: var(--ink);
     scrollbar-color: #8cb9d7 transparent;
-    max-width: calc(100vw - 265px);
 }
 
 .formation-source a { color: var(--link); }
@@ -557,7 +577,7 @@ body {
     .fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .field { min-height: 82px; }
     .station-field { grid-column: span 2; }
-    .route-grid { grid-template-columns: 92px 180px minmax(0, 1fr); }
+    .route-grid { grid-template-columns: minmax(78px, .7fr) minmax(150px, 1.4fr) minmax(140px, 1fr); }
     .formation { grid-template-columns: 205px minmax(0, 1fr); }
 }
 @media (max-width: 560px) {
@@ -566,8 +586,7 @@ body {
     .header-train { gap: 5px; }
     .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .station-field { grid-column: span 2; }
-    .route { overflow: hidden; }
-    .route-grid { grid-template-columns: 78px 160px minmax(230px, 1fr); width: 500px; }
+    .route-grid { grid-template-columns: minmax(64px, .7fr) minmax(125px, 1.4fr) minmax(125px, 1fr); }
     .formation { grid-template-columns: 1fr; height: auto; min-height: 210px; }
     .formation-info { min-height: 92px; border-right: 0; border-bottom: 1px solid var(--rule); }
     .formation-source { min-height: 115px; }
