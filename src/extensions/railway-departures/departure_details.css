@@ -188,7 +188,7 @@ body {
     display: grid;
     width: 100%;
     min-width: 0;
-    grid-template-columns: minmax(0, 0.6fr) minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.25fr) minmax(0, 1.65fr);
+    grid-template-columns: fit-content(60%) fit-content(60%) minmax(0, 0.7fr) minmax(0, 0.95fr) minmax(0, 1.65fr);
     min-height: 106px;
     border-bottom: 1px solid var(--rule);
     justify-content: space-around;
@@ -231,7 +231,7 @@ body {
 .icon-delay {
     width: 10px;
     height: 10px;
-    margin: 4px 5px 0 2px;
+    margin: 6px 5px 0 2px;
     border-radius: 50%;
     font-size: 0;
     animation: pragotron-delay-pulse 1.6s ease-in-out infinite;
@@ -247,7 +247,7 @@ body {
     50% { opacity: 1; transform: scale(1.2); }
 }
 .status-line .field-label {
-    margin-top: 1px;
+    margin-top: 5px;
 }
 .field-label, .note-label {
     overflow: visible;
@@ -294,7 +294,7 @@ body {
     align-items: flex-start;
     gap: 7px;
 }
-.status-line .field-value { margin: 0 0 0 auto; font-size: 18px; font-weight: 800; }
+.status-line .field-value { margin: 0 0 0 2em; font-size: 18px; font-weight: 800; }
 .actual-line {
     display: flex;
     min-width: 0;
@@ -354,7 +354,7 @@ body {
     display: grid;
     width: 100%;
     min-width: 0;
-    grid-template-columns: minmax(0, 0.3fr) minmax(0, 1.0fr) minmax(0, 1.1fr);
+    grid-template-columns: fit-content(60%) fit-content(60%) minmax(0, 1fr);
     min-height: 45px;
     justify-content: space-between;
     justify-items: stretch;
@@ -385,11 +385,13 @@ body {
 .route-icon.location { width: 20px; height: 23px; }
 .route-icon.via { width: 23px; height: 20px; }
 .route-label {
+    min-width: 0;
     color: var(--muted);
     font-size: 12px;
     font-weight: 600;
     letter-spacing: .06em;
     text-transform: uppercase;
+    overflow-wrap: anywhere;
 }
 .route-line {
     min-height: 30px;
@@ -577,7 +579,7 @@ body {
     .fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .field { min-height: 82px; }
     .station-field { grid-column: span 2; }
-    .route-grid { grid-template-columns: minmax(78px, .7fr) minmax(150px, 1.4fr) minmax(140px, 1fr); }
+    .route-grid { grid-template-columns: minmax(78px, .7fr) fit-content(60%) minmax(0, 1fr); }
     .formation { grid-template-columns: 205px minmax(0, 1fr); }
 }
 @media (max-width: 560px) {
@@ -586,7 +588,7 @@ body {
     .header-train { gap: 5px; }
     .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .station-field { grid-column: span 2; }
-    .route-grid { grid-template-columns: minmax(64px, .7fr) minmax(125px, 1.4fr) minmax(125px, 1fr); }
+    .route-grid { grid-template-columns: minmax(64px, .7fr) fit-content(60%) minmax(0, 1fr); }
     .formation { grid-template-columns: 1fr; height: auto; min-height: 210px; }
     .formation-info { min-height: 92px; border-right: 0; border-bottom: 1px solid var(--rule); }
     .formation-source { min-height: 115px; }
