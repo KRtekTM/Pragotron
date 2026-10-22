@@ -882,6 +882,9 @@ async function buildDepartureDetailsFromTemplate(
         LIVE_ITEM_KEY: scriptValue(departureNavigationKey(details)),
         LIVE_FEED_URL: scriptValue(pathToFileURL(liveFeedFile).href),
         LIVE_FORMATION_ENDPOINT: scriptValue("__PRAGOTRON_FORMATION_ENDPOINT__"),
+        LIVE_SELECTION_ENDPOINT: scriptValue("__PRAGOTRON_SELECTION_ENDPOINT__"),
+        LIVE_NAVIGATE_ENDPOINT: scriptValue("__PRAGOTRON_NAVIGATE_ENDPOINT__"),
+        LIVE_FORMATION_URL: scriptValue(vagonwebUrl),
         LABEL_TRAIN: label(strings.detailTrain, "Train:"),
         LABEL_TRAIN_NUMBER: label(strings.detailTrainNumber, "Train No.:"),
         LABEL_DEPARTURE: label(strings.detailDepartureTime, "Departure:"),
@@ -1589,7 +1592,7 @@ async function handleListDepartures() {
         if (requestId !== listRequestId) return;
         // The detail action may run in another Node context. Persist in the
         // background so the departure list is visible as soon as it is built.
-        void saveLocalDepartureDetails(items);
+        await saveLocalDepartureDetails(items);
         void saveCache(cache);
         await addFileSystemItems(items);
 
@@ -1654,6 +1657,7 @@ const describeDepartureDetailsError = (error) => {
 const readDetailsWindowState = async () => {
     try {
         const state = JSON.parse(await readFile(DEPARTURE_DETAILS_STATE_FILE, "utf8"));
+        if (state.version !== 2) return null;
         if (!Number.isInteger(state.port) || state.port < 1 || state.port > 65535) return null;
         if (typeof state.token !== "string" || !state.token) return null;
         return state;
@@ -1662,14 +1666,14 @@ const readDetailsWindowState = async () => {
     }
 };
 
-const requestDetailsWindow = async (state, title) => {
+const requestDetailsWindow = async (state, title, id, key) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1500);
     try {
         const response = await fetch(`http://127.0.0.1:${state.port}/show`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ token: state.token, title }),
+            body: JSON.stringify({ token: state.token, title, id, key }),
             signal: controller.signal
         });
         return response.ok;
@@ -1678,12 +1682,12 @@ const requestDetailsWindow = async (state, title) => {
     }
 };
 
-const showExistingDetailsWindow = async (title) => {
+const showExistingDetailsWindow = async (title, id, key) => {
     const state = await readDetailsWindowState();
     if (!state) return false;
     for (let attempt = 0; attempt < 80; attempt += 1) {
         try {
-            if (await requestDetailsWindow(state, title)) return true;
+            if (await requestDetailsWindow(state, title, id, key)) return true;
         } catch {
             await rm(DEPARTURE_DETAILS_STATE_FILE, { force: true }).catch(() => { });
             return false;
@@ -1693,14 +1697,10 @@ const showExistingDetailsWindow = async (title) => {
     return false;
 };
 
-const waitForDetailsWindow = async (title) => {
+const waitForDetailsWindow = async () => {
     for (let attempt = 0; attempt < 80; attempt += 1) {
         const state = await readDetailsWindowState();
-        if (state) {
-            try {
-                if (await requestDetailsWindow(state, title)) return true;
-            } catch { }
-        }
+        if (state) return true;
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error("The departure details window did not become ready.");
@@ -1815,7 +1815,7 @@ async function handleViewDeparture() {
         }
         await writeFile(htmlPath, html, "utf8");
 
-        if (await showExistingDetailsWindow(title)) return;
+        if (await showExistingDetailsWindow(title, id, departureNavigationKey(details))) return;
 
         await rm(DEPARTURE_DETAILS_STATE_FILE, { force: true }).catch(() => { });
         const webviewDataFolder = DEPARTURE_DETAILS_WEBVIEW_DATA;
@@ -1828,7 +1828,10 @@ async function handleViewDeparture() {
             vagonwebUrl,
             formationErrorText,
             webviewDataFolder,
-            DEPARTURE_DETAILS_STATE_FILE
+            DEPARTURE_DETAILS_STATE_FILE,
+            DEPARTURE_LIVE_FEED_FILE,
+            id,
+            departureNavigationKey(details)
         ], {
             detached: true,
             windowsHide: true,
@@ -1846,7 +1849,7 @@ async function handleViewDeparture() {
             child.once("spawn", onSpawn);
             child.once("error", onError);
         });
-        await waitForDetailsWindow(title);
+        await waitForDetailsWindow();
         let fallbackShown = false;
         const showFallback = (error) => {
             if (fallbackShown) return;

@@ -58,6 +58,9 @@
 (() => {
     const feedUrl = {{LIVE_FEED_URL}};
     const formationEndpoint = {{LIVE_FORMATION_ENDPOINT}};
+    const selectionEndpoint = {{LIVE_SELECTION_ENDPOINT}};
+    const navigateEndpoint = {{LIVE_NAVIGATE_ENDPOINT}};
+    const initialFormationUrl = {{LIVE_FORMATION_URL}};
     let currentId = {{LIVE_ITEM_ID}};
     let currentKey = {{LIVE_ITEM_KEY}};
     let feedScript = null;
@@ -172,18 +175,45 @@
         document.head.appendChild(feedScript);
     };
 
+    const loadSelection = async () => {
+        if (!selectionEndpoint) return;
+        try {
+            const response = await fetch(selectionEndpoint, { cache: "no-store" });
+            if (!response.ok) return;
+            const selection = await response.json();
+            if (!selection.id || selection.id === currentId) return;
+            currentId = selection.id;
+            currentKey = selection.key || "";
+            applyDeparture(findCurrent(window.__PRAGOTRON_LIVE_DATA__));
+        } catch { }
+    };
+
+    const requestNavigation = (direction) => {
+        if (navigateEndpoint) {
+            void fetch(navigateEndpoint, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ direction })
+            }).catch(() => { });
+        }
+        navigate(direction);
+    };
+
     document.addEventListener("keydown", (event) => {
         if (event.key === "Backspace") {
             event.preventDefault();
-            navigate(-1);
+            requestNavigation(-1);
         } else if (event.code === "Space") {
             event.preventDefault();
-            navigate(1);
+            requestNavigation(1);
         }
     });
 
+    if (initialFormationUrl) void loadFormation(initialFormationUrl);
     loadFeed();
+    loadSelection();
     window.setInterval(loadFeed, 2000);
+    window.setInterval(loadSelection, 250);
 })();
 </script>
 </body>

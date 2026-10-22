@@ -9,7 +9,7 @@ import { fetchVagonwebFormation } from "./departure-formation.mjs";
 
 const require = createRequire(import.meta.url);
 const extensionDirectory = dirname(fileURLToPath(import.meta.url));
-const [htmlPath, directory, title, vagonwebUrl, formationErrorText, webviewDataFolder, statePath] = process.argv.slice(2);
+const [htmlPath, directory, title, vagonwebUrl, formationErrorText, webviewDataFolder, statePath, liveFeedPath, initialId, initialKey] = process.argv.slice(2);
 
 const POWERSHELL = "powershell.exe";
 const WINDOW_WIDTH = 975;
@@ -56,23 +56,34 @@ Write-Output "$($rect.Left),$($rect.Top),$($rect.Right),$($rect.Bottom)"`],
     };
 };
 
-const startEscapeMonitor = (onEscape) => {
+const startEscapeMonitor = (expectedTitle, onEscape, onNavigate) => {
     const script = `${nativeWindowScript}
 $expectedTitle = $env:PRAGOTRON_WEBVIEW_TITLE
-$wasDown = $false
+$wasEscapeDown = $false
+$wasBackspaceDown = $false
+$wasSpaceDown = $false
 while ($true) {
-    $isDown = (([PragotronWindowApi]::GetAsyncKeyState(0x1B) -band 0x8000) -ne 0)
-    if ($isDown -and -not $wasDown) {
+    $isEscapeDown = (([PragotronWindowApi]::GetAsyncKeyState(0x1B) -band 0x8000) -ne 0)
+    $isBackspaceDown = (([PragotronWindowApi]::GetAsyncKeyState(0x08) -band 0x8000) -ne 0)
+    $isSpaceDown = (([PragotronWindowApi]::GetAsyncKeyState(0x20) -band 0x8000) -ne 0)
+    if (($isEscapeDown -and -not $wasEscapeDown) -or ($isBackspaceDown -and -not $wasBackspaceDown) -or ($isSpaceDown -and -not $wasSpaceDown)) {
         $foreground = [PragotronWindowApi]::GetForegroundWindow()
         $text = New-Object System.Text.StringBuilder 1024
         [void][PragotronWindowApi]::GetWindowText($foreground, $text, $text.Capacity)
-        if ($text.ToString() -eq $expectedTitle) {
-            Write-Output 'ESC'
+        if ($text.ToString().StartsWith($expectedTitle, [System.StringComparison]::Ordinal)) {
+            if ($isEscapeDown -and -not $wasEscapeDown) {
+                Write-Output 'ESC'
+            } elseif ($isBackspaceDown -and -not $wasBackspaceDown) {
+                Write-Output 'BACKSPACE'
+            } elseif ($isSpaceDown -and -not $wasSpaceDown) {
+                Write-Output 'SPACE'
+            }
             [Console]::Out.Flush()
-            break
         }
     }
-    $wasDown = $isDown
+    $wasEscapeDown = $isEscapeDown
+    $wasBackspaceDown = $isBackspaceDown
+    $wasSpaceDown = $isSpaceDown
     Start-Sleep -Milliseconds 40
 }`;
     const monitor = spawn(
@@ -81,12 +92,20 @@ while ($true) {
         {
             windowsHide: true,
             stdio: ["ignore", "pipe", "ignore"],
-            env: { ...process.env, PRAGOTRON_WEBVIEW_TITLE: title }
+        env: { ...process.env, PRAGOTRON_WEBVIEW_TITLE: expectedTitle }
         }
     );
     monitor.stdout.setEncoding("utf8");
+    let monitorBuffer = "";
     monitor.stdout.on("data", (data) => {
-        if (String(data).includes("ESC")) onEscape();
+        monitorBuffer += String(data);
+        const lines = monitorBuffer.split(/\r?\n/);
+        monitorBuffer = lines.pop() || "";
+        for (const line of lines) {
+            if (line === "ESC") onEscape();
+            else if (line === "BACKSPACE") onNavigate(-1);
+            else if (line === "SPACE") onNavigate(1);
+        }
     });
     monitor.on("error", () => { });
     return monitor;
@@ -97,6 +116,13 @@ const userDataPath = webviewDataFolder || (directory ? join(directory, "webview-
 let formationServer = null;
 let formationEndpoint = "";
 let controlServer = null;
+let controlPort = 0;
+let selectedId = initialId || "";
+let selectedKey = initialKey || "";
+let lastNavigationAt = 0;
+let lastNavigationDirection = 0;
+let nativeUnavailable = false;
+let cleanupStarted = false;
 let window = null;
 let allowWindowClose = false;
 let escapeMonitor = null;
@@ -164,10 +190,64 @@ const readRequestBody = (request) => new Promise((resolve, reject) => {
     request.on("error", reject);
 });
 
+const readLiveFeed = async () => {
+    const source = await readFile(liveFeedPath, "utf8");
+    const separator = source.indexOf("=");
+    if (separator < 0) throw new Error("Invalid live departure feed.");
+    return JSON.parse(source.slice(separator + 1).replace(/;\s*$/, ""));
+};
+
+const navigateSelection = async (direction) => {
+    const now = Date.now();
+    if (direction !== -1 && direction !== 1) return;
+    if (direction === lastNavigationDirection && now - lastNavigationAt < 150) return;
+    lastNavigationAt = now;
+    lastNavigationDirection = direction;
+    const feed = await readLiveFeed();
+    const items = Array.isArray(feed?.items) ? feed.items : [];
+    const currentIndex = items.findIndex((entry) =>
+        entry.id === selectedId || (selectedKey && entry.key === selectedKey)
+    );
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= items.length) return;
+    selectedId = String(items[nextIndex].id || "");
+    selectedKey = String(items[nextIndex].key || "");
+};
+
 const startControlServer = () => new Promise((resolve, reject) => {
     const server = createServer(async (request, response) => {
         try {
             const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
+            response.setHeader("Access-Control-Allow-Origin", "*");
+            response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            response.setHeader("Access-Control-Allow-Headers", "Content-Type");
+            if (request.method === "OPTIONS") {
+                response.writeHead(204);
+                response.end();
+                return;
+            }
+            if (request.method === "GET" && requestUrl.pathname === "/selection") {
+                if (requestUrl.searchParams.get("token") !== controlToken) {
+                    response.writeHead(403);
+                    response.end();
+                    return;
+                }
+                response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+                response.end(JSON.stringify({ id: selectedId, key: selectedKey }));
+                return;
+            }
+            if (request.method === "POST" && requestUrl.pathname === "/navigate") {
+                const payload = JSON.parse(await readRequestBody(request));
+                if (payload.token !== controlToken && requestUrl.searchParams.get("token") !== controlToken) {
+                    response.writeHead(403);
+                    response.end();
+                    return;
+                }
+                await navigateSelection(Number(payload.direction));
+                response.writeHead(204);
+                response.end();
+                return;
+            }
             if (request.method !== "POST" || requestUrl.pathname !== "/show") {
                 response.writeHead(404);
                 response.end();
@@ -179,19 +259,33 @@ const startControlServer = () => new Promise((resolve, reject) => {
                 response.end();
                 return;
             }
-            if (!window || window.isDestroyed()) {
+            if (!window || window.isDestroyed() || nativeUnavailable) {
                 response.writeHead(503);
                 response.end();
                 return;
             }
+            selectedId = typeof payload.id === "string" ? payload.id : selectedId;
+            selectedKey = typeof payload.key === "string" ? payload.key : selectedKey;
             const currentHtml = await readFile(htmlPath, "utf8");
-            const updatedHtml = currentHtml.replaceAll("__PRAGOTRON_FORMATION_ENDPOINT__", formationEndpoint);
+            const updatedHtml = currentHtml
+                .replaceAll("__PRAGOTRON_FORMATION_ENDPOINT__", formationEndpoint)
+                .replaceAll(
+                    "__PRAGOTRON_SELECTION_ENDPOINT__",
+                    `http://127.0.0.1:${controlPort}/selection?token=${encodeURIComponent(controlToken)}`
+                )
+                .replaceAll(
+                    "__PRAGOTRON_NAVIGATE_ENDPOINT__",
+                    `http://127.0.0.1:${controlPort}/navigate?token=${encodeURIComponent(controlToken)}`
+                );
             if (updatedHtml !== currentHtml) await writeFile(htmlPath, updatedHtml, "utf8");
             const nextTitle = String(payload.title || title).slice(0, 300);
             window.setTitle(nextTitle);
             window.loadFile(htmlPath);
             window.show();
             window.focus();
+            setTimeout(() => {
+                if (window && !window.isDestroyed()) window.focus();
+            }, 50);
             response.writeHead(204);
             response.end();
         } catch {
@@ -200,18 +294,10 @@ const startControlServer = () => new Promise((resolve, reject) => {
         }
     });
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", async () => {
+    server.listen(0, "127.0.0.1", () => {
         controlServer = server;
-        try {
-            const address = server.address();
-            await writeFile(statePath, JSON.stringify({
-                port: address.port,
-                token: controlToken
-            }), "utf8");
-            resolve();
-        } catch (error) {
-            reject(error);
-        }
+        controlPort = server.address().port;
+        resolve();
     });
 });
 
@@ -225,6 +311,8 @@ const stopControlServer = async () => {
 };
 
 const cleanup = async () => {
+    if (cleanupStarted) return;
+    cleanupStarted = true;
     await stopControlServer();
     await stopFormationServer();
     if (htmlPath) await rm(htmlPath, { force: true }).catch(() => { });
@@ -307,14 +395,33 @@ try {
         ready = true;
         clearTimeout(startupTimer);
         startupTimer = null;
+        window.show();
+        window.focus();
+        void writeFile(statePath, JSON.stringify({
+            version: 2,
+            port: controlPort,
+            token: controlToken
+        }), "utf8").catch((error) => {
+            reportStartupFailure(error);
+        });
     });
     window.on("error", (error) => {
         if (!ready) reportStartupFailure(error);
-        else reportOnce(error);
+        else {
+            nativeUnavailable = true;
+            allowWindowClose = true;
+            reportOnce(error);
+        }
         if (!ready) {
             try {
                 window.close({ force: true });
             } catch { }
+            void cleanup();
+        } else {
+            void (async () => {
+                await cleanup();
+                process.exit(1);
+            })();
         }
     });
     window.on("close", (event) => {
@@ -337,8 +444,21 @@ try {
     });
 
     await startControlServer();
-    escapeMonitor = startEscapeMonitor(() => {
+    const controlHtml = await readFile(htmlPath, "utf8");
+    const updatedControlHtml = controlHtml
+        .replaceAll(
+            "__PRAGOTRON_SELECTION_ENDPOINT__",
+            `http://127.0.0.1:${controlPort}/selection?token=${encodeURIComponent(controlToken)}`
+        )
+        .replaceAll(
+            "__PRAGOTRON_NAVIGATE_ENDPOINT__",
+            `http://127.0.0.1:${controlPort}/navigate?token=${encodeURIComponent(controlToken)}`
+        );
+    if (updatedControlHtml !== controlHtml) await writeFile(htmlPath, updatedControlHtml, "utf8");
+    escapeMonitor = startEscapeMonitor(String(title).split(" — ", 1)[0], () => {
         if (window && !window.isDestroyed()) window.hide();
+    }, (direction) => {
+        void navigateSelection(direction).catch(() => { });
     });
     window.loadFile(htmlPath);
     window.show();
