@@ -190,6 +190,8 @@ const readRequestBody = (request) => new Promise((resolve, reject) => {
     request.on("error", reject);
 });
 
+const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 const readLiveFeed = async () => {
     const source = await readFile(liveFeedPath, "utf8");
     const separator = source.indexOf("=");
@@ -286,6 +288,12 @@ const startControlServer = () => new Promise((resolve, reject) => {
             setTimeout(() => {
                 if (window && !window.isDestroyed()) window.focus();
             }, 50);
+            await wait(120);
+            if (!window || window.isDestroyed() || nativeUnavailable) {
+                response.writeHead(503);
+                response.end();
+                return;
+            }
             response.writeHead(204);
             response.end();
         } catch {
@@ -397,10 +405,16 @@ try {
         startupTimer = null;
         window.show();
         window.focus();
+        const hostPid = window?._ipc?._proc?.pid;
+        if (!Number.isInteger(hostPid) || hostPid < 1) {
+            reportStartupFailure(new Error("The WebView native host did not expose a process ID."));
+            return;
+        }
         void writeFile(statePath, JSON.stringify({
-            version: 2,
+            version: 3,
             port: controlPort,
-            token: controlToken
+            token: controlToken,
+            hostPid
         }), "utf8").catch((error) => {
             reportStartupFailure(error);
         });

@@ -1657,12 +1657,22 @@ const describeDepartureDetailsError = (error) => {
 const readDetailsWindowState = async () => {
     try {
         const state = JSON.parse(await readFile(DEPARTURE_DETAILS_STATE_FILE, "utf8"));
-        if (state.version !== 2) return null;
+        if (state.version !== 3) return null;
         if (!Number.isInteger(state.port) || state.port < 1 || state.port > 65535) return null;
         if (typeof state.token !== "string" || !state.token) return null;
+        if (!Number.isInteger(state.hostPid) || state.hostPid < 1) return null;
         return state;
     } catch {
         return null;
+    }
+};
+
+const isProcessRunning = (pid) => {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch {
+        return false;
     }
 };
 
@@ -1685,6 +1695,10 @@ const requestDetailsWindow = async (state, title, id, key) => {
 const showExistingDetailsWindow = async (title, id, key) => {
     const state = await readDetailsWindowState();
     if (!state) return false;
+    if (!isProcessRunning(state.hostPid)) {
+        await rm(DEPARTURE_DETAILS_STATE_FILE, { force: true }).catch(() => { });
+        return false;
+    }
     for (let attempt = 0; attempt < 80; attempt += 1) {
         try {
             if (await requestDetailsWindow(state, title, id, key)) return true;
@@ -1697,10 +1711,14 @@ const showExistingDetailsWindow = async (title, id, key) => {
     return false;
 };
 
-const waitForDetailsWindow = async () => {
+const waitForDetailsWindow = async (title, id, key) => {
     for (let attempt = 0; attempt < 80; attempt += 1) {
         const state = await readDetailsWindowState();
-        if (state) return true;
+        if (state) {
+            try {
+                if (await requestDetailsWindow(state, title, id, key)) return true;
+            } catch { }
+        }
         await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error("The departure details window did not become ready.");
@@ -1849,7 +1867,7 @@ async function handleViewDeparture() {
             child.once("spawn", onSpawn);
             child.once("error", onError);
         });
-        await waitForDetailsWindow();
+        await waitForDetailsWindow(title, id, departureNavigationKey(details));
         let fallbackShown = false;
         const showFallback = (error) => {
             if (fallbackShown) return;
