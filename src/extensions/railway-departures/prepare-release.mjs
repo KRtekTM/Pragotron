@@ -17,6 +17,7 @@ const ROOT_RUNTIME_FILES = [
     "departure_details.css",
     "vagonweb.css",
     "config.json",
+    "config-all-stations.json",
     "icon.svg",
     "icon-dark.svg",
     "sprzel.ico"
