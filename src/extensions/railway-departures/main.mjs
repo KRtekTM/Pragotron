@@ -1328,14 +1328,15 @@ async function handleConfigureUrl(strings) {
         ? `${currentRefresh / 1000} s`
         : `${currentRefresh} ms`;
     const stationNumberWidth = String(currentStations.length || 1).length;
-    const stationRows = currentStations.map(({ name, url }, index) => {
+    const stationRows = currentStations.map(({ name, url, favorite }, index) => {
             const stationName = name || strings.unnamedStation || "(unnamed)";
+            const displayName = favorite === true ? `⭐ ${stationName}` : stationName;
             const stationKey = deriveStationKeyFromUrl(url);
             const identifier = stationKey
                 ? `${strings.stationKeyLabel || "Key"}=${stationKey}`
                 : url;
             const number = String(index + 1).padStart(stationNumberWidth, "0");
-            return { number, name: stationName, identifier };
+            return { number, name: displayName, identifier };
         });
     const stationsText = stationRows.length
         ? stationRows.map(({ number, name, identifier }) => `${number}. ${name} (${identifier})`).join("\n  ")
