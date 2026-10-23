@@ -6,7 +6,7 @@
   "description": "Scrapes railway departures from Správy Železnic website and displays them in Salamander file-system panel.",
   "runtime": "JavaScript.Node",
   "entryPoint": "main.mjs",
-  "web": "https://samandarin.net/",
+  "web": "https://krtkovo.eu/sprzel/",
   "security": {
     "networkAccess": "yes",
     "externalProcesses": "yes",
@@ -75,7 +75,6 @@
       "iconDark": "icon.svg",
       "spinner": true,
       "listHandler": "listDepartures",
-      "refreshDepth": 1,
       "columns": [
         {
           "id": "train",

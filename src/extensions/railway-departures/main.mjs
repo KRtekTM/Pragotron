@@ -1413,10 +1413,21 @@ let fileSystemItemsPromise = Promise.resolve();
 const departureDetailsById = new Map();
 const PANEL_INACTIVITY_MS = 5 * 60 * 1000;
 
-const addFileSystemItems = (items) => {
+const snapshotFileSystemItems = (items) => Object.freeze(
+    items.map((item) => Object.freeze({
+        ...item,
+        columns: item.columns && Object.freeze({ ...item.columns })
+    }))
+);
+
+const addFileSystemItems = (items, requestId = listRequestId) => {
+    const snapshot = snapshotFileSystemItems(items);
     const update = fileSystemItemsPromise
         .catch(() => { })
-        .then(() => Salamander.fileSystem.addItems(items));
+        .then(() => {
+            if (requestId !== listRequestId) return false;
+            return Salamander.fileSystem.addItems(snapshot);
+        });
     fileSystemItemsPromise = update;
     return update;
 };
@@ -1499,7 +1510,12 @@ const refreshConfiguredStations = ({ station, fallbackStation, strings, reportEr
     });
 };
 
-const startScraper = async ({ fallbackStation: configuredFallbackStation = null, strings = {}, reportError = false } = {}) => {
+const startScraper = async ({
+    fallbackStation: configuredFallbackStation = null,
+    strings = {},
+    reportError = false,
+    onStationUpdate = null
+} = {}) => {
     if (scraperRunning) return { ok: false, reason: "alreadyRunning" };
     if (!activeStationConfig) {
         return { ok: false, reason: "noUrl" };
@@ -1533,6 +1549,10 @@ const startScraper = async ({ fallbackStation: configuredFallbackStation = null,
             });
             if (!isCurrentRun()) return;
             if (!refreshed) scraperError = "No station data was returned.";
+            if (refreshed && typeof onStationUpdate === "function") {
+                await onStationUpdate(refreshed);
+                if (!isCurrentRun()) return;
+            }
             const now = Date.now();
             if (panelOpen && now - lastPanelActivity > PANEL_INACTIVITY_MS) {
                 stopScraper();
@@ -1811,22 +1831,24 @@ async function handleListDepartures() {
 
         // Determine what view we're in: root or a specific station
         let activeStation = null;
-        const invocationValues = [];
-        const collectInvocationValue = (value) => {
+        const pathValues = [];
+        const collectPathValue = (value) => {
             if (Array.isArray(value)) {
-                value.forEach(collectInvocationValue);
+                value.forEach(collectPathValue);
             } else if (value !== undefined && value !== null && value !== "") {
-                invocationValues.push(value);
+                pathValues.push(value);
             }
         };
-        collectInvocationValue(rawInvocationPath);
-        collectInvocationValue(item.id);
-        collectInvocationValue(item.path);
-        collectInvocationValue(item.name);
-        const pathParts = invocationValues.flatMap((value) => String(value)
+        collectPathValue(rawInvocationPath);
+        collectPathValue(item.path);
+        const pathParts = pathValues.flatMap((value) => String(value)
             .split(/[\\/!]/)
             .filter(Boolean));
-        const stationSelectors = new Set(pathParts.flatMap((part) => {
+        const metadataSelectors = [item.id, item.name]
+            .filter((value) => value !== undefined && value !== null && value !== "")
+            .flatMap((value) => String(value).split(/[\\/!]/).filter(Boolean));
+        const selectorParts = pathParts.length ? pathParts : metadataSelectors;
+        const stationSelectors = new Set(selectorParts.flatMap((part) => {
             try {
                 return [part, decodeURIComponent(part)];
             } catch {
@@ -1858,7 +1880,7 @@ async function handleListDepartures() {
             stopScraper();
             currentView = activeGroup.id;
             if (requestId === listRequestId) {
-                await addFileSystemItems(itemsForStationGroup(activeGroup));
+                await addFileSystemItems(itemsForStationGroup(activeGroup), requestId);
             }
             return;
         }
@@ -1870,7 +1892,7 @@ async function handleListDepartures() {
             currentView = "root";
             const stationItems = rootStationGroupItems;
             if (requestId === listRequestId) {
-                await addFileSystemItems(stationItems);
+                await addFileSystemItems(stationItems, requestId);
             }
             return;
         }
@@ -1879,11 +1901,39 @@ async function handleListDepartures() {
         stopScraper();
         activeStationConfig = activeStation;
         const stationId = stationIdFor(activeStationConfig);
+        currentView = stationId;
         const stringsPromise = detectLocale().then((locale) => getStringsAsync(locale));
         const storedPromise = loadCache();
+        let publishedStation = false;
+        const publishStation = async (refreshedStation) => {
+            if (
+                requestId !== listRequestId
+                || currentView !== stationId
+                || activeStationConfig?.url !== activeStation.url
+            ) return false;
+
+            const cache = { stations: [refreshedStation] };
+            lastCache = cache;
+            const departures = refreshedStation.departures || [];
+            const stationName = stationNameFor(activeStation) || "Stanice";
+            const operatorIconFiles = await getOperatorIconFiles();
+            if (
+                requestId !== listRequestId
+                || currentView !== stationId
+                || activeStationConfig?.url !== activeStation.url
+            ) return false;
+
+            const items = buildItems(departures, operatorIconFiles, stationName);
+            await saveLocalDepartureDetails(items);
+            void saveCache(cache);
+            await addFileSystemItems(items, requestId);
+            publishedStation = true;
+            return true;
+        };
         const scraperResult = await startScraper({
             strings: {},
-            reportError: false
+            reportError: false,
+            onStationUpdate: publishStation
         });
         let refreshedStation = scraperResult.station;
         if (!refreshedStation) {
@@ -1903,28 +1953,13 @@ async function handleListDepartures() {
         }
         if (!refreshedStation || requestId !== listRequestId) return;
 
-        const cache = { stations: [refreshedStation] };
-        lastCache = cache;
-        const departures = refreshedStation.departures || [];
-        const stationName = stationNameFor(activeStation) || "Stanice";
-
-        const now = new Date();
-
-        const operatorIconFiles = await getOperatorIconFiles();
-        if (requestId !== listRequestId) return;
-
-        const items = buildItems(departures, operatorIconFiles, stationName);
-        currentView = stationId;
-
-        if (requestId !== listRequestId) return;
-        // The detail action may run in another Node context. Persist in the
-        // background so the departure list is visible as soon as it is built.
-        await saveLocalDepartureDetails(items);
-        void saveCache(cache);
-        await addFileSystemItems(items);
+        if (!publishedStation) await publishStation(refreshedStation);
 
         // Do not block the panel on per-departure persistence. The in-memory
         // map serves the immediate action; storage is only the cross-context fallback.
+        const now = new Date();
+        const departures = refreshedStation.departures || [];
+        const stationName = stationNameFor(activeStation) || "Stanice";
         void Promise.all(departures.map(async (d) => {
             const depId = makeDepartureId(d);
             try {
@@ -2255,7 +2290,9 @@ async function handleViewDeparture() {
 
 const handler = Salamander.commandHandler || Salamander.command_handler;
 
-await syncFavoriteCommands(await getConfiguredStations());
+if (handler !== "listDepartures") {
+    await syncFavoriteCommands(await getConfiguredStations());
+}
 
 if (handler === "viewDeparture" || handler === "configureUrl" || handler === "configure") {
     stopScraper();
