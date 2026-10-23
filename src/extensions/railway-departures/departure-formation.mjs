@@ -3,7 +3,8 @@ import { dirname } from "node:path";
 
 const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
 const VAGONWEB_HTML_LIMIT = 8 * 1024 * 1024;
-const FORMATION_CACHE_VERSION = 1;
+const VAGONWEB_SVG_LIMIT = 256 * 1024;
+const FORMATION_CACHE_VERSION = 2;
 const formationCache = new Map();
 const formationRequests = new Map();
 let formationCacheLoadPromise = null;
@@ -135,6 +136,48 @@ const escapeHtml = (value) => String(value ?? "")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+
+const inlineVagonwebPictograms = async (html, request) => {
+    const replacements = new Map();
+    const sources = new Set();
+    for (const match of String(html).matchAll(/<img\b[^>]*>/gi)) {
+        const className = /\bclass="([^"]*)"/i.exec(match[0])?.[1] || "";
+        const source = /\bsrc="([^"]*)"/i.exec(match[0])?.[1] || "";
+        if (!className.split(/\s+/).includes("pikto") || !source) continue;
+        try {
+            const url = new URL(decodeHtml(source));
+            if (url.protocol === "https:" && url.hostname === "www.vagonweb.cz" && url.pathname.toLowerCase().endsWith(".svg")) {
+                sources.add(url.href);
+            }
+        } catch { }
+    }
+
+    for (const source of sources) {
+        try {
+            const response = await request(source);
+            if (!response.ok) continue;
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            if (bytes.length > VAGONWEB_SVG_LIMIT) continue;
+            const svg = Buffer.from(bytes).toString("utf8").replace(/fill:(\s*)#00c\b/g, "fill:$1#0066c9");
+            replacements.set(source, `data:image/svg+xml;base64,${Buffer.from(svg, "utf8").toString("base64")}`);
+        } catch { }
+    }
+
+    if (!replacements.size) return html;
+    return String(html).replace(/<img\b[^>]*>/gi, (image) => {
+        const className = /\bclass="([^"]*)"/i.exec(image)?.[1] || "";
+        const sourceMatch = /\bsrc="([^"]*)"/i.exec(image);
+        if (!className.split(/\s+/).includes("pikto") || !sourceMatch) return image;
+        let source;
+        try {
+            source = new URL(decodeHtml(sourceMatch[1])).href;
+        } catch {
+            return image;
+        }
+        const replacement = replacements.get(source);
+        return replacement ? image.replace(sourceMatch[0], `src="${replacement}"`) : image;
+    });
+};
 
 const localDateKey = () => {
     const date = new Date();
@@ -289,7 +332,10 @@ const fetchVagonwebFormationUncached = async (vagonwebUrl, formationErrorText = 
             );
         }
         if (!block) throw new Error("Vagonweb did not contain #planovane_razeni.");
-        const sanitized = sanitizeVagonwebFormation(block, blockBaseUrl);
+        const sanitized = await inlineVagonwebPictograms(
+            sanitizeVagonwebFormation(block, blockBaseUrl),
+            request
+        );
         if (!sanitized) throw new Error("Vagonweb formation could not be sanitized.");
         return { html: sanitized, error: null };
     } catch (error) {
