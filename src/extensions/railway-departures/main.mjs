@@ -1117,7 +1117,9 @@ const stationGroupLabelFor = (station) => {
     return STATION_GROUP_LABELS.includes(initial) ? initial : "Z";
 };
 
-const stationGroupIdFor = (label) => `station-group-${[...label]
+const stationGroupIdFor = (label) => label;
+
+const legacyStationGroupIdFor = (label) => `station-group-${[...label]
     .map((character) => character.codePointAt(0).toString(16))
     .join("-")}`;
 
@@ -1747,7 +1749,12 @@ async function handleListDepartures() {
             group.stations.sort((a, b) => stationSortKeyFor(a).localeCompare(stationSortKeyFor(b), "cs"));
         }
         const stationGroupsById = new Map(
-            [...stationGroups.values()].map((group) => [group.id, group])
+            [...stationGroups.values()].flatMap((group) => [
+                [group.id, group],
+                ...(STATION_GROUP_LABELS.includes(group.label)
+                    ? [[legacyStationGroupIdFor(group.label), group]]
+                    : [])
+            ])
         );
         const itemsForStationGroup = (group) => group.stations.map(stationItemFor);
         const rootStationGroupItems = [
