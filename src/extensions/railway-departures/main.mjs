@@ -15,6 +15,7 @@ const DEPARTURE_DETAILS_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "details.html");
 const DEPARTURE_DETAILS_STATE_FILE = join(DEPARTURE_RUNTIME_DIR, "details-window.json");
 const DEPARTURE_DETAILS_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "details-webview-data");
 const DEPARTURE_FORMATION_CACHE_FILE = join(DEPARTURE_RUNTIME_DIR, "formation-cache.json");
+const FAVORITE_COMMANDS_FILE = join(DEPARTURE_RUNTIME_DIR, "favorite-commands.json");
 const CONFIGURATION_DIALOG_TEMPLATE = join(EXTENSION_DIR, "configuration.html");
 const CONFIGURATION_DIALOG_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "configuration.html");
 const CONFIGURATION_DIALOG_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "configuration-webview-data");
@@ -116,6 +117,20 @@ const resolveProfileTrainType = (sourceType, operator) => {
     return st;
 };
 
+const trainTypeLogoPathFor = (train, operator, resolvedTrainType = "") => {
+    const source = String(train ?? "").trim().toLocaleLowerCase("cs-CZ");
+    const resolved = String(resolvedTrainType || train || "").trim().toLocaleLowerCase("cs-CZ");
+    if (resolved === "regiojet") return "";
+    if (resolved === "railjet") return "train-types/railjet.svg";
+    if (source === "nj" || resolved === "nightjet") return "train-types/nightjet.svg";
+    return {
+        ic: "train-types/intercity.svg",
+        ec: "train-types/eurocity.svg",
+        sc: "train-types/supercity.svg",
+        en: "train-types/euronight.svg"
+    }[source] || "";
+};
+
 const findSourceTrainType = (value) => {
     const normalized = String(value ?? "").trim();
     if (!normalized) return "";
@@ -161,8 +176,10 @@ const parseTrainCell = (cellHtml) => {
         ? remainder.slice(remainder.indexOf(numberMatch[0]) + numberMatch[0].length).trim()
         : remainder.trim();
     const operator = divTexts.slice(1).join(" ").trim() || operatorFromRemainder;
+    const trainType = resolveProfileTrainType(sourceType, operator);
     return {
-        train: resolveProfileTrainType(sourceType, operator),
+        train: /^rj$/i.test(sourceType) ? "rj" : /^nj$/i.test(sourceType) ? "nj" : sourceType,
+        trainType,
         trainNumber,
         sourceTrainNumber,
         operator
@@ -258,6 +275,7 @@ const parseStationTable = (html, { now = new Date(), stationKey = "" } = {}) => 
         departures.push({
             id: `live:${liveKey}`,
             train: trainData.train,
+            trainType: trainData.trainType,
             trainNumber: trainData.trainNumber,
             departureTime: `${String(departureTime.hours).padStart(2, "0")}:${String(departureTime.minutes).padStart(2, "0")}`,
             delay: calculateDelay(departureTime, actualTime),
@@ -399,6 +417,7 @@ function normalizeDepartures(raw, stationName) {
     return raw.map((d) => ({
         id: makeDepartureId(d),
         train: d.train || "",
+        trainType: d.trainType || resolveProfileTrainType(d.train, d.operator),
         trainNumber: d.trainNumber || "",
         departureTime: d.departureTime || "",
         delay: d.delay ?? "",
@@ -524,8 +543,10 @@ function getCarrierDetailIconPath(operator) {
         case "CD":
         case "ČD":
             return "operators/CD_details.svg";
+        case "AŽD":
+            return "operators/AŽD.svg";
         default:
-            return "sprzel.svg";
+            return "operators/SPRŽEL.svg";
     }
 }
 
@@ -822,6 +843,12 @@ async function buildDepartureDetailsFromTemplate(
         icon("sprzel.svg")
     ]);
     const carrierName = departureHtmlValue(carrier.name, "Carrier");
+    const trainTypeLogoPath = trainTypeLogoPathFor(
+        details.train,
+        details.operator,
+        details.trainType
+    );
+    const trainTypeLogo = trainTypeLogoPath ? await icon(trainTypeLogoPath) : "";
     const config = await readConfigFile();
     const colors = String(config.departureDetails?.colors || "light");
     const colorsCss = colors === "dark" ? "colors-dark.css" : "colors-light.css";
@@ -870,6 +897,7 @@ async function buildDepartureDetailsFromTemplate(
         VAGONWEB_CSS: stylesheet("vagonweb.css"),
         DELAY_CLASS: delayClass,
         ICON_SPRZEL: sprzel,
+        ICON_TRAIN_TYPE_LOGO: trainTypeLogo,
         ICON_TRAIN_DARK: trainDark,
         ICON_TRAIN_WHITE: trainWhite,
         ICON_TRAIN_CIRCLE: trainCircle,
@@ -972,6 +1000,8 @@ function buildItems(departures, operatorIconFiles = new Set(), stationName = "")
             iconDark,
             columns: {
                 train: d.train,
+                trainType: d.trainType || resolveProfileTrainType(d.train, d.operator),
+                trainTypeLogo: trainTypeLogoPathFor(d.train, d.operator, d.trainType),
                 trainNumber: d.trainNumber,
                 departureTime: d.departureTime,
             delay: formatDelay(d.delay),
@@ -995,6 +1025,8 @@ function buildItems(departures, operatorIconFiles = new Set(), stationName = "")
         const depId = makeDepartureId(d);
         departureDetailsById.set(depId, {
             train: d.train,
+            trainType: d.trainType || resolveProfileTrainType(d.train, d.operator),
+            trainTypeLogo: trainTypeLogoPathFor(d.train, d.operator, d.trainType),
             trainNumber: d.trainNumber,
             departureTime: d.departureTime,
             delay: formatDelay(d.delay),
@@ -1047,15 +1079,110 @@ async function getConfiguredStations() {
     return config.urls
         .map((entry) => {
             if (typeof entry === "string") {
-                return { url: entry.trim(), name: "" };
+                return { url: entry.trim(), name: "", favorite: false };
             }
             return {
                 url: String(entry?.url || "").trim(),
-                name: String(entry?.name || "").trim()
+                name: String(entry?.name || "").trim(),
+                favorite: entry?.favorite === true
             };
         })
         .filter((entry) => entry.url);
 }
+
+const MAX_FAVORITE_COMMANDS = 32;
+
+const stationKeyFor = (station) =>
+    station.stationKey || deriveStationKeyFromUrl(station.url);
+
+const stationNameFor = (station) => {
+    const name = String(station.name ?? station.station ?? "").trim();
+    const stationKey = stationKeyFor(station);
+    return name && !/^station-[A-Za-z0-9_-]+$/i.test(name)
+        ? name
+        : `Station ${stationKey || ""}`.trim();
+};
+
+const stationIdFor = (station) => stationNameFor(station);
+
+const STATION_GROUP_LABELS = Object.freeze([
+    "A", "B", "C", "Č", "D", "E", "F", "G", "H", "CH", "I", "J", "K", "L",
+    "M", "N", "O", "P", "R", "Ř", "S", "Š", "T", "U", "Ú", "V", "Z", "Ž"
+]);
+
+const stationGroupLabelFor = (station) => {
+    const name = stationNameFor(station).trim().toLocaleUpperCase("cs-CZ");
+    if (name.startsWith("CH")) return "CH";
+    const initial = name.charAt(0);
+    return STATION_GROUP_LABELS.includes(initial) ? initial : "Z";
+};
+
+const stationGroupIdFor = (label) => `station-group-${[...label]
+    .map((character) => character.codePointAt(0).toString(16))
+    .join("-")}`;
+
+const stationPathFor = (station) => [
+    stationGroupIdFor(stationGroupLabelFor(station)),
+    stationIdFor(station)
+].join("/");
+
+const getConfiguredFavorites = async (configuredStations = null) => {
+    const stations = configuredStations || await getConfiguredStations();
+    return stations.filter((station) => station.favorite === true).slice(0, MAX_FAVORITE_COMMANDS);
+};
+
+const favoriteCommandIdFor = (station) => {
+    const identity = stationKeyFor(station) || stationNameFor(station) || station.url;
+    const normalized = normalizeId(identity) || "station";
+    return `TabuleSprZel.favorite.${normalized}`.slice(0, 120);
+};
+
+const readFavoriteCommandIds = async () => {
+    try {
+        const parsed = JSON.parse(await readFile(FAVORITE_COMMANDS_FILE, "utf8"));
+        return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+    } catch {
+        return [];
+    }
+};
+
+const syncFavoriteCommands = async (configuredStations) => {
+    const commands = Salamander.commands;
+    if (!commands || typeof commands.register !== "function") return false;
+
+    await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true }).catch(() => { });
+
+    if (typeof commands.unregister === "function") {
+        for (const commandId of await readFavoriteCommandIds()) {
+            try {
+                await commands.unregister(commandId);
+            } catch { }
+        }
+    }
+
+    const commandIds = [];
+    for (const station of await getConfiguredFavorites(configuredStations)) {
+        const commandId = favoriteCommandIdFor(station);
+        const handler = `favorite:${encodeURIComponent(station.url)}`;
+        try {
+            await commands.register(
+                commandId,
+                stationNameFor(station),
+                true,
+                false,
+                0,
+                false,
+                handler,
+                true,
+                true
+            );
+            commandIds.push(commandId);
+        } catch { }
+    }
+
+    await writeFile(FAVORITE_COMMANDS_FILE, JSON.stringify(commandIds), "utf8").catch(() => { });
+    return true;
+};
 
 async function getRefreshInterval() {
     const config = await readConfigFile();
@@ -1108,7 +1235,7 @@ async function getStringsAsync(locale = "en") {
         stationKeyLabel: "Key",
         unnamedStation: "(unnamed)",
         refreshLabel: "Refresh interval:",
-        configHint: "Edit the config.json file in the extension folder and restart Salamander.",
+        configHint: "Edit config.json in the extension folder. Mark a station in urls with \"favorite\": true and restart Salamander.",
         urlsNotConfigured: "(not configured)",
         errorInvalidUrl: "No board URLs configured. Use Configure URL.",
         errorFetch: "Failed to fetch departures from URL",
@@ -1402,6 +1529,12 @@ const getCachedDepartureDetails = (cache, id) => {
         if (!departure) continue;
         return {
             train: departure.train,
+            trainType: departure.trainType || resolveProfileTrainType(departure.train, departure.operator),
+            trainTypeLogo: trainTypeLogoPathFor(
+                departure.train,
+                departure.operator,
+                departure.trainType
+            ),
             trainNumber: departure.trainNumber,
             departureTime: departure.departureTime,
             delay: formatDelay(departure.delay),
@@ -1434,6 +1567,14 @@ const saveLocalDepartureDetails = async (items) => {
             const carrierIcon = await readDepartureDetailsIcon(
                 getCarrierDetailIconPath(details.operator || "")
             );
+            const trainTypeLogoPath = trainTypeLogoPathFor(
+                details.train,
+                details.operator,
+                details.trainType
+            );
+            const trainTypeLogo = trainTypeLogoPath
+                ? `data:image/svg+xml;base64,${await readDepartureDetailsIcon(trainTypeLogoPath)}`
+                : "";
             return {
                 id: item.id,
                 key: departureNavigationKey(details),
@@ -1441,6 +1582,7 @@ const saveLocalDepartureDetails = async (items) => {
                     ...details,
                     carrierName: carrier.name || "Carrier",
                     carrierLogo: `data:image/svg+xml;base64,${carrierIcon}`,
+                    trainTypeLogo,
                     vagonwebUrl: buildVagonwebUrl(details)
                 }
             };
@@ -1471,6 +1613,12 @@ const saveLocalDepartureSnapshot = async (cache) => {
                 id: makeDepartureId(departure),
                 columns: {
                     train: departure.train,
+                    trainType: departure.trainType || resolveProfileTrainType(departure.train, departure.operator),
+                    trainTypeLogo: trainTypeLogoPathFor(
+                        departure.train,
+                        departure.operator,
+                        departure.trainType
+                    ),
                     trainNumber: departure.trainNumber,
                     departureTime: departure.departureTime,
                     delay: formatDelay(departure.delay),
@@ -1560,6 +1708,52 @@ async function handleListDepartures() {
                 ? `station-${normalizeId(stationNameFor(s))}!station-${normalizeId(stationKey)}`
                 : "";
         };
+        const stationSortKeyFor = (s) =>
+            `${normalizeId(stationNameFor(s)) || "station"}-${normalizeId(s.stationKey || deriveStationKeyFromUrl(s.url))}`;
+        const FAVORITES_GROUP_ID = "_favorites";
+        const favoriteStations = configuredStations.filter((station) => station.favorite === true);
+        const stationItemFor = (s) => ({
+            id: stationIdFor(s),
+            name: stationNameFor(s),
+            directory: true,
+            enabled: true,
+            icon: "icon.svg",
+            iconDark: "icon.svg"
+        });
+        const groupItemFor = (group) => ({
+            id: group.id,
+            name: group.label,
+            directory: true,
+            enabled: true,
+            icon: "icon.svg",
+            iconDark: "icon.svg"
+        });
+        const stationGroups = new Map(STATION_GROUP_LABELS.map((label) => [label, {
+            id: stationGroupIdFor(label),
+            label,
+            stations: [],
+            favorite: false
+        }]));
+        stationGroups.set(FAVORITES_GROUP_ID, {
+            id: FAVORITES_GROUP_ID,
+            label: FAVORITES_GROUP_ID,
+            stations: favoriteStations,
+            favorite: true
+        });
+        for (const station of configuredStations) {
+            stationGroups.get(stationGroupLabelFor(station)).stations.push(station);
+        }
+        for (const group of stationGroups.values()) {
+            group.stations.sort((a, b) => stationSortKeyFor(a).localeCompare(stationSortKeyFor(b), "cs"));
+        }
+        const stationGroupsById = new Map(
+            [...stationGroups.values()].map((group) => [group.id, group])
+        );
+        const itemsForStationGroup = (group) => group.stations.map(stationItemFor);
+        const rootStationGroupItems = [
+            groupItemFor(stationGroups.get(FAVORITES_GROUP_ID)),
+            ...STATION_GROUP_LABELS.map((label) => groupItemFor(stationGroups.get(label)))
+        ];
 
         // Determine what view we're in: root or a specific station
         let activeStation = null;
@@ -1586,13 +1780,18 @@ async function handleListDepartures() {
             }
         }));
 
+        const activeGroup = [...pathParts]
+            .reverse()
+            .map((part) => stationGroupsById.get(part))
+            .find(Boolean) || null;
+
         for (const s of configuredStations) {
             const knownSelectors = [
                 stationIdFor(s),
                 legacyStationIdFor(s),
                 previousStationIdFor(s),
                 previousCompositeStationIdFor(s),
-                stationNameFor(s)
+                stationNameFor(s),
             ].filter(Boolean);
             if (knownSelectors.some((selector) => stationSelectors.has(selector))) {
                 activeStation = s;
@@ -1600,19 +1799,22 @@ async function handleListDepartures() {
             }
         }
 
+        if (!activeStation && activeGroup) {
+            activeStationConfig = null;
+            stopScraper();
+            currentView = activeGroup.id;
+            if (requestId === listRequestId) {
+                await addFileSystemItems(itemsForStationGroup(activeGroup));
+            }
+            return;
+        }
+
         if (!activeStation) {
-            // Root view: show station folders
+            // Root view: expose only the fixed initial-letter groups.
             activeStationConfig = null;
             stopScraper();
             currentView = "root";
-            const stationItems = configuredStations.map((s) => ({
-                id: stationIdFor(s),
-                name: stationNameFor(s),
-                directory: true,
-                enabled: true,
-                icon: "icon.svg",
-                iconDark: "icon.svg"
-            }));
+            const stationItems = rootStationGroupItems;
             if (requestId === listRequestId) {
                 await addFileSystemItems(stationItems);
             }
@@ -1718,6 +1920,36 @@ async function handleOpenDepartures(strings) {
     } else {
         await handleListDepartures();
     }
+}
+
+async function handleFavoriteCommand(handler) {
+    const encodedUrl = String(handler).slice("favorite:".length);
+    let url = "";
+    try {
+        url = decodeURIComponent(encodedUrl);
+    } catch {
+        return;
+    }
+
+    const station = (await getConfiguredStations()).find((item) => item.url === url);
+    if (!station) return;
+
+    const changePath = Salamander.sides && Salamander.sides.changePath;
+    if (typeof changePath !== "function") {
+        try {
+            await Salamander.ui.notify(
+                "Favorite stations are not supported by this Salamander version.",
+                "Tabule SprŽel",
+                3000
+            );
+        } catch { }
+        return;
+    }
+
+    const path = `salamatrix:TabuleSprZel!departures/${stationPathFor(station)}`;
+    try {
+        await changePath(path, "source");
+    } catch { }
 }
 
 const describeDepartureDetailsError = (error) => {
@@ -1969,6 +2201,8 @@ async function handleViewDeparture() {
 
 const handler = Salamander.commandHandler || Salamander.command_handler;
 
+await syncFavoriteCommands(await getConfiguredStations());
+
 if (handler === "viewDeparture" || handler === "configureUrl" || handler === "configure") {
     stopScraper();
 }
@@ -1981,4 +2215,6 @@ if (handler === "listDepartures") {
     await handleViewDeparture();
 } else if (handler === "configureUrl" || handler === "configure") {
     await handleConfigureUrl();
+} else if (typeof handler === "string" && handler.startsWith("favorite:")) {
+    await handleFavoriteCommand(handler);
 }

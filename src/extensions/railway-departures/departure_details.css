@@ -121,8 +121,9 @@ body {
     height: 68px;
     align-items: center;
     padding: 0 24px;
-    color: #fff;
-    background: var(--blue);
+    color: var(--carrier-text, #fff);
+    background: var(--carrier-background, var(--blue));
+    justify-content: space-between;
 }
 .header::after {
     display: none;
@@ -144,10 +145,12 @@ body {
     gap: 16px;
 }
 .carrier-logo { display: block; max-width: 48px; max-height: 48px; height: 48px; width: auto;object-fit: contain; }
+.train-type-logo { display: block; width: auto; height: 24px; object-fit: contain; filter: var(--carrier-icon-filter, none); }
+.train-type-logo[hidden] { display: none; }
 .carrier-name {
     padding-left: 17px;
-    border-left: 1px solid rgba(255, 255, 255, .78);
-    color: #fff;
+    border-left: 1px solid currentColor;
+    color: var(--carrier-text, #fff);
     font-size: 20px;
     font-weight: 600;
     white-space: nowrap;
@@ -159,18 +162,18 @@ body {
     display: flex;
     align-items: center;
     gap: 16px;
-    margin-left: auto;
 }
 .train-icon {
     display: block;
     width: 40px;
     height: 40px;
     object-fit: contain;
+    filter: var(--carrier-icon-filter, none);
 }
 .header-train-type,
 .header-train-number {
     display: block;
-    color: #fff;
+    color: var(--carrier-text, #fff);
     font-weight: 600;
     white-space: nowrap;
 }
@@ -514,6 +517,7 @@ body {
 .formation-source a { color: var(--link); }
 .formation-status { padding: 20px; color: var(--muted); }
 .is-empty { display: none; }
+.no-underline { text-decoration: none; }
 
 
 

@@ -622,7 +622,8 @@
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=455",
-      "name": "Brno hlavní nádraží"
+      "name": "Brno hlavní nádraží",
+      "favorite": true
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=459",
@@ -7646,7 +7647,8 @@
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3694",
-      "name": "Rosice u Brna"
+      "name": "Rosice u Brna",
+      "favorite": true
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3697",

@@ -2,7 +2,7 @@
   "schema": 2,
   "id": "TabuleSprZel",
   "name": "Tabule SprŽel",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Scrapes railway departures from Správy Železnic website and displays them in Salamander file-system panel.",
   "runtime": "JavaScript.Node",
   "entryPoint": "main.mjs",
@@ -20,7 +20,8 @@
     "file-system",
     "panels.write",
     "ui.dialogs",
-    "storage"
+    "storage",
+    "commands"
   ],
   "viewers": [
     {
@@ -51,6 +52,15 @@
       "id": "TabuleSprZel.configure",
       "title": "Configuration",
       "handler": "configureUrl",
+      "menu": "both",
+      "contextMenu": false,
+      "toolbar": false,
+      "requires": "any"
+    },
+    {
+      "id": "TabuleSprZel.favorites",
+      "title": "⭐Favorite Stations",
+      "path": "salamatrix:TabuleSprZel!departures/_favorites",
       "menu": "both",
       "contextMenu": false,
       "toolbar": false,

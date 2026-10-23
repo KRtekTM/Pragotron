@@ -13,6 +13,7 @@
     <header class="header">
         <div class="carrier">
             <img class="carrier-logo" src="{{ICON_SPRZEL}}" data-live-carrier-logo alt="">
+            <img class="train-type-logo" src="{{ICON_TRAIN_TYPE_LOGO}}" data-live-train-type-logo alt="">
             <div class="carrier-name" data-label="{{LABEL_OPERATOR}}" data-live-field="carrier-name">{{CARRIER_NAME}}</div>
             <div class="carrier-code" data-code="{{CARRIER_CODE}}" data-live-field="operator">{{OPERATOR}}</div>
         </div>
@@ -20,11 +21,13 @@
             <area id="previousDepartureButton" data-navigation-direction="-1" role="button" alt="Previous departure" title="Previous departure" aria-label="Previous departure" href="#previousDepartureButton" coords="4,67,51,1,79,1,34,67" shape="poly">
             <area id="nextDepartureButton" data-navigation-direction="1" role="button" alt="Next departure" title="Next departure" aria-label="Next departure" href="#nextDepartureButton" coords="66,67,109,0,81,0,36,66" shape="poly">
         </map>
-        <img class="header-stripes" src="{{ICON_HEADER_STRIPES}}" alt="" usemap="#prevNextMap">
-        <div class="header-train">
-            <img class="train-icon" src="{{ICON_TRAIN_WHITE}}" alt="">
-            <div><span class="header-train-type" data-live-field="carrier-code">{{CARRIER_CODE}}</span><span class="header-train-number" data-live-field="header-train">{{TRAIN}} {{TRAIN_NUMBER}}</span></div>
-        </div>
+        <img class="header-stripes" data-live-header-stripes src="{{ICON_HEADER_STRIPES}}" alt="" usemap="#prevNextMap">
+        <a class="no-underline" data-live-grapp-link href="https://mapy.spravazeleznic.cz/vlaky/{{TRAIN}}{{TRAIN_NUMBER}}" alt="GRAPP" title="GRAPP" aria-label="GRAPP" target="_blank" rel="noopener noreferrer">
+            <div class="header-train">
+                <img class="train-icon" src="{{ICON_TRAIN_WHITE}}" alt="">
+                <div><span class="header-train-type" data-live-field="carrier-code">{{CARRIER_CODE}}</span><span class="header-train-number" data-live-field="header-train">{{TRAIN}} {{TRAIN_NUMBER}}</span></div>
+            </div>
+        </a>
         <div class="header-title">{{TITLE}}</div>
     </header>
     <div class="content">
@@ -74,10 +77,74 @@
     let mousePointerNavigationReset = null;
     let navigationRequestSequence = 0;
     let pendingNavigationRequest = 0;
+    let defaultHeaderStripes = null;
 
     const text = (value, fallback = "—") => {
         const result = String(value ?? "").trim();
         return result || fallback;
+    };
+
+    const trainTypeLogoPathFor = (details) => {
+        const source = String(details.train ?? "").trim().toLocaleLowerCase("cs-CZ");
+        const resolved = String(details.trainType ?? "").trim().toLocaleLowerCase("cs-CZ");
+        const operator = String(details.operator ?? "").trim().toLocaleLowerCase("cs-CZ");
+        if (resolved === "regiojet" || (source === "rj" && operator.includes("regiojet"))) return "";
+        if (resolved === "railjet" || (source === "rj" && (operator.includes("čd") || operator.includes("ceske drahy")))) {
+            return "icons/train-types/railjet.svg";
+        }
+        if (source === "nj" || resolved === "nightjet") return "icons/train-types/nightjet.svg";
+        return {
+            ic: "icons/train-types/intercity.svg",
+            ec: "icons/train-types/eurocity.svg",
+            sc: "icons/train-types/supercity.svg",
+            en: "icons/train-types/euronight.svg"
+        }[source] || "";
+    };
+
+    const carrierThemeFor = (operator) => {
+        const key = String(operator ?? "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toUpperCase()
+            .replace(/[^A-Z0-9]+/g, "");
+        if (key === "RJET") return { background: "#F1B504", text: "#000000", iconFilter: "brightness(0)" };
+        if (key === "ARR") return { background: "#0790AD", text: "#FFFFFF", iconFilter: "brightness(0) invert(1)" };
+        if (key === "DLB") return { background: "#5DA42A", text: "#FFFFFF", iconFilter: "brightness(0) invert(1)" };
+        if (key === "AŽD") return { background: "#004872", text: "#FFFFFF", iconFilter: "brightness(0) invert(1)" };
+        return null;
+    };
+
+    const lighten = (hex, amount) => {
+        const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+        return `#${channels.map((channel) => Math.round(channel + (255 - channel) * amount)
+            .toString(16).padStart(2, "0")).join("")}`;
+    };
+
+    const themedHeaderStripes = (background) => {
+        const left = lighten(background, .24);
+        const right = lighten(background, .46);
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10.468 7.367"><polygon fill="${left}" points="5.103,0 7.785,0 2.683,7.367 0,7.367"/><polygon fill="${right}" points="7.785,0 10.468,0 5.366,7.367 2.683,7.367"/></svg>`;
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    };
+
+    const applyCarrierTheme = (operator) => {
+        const root = document.documentElement;
+        const stripes = document.querySelector("[data-live-header-stripes]");
+        if (stripes && !defaultHeaderStripes) {
+            defaultHeaderStripes = stripes.getAttribute("src") || stripes.src;
+        }
+        const theme = carrierThemeFor(operator);
+        if (!theme) {
+            root.style.removeProperty("--carrier-background");
+            root.style.removeProperty("--carrier-text");
+            root.style.removeProperty("--carrier-icon-filter");
+            if (stripes && defaultHeaderStripes) stripes.src = defaultHeaderStripes;
+            return;
+        }
+        root.style.setProperty("--carrier-background", theme.background);
+        root.style.setProperty("--carrier-text", theme.text);
+        root.style.setProperty("--carrier-icon-filter", theme.iconFilter);
+        if (stripes) stripes.src = themedHeaderStripes(theme.background);
     };
 
     const setField = (name, value, fallback) => {
@@ -118,6 +185,7 @@
         const details = entry.details;
         currentId = entry.id || currentId;
         currentKey = entry.key || currentKey;
+        applyCarrierTheme(details.operator);
         const operator = text(details.operator, "—");
         const operatorCode = operator === "—" ? "—" : operator.toUpperCase();
         const carrierName = details.carrierName || (
@@ -134,6 +202,23 @@
         setField("operator", details.operator, "—");
         setField("carrier-code", operatorCode, "—");
         setField("header-train", `${text(details.train, "Train")} ${text(details.trainNumber, "")}`.trim(), "Train");
+        const trainTypeLogo = document.querySelector("[data-live-train-type-logo]");
+        if (trainTypeLogo) {
+            const configuredLogo = String(details.trainTypeLogo || "");
+            const relativeLogoPath = configuredLogo.replace(/^icons[\\/]/, "");
+            const logoPath = configuredLogo.startsWith("data:")
+                ? configuredLogo
+                : relativeLogoPath ? `icons/${relativeLogoPath}` : trainTypeLogoPathFor(details);
+            trainTypeLogo.hidden = !logoPath;
+            if (logoPath) trainTypeLogo.src = logoPath;
+            else trainTypeLogo.removeAttribute("src");
+        }
+        const grappLink = document.querySelector("[data-live-grapp-link]");
+        if (grappLink) {
+            const train = String(details.train ?? "").trim();
+            const trainNumber = String(details.trainNumber ?? "").trim();
+            grappLink.href = `https://mapy.spravazeleznic.cz/vlaky/${train}${trainNumber}`;
+        }
         setField("train", details.train, "Train");
         setField("train-number", details.trainNumber);
         setField("departure-time", details.departureTime);

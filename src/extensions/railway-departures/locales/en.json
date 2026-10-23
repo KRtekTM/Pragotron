@@ -3,7 +3,8 @@
   "description": "Browses railway departure board arrivals/departures in a Salamander file-system panel.",
   "commands": {
     "TabuleSprZel.open": "Open SprŽel Departures Board",
-    "TabuleSprZel.configure": "Configuration"
+    "TabuleSprZel.configure": "Configuration",
+    "TabuleSprZel.favorites": "⭐Favorite Stations"
   },
   "fileSystems": {
     "departures": {
@@ -63,6 +64,6 @@
   "stationKeyLabel": "Key",
   "unnamedStation": "(unnamed)",
   "refreshLabel": "Refresh interval:",
-  "configHint": "Edit the config.json file in the extension folder and restart Salamander.",
+  "configHint": "Edit config.json in the extension folder. Mark a station in urls with \"favorite\": true and restart Salamander.",
   "urlsNotConfigured": "(not configured)"
 }

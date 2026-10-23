@@ -3,7 +3,8 @@
   "description": "Prohlížení příjezdů a odjezdů železničních tabulí v panelu souborového systému Salamandra.",
   "commands": {
     "TabuleSprZel.open": "Otevřít vlakové odjezdy",
-    "TabuleSprZel.configure": "Konfigurace"
+    "TabuleSprZel.configure": "Konfigurace",
+    "TabuleSprZel.favorites": "⭐Oblíbené stanice"
   },
   "fileSystems": {
     "departures": {
@@ -63,6 +64,6 @@
   "stationKeyLabel": "klíč",
   "unnamedStation": "(bez názvu)",
   "refreshLabel": "Interval obnovení:",
-  "configHint": "Upravte soubor config.json ve složce rozšíření a restartujte Salamander.",
+  "configHint": "Upravte soubor config.json ve složce rozšíření. Oblíbenou stanici označte u její položky v urls hodnotou \"favorite\": true a restartujte Salamander.",
   "urlsNotConfigured": "(není nastaveno)"
 }

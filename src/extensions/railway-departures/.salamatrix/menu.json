@@ -3,11 +3,15 @@
   "generatedBy": "SalamatrixStudio",
   "commands": [
     {
-      "handler": "openDepartures",
+      "handler": "open",
       "action": "custom"
     },
     {
       "handler": "configureUrl",
+      "action": "custom"
+    },
+    {
+      "handler": "favorites",
       "action": "custom"
     }
   ]
