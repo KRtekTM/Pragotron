@@ -191,7 +191,7 @@
         const carrierName = details.carrierName || (
             operatorCode === "CD" || operatorCode === "ČD" ? "České dráhy" :
                 operatorCode === "RJ" || operatorCode === "RJET" ? "RegioJet" :
-                    operatorCode === "LE" ? "Leo Express" :
+                    operatorCode === "LE" || operatorCode === "LEO" ? "Leo Express" :
                         operatorCode === "ARR" || operatorCode === "ARV" ? "Arriva vlaky" : "Carrier"
         );
         const delayValue = details.delayMinutes ?? String(details.delay || "").match(/-?\d+/)?.[0] ?? 0;

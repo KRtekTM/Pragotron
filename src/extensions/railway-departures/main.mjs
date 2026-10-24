@@ -447,7 +447,7 @@ function normalizeOperatorIconKey(operator) {
 const CARRIER_PROFILES = Object.freeze([
     { name: "České dráhy", vagonwebCode: "CD", aliases: ["CD", "ČD", "CESKEDRAHY"] },
     { name: "RegioJet", vagonwebCode: "RJ", aliases: ["RJ", "RJET", "REGIOJET"] },
-    { name: "Leo Express", vagonwebCode: "LE", aliases: ["LE", "LEOEXPRESS"] },
+    { name: "Leo Express", vagonwebCode: "LE", aliases: ["LE", "LEO", "LEOEXPRESS"] },
     { name: "Arriva vlaky", vagonwebCode: "ARV", aliases: ["ARR", "ARV", "ARRIVA", "ARRIVAVLAKY"] },
     { name: "AŽD Praha", vagonwebCode: "AŽD", aliases: ["AZD", "AŽD", "AZDPRAHA"] },
     { name: "Die Länderbahn", vagonwebCode: "DLB", aliases: ["DLB", "LANDERBAHN", "DIELANDERBAHN"] },
@@ -521,14 +521,15 @@ const vagonwebCategory = (train) => {
 
 function buildVagonwebUrl(details) {
     const carrier = vagonwebCarrierCode(details.operator);
-    const category = vagonwebCategory(details.train);
+    const category = carrier === "LE" ? "" : vagonwebCategory(details.train);
     const number = String(details.trainNumber || "").trim();
-    if (!carrier || !category || !/^\d+$/.test(number)) return "";
+    if (!carrier || (carrier !== "LE" && !category) || !/^\d+$/.test(number)) return "";
 
     const params = new URLSearchParams({
         zeme: carrier,
         kategorie: category,
         cislo: number,
+        ...(carrier === "LE" ? { nazev: "Leo Express" } : {}),
         rok: String(new Date().getFullYear())
     });
     return `https://www.vagonweb.cz/razeni/vlak.php?${params}`;
