@@ -29,21 +29,23 @@ const ROOT_RUNTIME_FILES = [
 const RUNTIME_DIRECTORIES = ["fonts", "icons", "locales"];
 
 // webview-node contains development sources in bin/source; copy only what the launcher needs.
+// The host shipped in release is the signed binary, under the name the launcher looks up.
+const SIGNED_WEBVIEW_HOST = "node_modules/webview-node/bin/webview2-host_signed.exe";
+const RELEASE_WEBVIEW_HOST = "node_modules/webview-node/bin/webview2-host.exe";
 const WEBVIEW_RUNTIME_FILES = [
     "node_modules/webview-node/package.json",
     "node_modules/webview-node/src/index.js",
     "node_modules/webview-node/src/WebView.js",
     "node_modules/webview-node/src/ipc.js",
-    "node_modules/webview-node/bin/webview2-host.exe",
     "node_modules/webview-node/bin/WebView2Loader.dll"
 ];
 
-const copyFileToRelease = async (relativePath) => {
+const copyFileToRelease = async (relativePath, releaseRelativePath = relativePath) => {
     const source = join(extensionDirectory, relativePath);
-    const destination = join(releaseDirectory, relativePath);
+    const destination = join(releaseDirectory, releaseRelativePath);
     await mkdir(dirname(destination), { recursive: true });
     await copyFile(source, destination);
-    return relativePath;
+    return releaseRelativePath;
 };
 
 const copyDirectoryToRelease = async (relativePath) => {
@@ -74,6 +76,14 @@ for (const relativePath of ROOT_RUNTIME_FILES) {
 }
 for (const relativePath of WEBVIEW_RUNTIME_FILES) {
     copiedFiles.push(await copyFileToRelease(relativePath));
+}
+try {
+    copiedFiles.push(await copyFileToRelease(SIGNED_WEBVIEW_HOST, RELEASE_WEBVIEW_HOST));
+} catch (error) {
+    if (error?.code === "ENOENT") {
+        throw new Error(`Signed WebView2 host not found: ${SIGNED_WEBVIEW_HOST}`, { cause: error });
+    }
+    throw error;
 }
 for (const relativePath of RUNTIME_DIRECTORIES) {
     copiedFiles.push(...await copyDirectoryToRelease(relativePath));

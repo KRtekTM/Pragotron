@@ -9,7 +9,7 @@
 .skut_raz2 { color: rgb(150, 105, 105); }
 .plan_raz2 { color: gray; }
 
-.bunka_vozu:hover { background-color: var(--surface-light); }
+.bunka_vozu:hover { background-color: var(--carrier-surface-light, var(--surface-light)); }
 .vyber_vozu { float: left; width: 160px; height: 30px; margin: 0 10px 10px 0; padding: 5px; }
 .vagonek { margin: 0; padding: 0; height: 65px; vertical-align: bottom; }
 .obrazek_vagonu { vertical-align: bottom; padding-bottom: 3px; }
@@ -131,7 +131,7 @@ h1.translit { font-size: 16pt; font-weight: 400; letter-spacing: 1px; }
 .pop_obrazek_vozu { overflow-x: auto; max-width: 500px; mask-image: linear-gradient(to right, black 0%, black calc(100% - 60px), transparent 100%); }
 .pop_obrazek_vozu img { padding: 10px 0 0; }
 .raz-cislo, .raz-cislo-velke {
-    background-color: var(--surface-light);
+    background-color: var(--carrier-surface-light, var(--surface-light));
     color: var(--ink);
     font-weight: 600;
     padding: 1px;

@@ -1,6 +1,6 @@
 {
   "name": "tabule-sprzel-extension",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "scripts": {
     "prepare:release": "node prepare-release.mjs"

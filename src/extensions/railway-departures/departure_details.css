@@ -103,8 +103,8 @@ body {
     padding: 0;
     width: 100%;
     overflow-x: hidden;
-    background: var(--page);
-    color: var(--ink);
+    background: var(--carrier-page, var(--page));
+    color: var(--carrier-page-text, var(--ink));
     font: 13px/1.15 "Open Sans", sans-serif;
 }
 .card {
@@ -112,7 +112,7 @@ body {
     min-width: 0;
     margin: 0 auto;
     border-radius: 0;
-    background: var(--page);
+    background: var(--carrier-page, var(--page));
 }
 .header {
     position: relative;
@@ -219,7 +219,7 @@ body {
     width: 22px;
     height: 22px;
     place-items: center;
-    color: var(--blue);
+    color: var(--carrier-page-text, var(--blue));
     font-size: 19px;
     font-weight: 600;
     line-height: 1;
@@ -252,7 +252,7 @@ body {
 }
 .field-label, .note-label {
     overflow: visible;
-    color: var(--muted);
+    color: var(--carrier-page-text, var(--muted));
     font-size: 12px;
     font-weight: 600;
     letter-spacing: .06em;
@@ -264,7 +264,7 @@ body {
     overflow: visible;
     min-width: 0;
     margin-top: 7px;
-    color: var(--ink);
+    color: var(--carrier-page-text, var(--ink));
     font-size: 16px;
     font-weight: 600;
     text-overflow: clip;
@@ -330,7 +330,7 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 5px 8px;
     margin-top: 11px;
-    color: var(--muted);
+    color: var(--carrier-page-text, var(--muted));
     font-size: 12px;
     font-weight: 600;
     text-align: center;
@@ -340,7 +340,7 @@ body {
 .station-meta strong {
     display: block;
     margin-top: 3px;
-    color: var(--ink);
+    color: var(--carrier-page-text, var(--ink));
     font-size: 28px;
     font-weight: 800;
     line-height: 1;
@@ -387,7 +387,7 @@ body {
 .route-icon.via { width: 23px; height: 20px; }
 .route-label {
     min-width: 0;
-    color: var(--muted);
+    color: var(--carrier-page-text, var(--muted));
     font-size: 12px;
     font-weight: 600;
     letter-spacing: .06em;
@@ -397,7 +397,7 @@ body {
 .route-line {
     min-height: 30px;
     margin-top: auto;
-    color: var(--ink);
+    color: var(--carrier-page-text, var(--ink));
     font-size: 40px;
     font-weight: 800;
     line-height: 1.05;
@@ -417,7 +417,7 @@ body {
     margin-top: auto;
     display: block;
     overflow: visible;
-    color: var(--ink);
+    color: var(--carrier-page-text, var(--ink));
     font-size: 40px;
     font-weight: 800;
     line-height: 1.05;
@@ -432,7 +432,7 @@ body {
     display: block;
     overflow: visible;
     margin-top: auto;
-    color: var(--ink);
+    color: var(--carrier-page-text, var(--ink));
     font-size: 14px;
     font-weight: 800;
     line-height: 20px;
@@ -448,7 +448,7 @@ body {
     gap: 10px;
     margin-top: 12px;
     padding: 10px 14px;
-    background: var(--surface);
+    background: var(--carrier-surface, var(--surface));
 }
 .note > div { min-width: 0; flex: 1 1 auto; }
 .note .field-icon {
@@ -461,7 +461,7 @@ body {
 }
 .note-label { margin-bottom: 5px; }
 .note-text {
-    color: var(--ink);
+    color: var(--carrier-page-text, var(--ink));
     font-size: 14px;
     font-weight: 600;
     text-transform: uppercase;
@@ -473,7 +473,7 @@ body {
     grid-template-columns: 222px minmax(0, 1fr);
     align-items: stretch;
     margin-top: 16px;
-    background: var(--surface-light);
+    background: var(--carrier-surface-light, var(--surface-light));
 }
 .formation-info {
     display: flex;
@@ -486,7 +486,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--muted);
+    color: var(--carrier-page-text, var(--muted));
     font-size: 12px;
     font-weight: 600;
     letter-spacing: .06em;
@@ -498,7 +498,7 @@ body {
     display: inline-block;
     align-self: flex-start;
     margin: 9px 0 0 33px;
-    color: var(--link);
+    color: var(--carrier-page-text, var(--link));
     font-size: 14px;
     font-weight: 600;
     line-height: 1.35;
@@ -510,12 +510,12 @@ body {
     overflow-x: auto;
     overflow-y: hidden;
     padding: 13px 10px 7px;
-    color: var(--ink);
+    color: var(--carrier-page-text, var(--ink));
     scrollbar-color: #8cb9d7 transparent;
 }
 
-.formation-source a { color: var(--link); }
-.formation-status { padding: 20px; color: var(--muted); }
+.formation-source a { color: var(--carrier-page-text, var(--link)); }
+.formation-status { padding: 20px; color: var(--carrier-page-text, var(--muted)); }
 .is-empty { display: none; }
 .no-underline { text-decoration: none; }
 

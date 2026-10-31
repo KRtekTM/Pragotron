@@ -15,7 +15,11 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; }
 .summary-label { color: #496579; }
 .summary-value { font-weight: 600; }
 .stations-heading { margin: 0; font-size: 15px; font-weight: 600; }
-.station-list { flex: 0 0 360px; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0; padding: 8px 12px 8px 2px; border: 1px solid #b8cad6; border-radius: 5px; background: rgba(255, 255, 255, .68); }
+.station-search { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.station-search span { color: #496579; font-size: 12px; }
+.station-search input { width: 100%; margin: 0; padding: 6px 10px; border: 1px solid #b8cad6; border-radius: 4px; color: inherit; background: rgba(255, 255, 255, .9); font: inherit; }
+.station-search input:focus { outline: 2px solid #287ca5; outline-offset: 1px; }
+.station-list { flex: 1 1 auto; min-height: 120px; overflow-y: auto; overflow-x: hidden; margin: 0; padding: 8px 12px 8px 2px; border: 1px solid #b8cad6; border-radius: 5px; background: rgba(255, 255, 255, .68); }
 .station-list li { list-style: none; padding: 2px 0; line-height: 1.35; }
 .station-row { display: grid; grid-template-columns: 20px 42px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; cursor: pointer; }
 .station-row input { margin: 0; accent-color: #287ca5; }
@@ -36,8 +40,10 @@ button:hover { background: #c9e2ef; }
 }
 @media (prefers-color-scheme: dark) {
     body { color: #e5f1f7; background: #242424; }
-    .summary-label, .station-key, .hint { color: #b3c4cd; }
+    .summary-label, .station-key, .hint, .station-search span { color: #b3c4cd; }
     .station-number { color: #91a8b4; }
+    .station-search input { border-color: #566974; background: rgba(0, 0, 0, .25); }
+    .station-search input:focus { outline-color: #8ec3db; }
     .station-list { border-color: #566974; background: rgba(0, 0, 0, .2); }
     button { border-color: #7895a8; color: #e5f1f7; background: #3d5968; }
     button:hover { background: #4c6d7e; }
@@ -51,7 +57,11 @@ button:hover { background: #c9e2ef; }
   <div class="summary-item"><span class="summary-label">__REFRESH_LABEL__</span><span class="summary-value">__REFRESH_TEXT__</span></div>
 </div>
 <h2 class="stations-heading">__STATIONS_LABEL__</h2>
-  <ul class="station-list">__STATION_ROWS__</ul>
+<label class="station-search">
+    <span>__CONFIG_SEARCH_LABEL__</span>
+    <input id="station-search" type="search" placeholder="__CONFIG_SEARCH_PLACEHOLDER__" autocomplete="off" spellcheck="false" enterkeyhint="search">
+</label>
+<ul class="station-list" id="station-list">__STATION_ROWS__<li class="search-empty" hidden>__CONFIG_SEARCH_EMPTY__</li></ul>
 <div class="footer">
     <p class="hint">__CONFIG_HINT__</p>
     <div class="actions">
@@ -65,6 +75,29 @@ const saveEndpoint = "__PRAGOTRON_SAVE_ENDPOINT__";
 const closeEndpoint = "__PRAGOTRON_CLOSE_ENDPOINT__";
 const status = document.getElementById("status");
 const save = document.getElementById("save");
+const stationSearch = document.getElementById("station-search");
+const stationItems = [...document.querySelectorAll("#station-list > li:not(.search-empty)")];
+const searchEmpty = document.querySelector("#station-list > .search-empty");
+
+const foldStationText = (value) => String(value || "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLocaleLowerCase("cs");
+
+const applyStationFilter = () => {
+    const query = foldStationText(stationSearch.value).trim();
+    let visible = 0;
+    for (const item of stationItems) {
+        const matches = !query || foldStationText(item.textContent).includes(query);
+        item.hidden = !matches;
+        if (matches) visible += 1;
+    }
+    if (searchEmpty) searchEmpty.hidden = !query || visible > 0;
+    if (query) document.getElementById("station-list").scrollTop = 0;
+};
+
+stationSearch.addEventListener("input", applyStationFilter);
+stationSearch.focus();
 
 document.getElementById("close").addEventListener("click", () => {
     fetch(closeEndpoint).catch(() => {});
