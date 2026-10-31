@@ -778,7 +778,7 @@
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=455",
       "name": "Brno hlavní nádraží",
-      "favorite": true
+      "favorite": false
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=459",
@@ -798,12 +798,12 @@
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=461",
       "name": "Brno-Královo Pole",
-      "favorite": true
+      "favorite": false
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=462",
       "name": "Brno-Lesná",
-      "favorite": true
+      "favorite": false
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=466",
@@ -823,7 +823,7 @@
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3006",
       "name": "Brno-Židenice",
-      "favorite": true
+      "favorite": false
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=468",
@@ -5683,7 +5683,7 @@
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=2408",
       "name": "Lipník nad Bečvou",
-      "favorite": true
+      "favorite": false
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=2409",
@@ -8763,7 +8763,7 @@
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3444",
       "name": "Praha hlavní nádraží",
-      "favorite": true
+      "favorite": false
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3449",
@@ -9558,7 +9558,7 @@
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3694",
       "name": "Rosice u Brna",
-      "favorite": true
+      "favorite": false
     },
     {
       "url": "https://provoz.spravazeleznic.cz/tabule/Pages/StationTable.aspx?Key=3697",
