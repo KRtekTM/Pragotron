@@ -16,16 +16,24 @@ h1 { margin: 0; font-size: 20px; font-weight: 600; }
 .summary-value { font-weight: 600; }
 .stations-heading { margin: 0; font-size: 15px; font-weight: 600; }
 .station-list { flex: 0 0 360px; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0; padding: 8px 12px 8px 2px; border: 1px solid #b8cad6; border-radius: 5px; background: rgba(255, 255, 255, .68); }
-.station-list li { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 2px 0; line-height: 1.35; }
+.station-list li { list-style: none; padding: 2px 0; line-height: 1.35; }
+.station-row { display: grid; grid-template-columns: 20px 42px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; cursor: pointer; }
+.station-row input { margin: 0; accent-color: #287ca5; }
 .station-number { color: #668092; text-align: right; font-variant-numeric: tabular-nums; }
 .station-name { min-width: 0; overflow-wrap: anywhere; }
 .station-key { color: #496579; font-size: 12px; white-space: nowrap; }
 .empty { list-style: none; margin-left: -30px; }
 .hint { margin: 0; color: #496579; font-size: 12px; }
-.actions { display: flex; justify-content: flex-end; }
-button { min-width: 88px; padding: 6px 18px; border: 1px solid #7895a8; border-radius: 4px; color: #10283b; background: #dcecf5; font: inherit; cursor: pointer; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; min-width: 0; }
+button { flex: 0 0 auto; min-width: 88px; padding: 6px 18px; border: 1px solid #7895a8; border-radius: 4px; color: #10283b; background: #dcecf5; font: inherit; cursor: pointer; white-space: nowrap; }
 button:hover { background: #c9e2ef; }
-.footer { display: flex; justify-content: space-between; }
+.footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; min-width: 0; }
+.hint { min-width: 0; overflow-wrap: anywhere; }
+.status { grid-column: 1 / -1; min-width: 0; min-height: 1.2em; overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+    .footer { grid-template-columns: minmax(0, 1fr); }
+    .actions { grid-column: 1; justify-content: flex-start; }
+}
 @media (prefers-color-scheme: dark) {
     body { color: #e5f1f7; background: #242424; }
     .summary-label, .station-key, .hint { color: #b3c4cd; }
@@ -43,16 +51,44 @@ button:hover { background: #c9e2ef; }
   <div class="summary-item"><span class="summary-label">__REFRESH_LABEL__</span><span class="summary-value">__REFRESH_TEXT__</span></div>
 </div>
 <h2 class="stations-heading">__STATIONS_LABEL__</h2>
-<ol class="station-list">__STATION_ROWS__</ol>
+  <ul class="station-list">__STATION_ROWS__</ul>
 <div class="footer">
     <p class="hint">__CONFIG_HINT__</p>
     <div class="actions">
-        <button type="button" id="close">OK</button>
+        <button type="button" id="save">__CONFIG_SAVE_LABEL__</button>
+        <button type="button" id="close">__CONFIG_CLOSE_LABEL__</button>
     </div>
+    <span class="status" id="status" role="status"></span>
 </div>
 <script>
+const saveEndpoint = "__PRAGOTRON_SAVE_ENDPOINT__";
+const closeEndpoint = "__PRAGOTRON_CLOSE_ENDPOINT__";
+const status = document.getElementById("status");
+const save = document.getElementById("save");
+
 document.getElementById("close").addEventListener("click", () => {
-    fetch("__PRAGOTRON_CLOSE_ENDPOINT__").catch(() => {});
+    fetch(closeEndpoint).catch(() => {});
+});
+
+save.addEventListener("click", async () => {
+    save.disabled = true;
+    status.textContent = "__CONFIG_SAVING__";
+    try {
+        const favorites = [...document.querySelectorAll("input[name=\"favorite\"]:checked")]
+            .map((input) => input.value);
+        const response = await fetch(saveEndpoint, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ favorites })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || "save failed");
+        status.textContent = "__CONFIG_SAVED__";
+    } catch {
+        status.textContent = "__CONFIG_SAVE_FAILED__";
+    } finally {
+        save.disabled = false;
+    }
 });
 </script>
 </body>

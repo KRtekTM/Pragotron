@@ -87,6 +87,12 @@
   "stationKeyLabel": "Key",
   "unnamedStation": "(unnamed)",
   "refreshLabel": "Refresh interval:",
-  "configHint": "Edit config.json in the extension folder. Mark a station in urls with \"favorite\": true and restart Salamander.",
+  "configHint": "Select favorite stations below. The selection is saved in Salamander storage and overrides config.json favorites.",
+  "favoritesLabel": "Favorite",
+  "saveConfig": "Save",
+  "closeConfig": "Close",
+  "savingConfig": "Saving...",
+  "configSaved": "Configuration saved.",
+  "configSaveFailed": "Configuration could not be saved.",
   "urlsNotConfigured": "(not configured)"
 }

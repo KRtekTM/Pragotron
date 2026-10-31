@@ -87,6 +87,12 @@
   "stationKeyLabel": "klíč",
   "unnamedStation": "(bez názvu)",
   "refreshLabel": "Interval obnovení:",
-  "configHint": "Upravte soubor config.json ve složce rozšíření. Oblíbenou stanici označte u její položky v urls hodnotou \"favorite\": true a restartujte Salamander.",
+  "configHint": "Vyberte oblíbené stanice níže. Výběr se uloží do úložiště Salamanderu a přebije favorites v config.json.",
+  "favoritesLabel": "Oblíbená",
+  "saveConfig": "Uložit",
+  "closeConfig": "Zavřít",
+  "savingConfig": "Ukládání...",
+  "configSaved": "Konfigurace byla uložena.",
+  "configSaveFailed": "Konfiguraci se nepodařilo uložit.",
   "urlsNotConfigured": "(není nastaveno)"
 }

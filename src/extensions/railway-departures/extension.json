@@ -76,6 +76,7 @@
       "iconDark": "icon.svg",
       "spinner": true,
       "listHandler": "listDepartures",
+      "refreshDepth": 2,
       "rootItems": [
         { "id": "_favorites", "name": "_favorites", "icon": "icons/favorites.svg", "iconDark": "icons/favorites-dark.svg" },
         { "id": "A", "name": "A", "icon": "icon.svg", "iconDark": "icon.svg" },

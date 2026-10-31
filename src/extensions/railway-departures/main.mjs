@@ -9,6 +9,7 @@ const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = join(EXTENSION_DIR, "config.json");
 const DEPARTURE_DETAILS_TEMPLATE = join(EXTENSION_DIR, "departure-details.html");
 const DEPARTURE_RUNTIME_DIR = join(tmpdir(), "pragotron-departure-runtime");
+const CONFIG_FALLBACK_FILE = join(DEPARTURE_RUNTIME_DIR, "config.json");
 const DEPARTURE_DETAILS_CACHE_FILE = join(DEPARTURE_RUNTIME_DIR, "details.json");
 const DEPARTURE_LIVE_FEED_FILE = join(DEPARTURE_RUNTIME_DIR, "details-feed.js");
 const DEPARTURE_DETAILS_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "details.html");
@@ -17,9 +18,11 @@ const DEPARTURE_DETAILS_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "details-webv
 const DEPARTURE_DETAILS_LAUNCH_FILE = join(DEPARTURE_RUNTIME_DIR, "details-launch.json");
 const DEPARTURE_FORMATION_CACHE_FILE = join(DEPARTURE_RUNTIME_DIR, "formation-cache.json");
 const FAVORITE_COMMANDS_FILE = join(DEPARTURE_RUNTIME_DIR, "favorite-commands.json");
+const STATION_GROUP_SNAPSHOT_FILE = join(DEPARTURE_RUNTIME_DIR, "station-groups.json");
 const CONFIGURATION_DIALOG_TEMPLATE = join(EXTENSION_DIR, "configuration.html");
 const CONFIGURATION_DIALOG_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "configuration.html");
 const CONFIGURATION_DIALOG_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "configuration-webview-data");
+const FAVORITE_SELECTION_FILE = join(DEPARTURE_RUNTIME_DIR, "favorite-selection.json");
 const CONFIGURATION_DIALOG_LAUNCHER = join(EXTENSION_DIR, "configuration-window.mjs");
 const DEFAULT_REFRESH_MS = 30000;
 const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
@@ -28,6 +31,7 @@ const VAGONWEB_SVG_LIMIT = 256 * 1024;
 
 const SCRAPER_STATE_KEY = "TabuleSprZel.scraperState";
 const CACHE_KEY = "TabuleSprZel.cache";
+const FAVORITE_STATIONS_STORAGE_KEY = "TabuleSprZel.favoriteStations";
 
 const HTML_ENTITIES = Object.freeze({
     amp: "&",
@@ -1096,34 +1100,59 @@ function buildItems(departures, operatorIconFiles = new Set(), stationName = "")
 }
 
 async function readConfigFile() {
-    try {
-        const text = await readFile(CONFIG_FILE, "utf8");
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed.urls)) {
-            return parsed;
-        }
-        if (typeof parsed.url === "string" && parsed.url) {
-            return { urls: [parsed.url], refreshMs: parsed.refreshMs };
-        }
-        return { urls: [], refreshMs: DEFAULT_REFRESH_MS };
-    } catch {
-        return { urls: [], refreshMs: DEFAULT_REFRESH_MS };
+    for (const configPath of [CONFIG_FILE, CONFIG_FALLBACK_FILE]) {
+        try {
+            const text = await readFile(configPath, "utf8");
+            const parsed = JSON.parse(text);
+            if (Array.isArray(parsed.urls)) {
+                return parsed;
+            }
+            if (typeof parsed.url === "string" && parsed.url) {
+                return { urls: [parsed.url], refreshMs: parsed.refreshMs };
+            }
+        } catch { }
     }
+    return { urls: [], refreshMs: DEFAULT_REFRESH_MS };
 }
 
 async function writeConfigFile(config) {
-    try {
-        await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), "utf8");
-    } catch { }
+    const text = JSON.stringify(config, null, 2);
+    for (const configPath of [CONFIG_FILE, CONFIG_FALLBACK_FILE]) {
+        try {
+            await mkdir(dirname(configPath), { recursive: true });
+            const temporaryPath = `${configPath}.${randomUUID()}.tmp`;
+            try {
+                await writeFile(temporaryPath, text, "utf8");
+                try {
+                    await rename(temporaryPath, configPath);
+                } catch (error) {
+                    // Windows does not replace an existing file with rename().
+                    if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
+                    await rm(configPath, { force: true });
+                    await rename(temporaryPath, configPath);
+                }
+            } finally {
+                await rm(temporaryPath, { force: true }).catch(() => { });
+            }
+            if (configPath === CONFIG_FILE) {
+                await rm(CONFIG_FALLBACK_FILE, { force: true }).catch(() => { });
+            }
+            await rm(STATION_GROUP_SNAPSHOT_FILE, { force: true }).catch(() => { });
+            configuredStationsSnapshot = null;
+            configuredStationsPromise = null;
+            stationGroupsSnapshot = null;
+            return true;
+        } catch { }
+    }
+    return false;
 }
 
-async function getConfiguredUrls() {
-    return (await getConfiguredStations()).map((station) => station.url);
-}
+let configuredStationsSnapshot = null;
+let configuredStationsPromise = null;
+let stationGroupsSnapshot = null;
 
-async function getConfiguredStations() {
-    const config = await readConfigFile();
-    if (!Array.isArray(config.urls)) return [];
+const configuredStationsForConfig = (config) => {
+    if (!Array.isArray(config?.urls)) return [];
     return config.urls
         .map((entry) => {
             if (typeof entry === "string") {
@@ -1135,7 +1164,44 @@ async function getConfiguredStations() {
                 favorite: entry?.favorite === true
             };
         })
-        .filter((entry) => entry.url);
+        .filter((entry) => entry.url)
+        .map((entry) => Object.freeze(entry));
+};
+
+async function getConfiguredUrls() {
+    return (await getConfiguredStations()).map((station) => station.url);
+}
+
+async function getConfiguredStations() {
+    if (configuredStationsSnapshot) return configuredStationsSnapshot;
+    if (!configuredStationsPromise) {
+        configuredStationsPromise = readConfigFile().then(async (config) => {
+            const stations = configuredStationsForConfig(config);
+            const storedFavorites = await readStoredFavoriteUrls();
+            if (!storedFavorites) return stations;
+            return Object.freeze(stations.map((station) => Object.freeze({
+                ...station,
+                favorite: storedFavorites.has(station.url)
+            })));
+        }).then((stations) => {
+            configuredStationsSnapshot = Object.freeze(stations);
+            stationGroupsSnapshot = stationGroupSnapshotFor(configuredStationsSnapshot);
+            return configuredStationsSnapshot;
+        });
+    }
+    return configuredStationsPromise;
+}
+
+async function readStoredFavoriteUrls() {
+    try {
+        const raw = await Salamander.storage.get(FAVORITE_STATIONS_STORAGE_KEY, "");
+        if (typeof raw !== "string" || !raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || parsed.some((url) => typeof url !== "string")) return null;
+        return new Set(parsed.map((url) => url.trim()).filter(Boolean));
+    } catch {
+        return null;
+    }
 }
 
 const MAX_FAVORITE_COMMANDS = 32;
@@ -1176,6 +1242,132 @@ const stationPathFor = (station) => [
     stationIdFor(station)
 ].join("/");
 
+const stationSortKeyFor = (station) =>
+    `${normalizeId(stationNameFor(station)) || "station"}-${normalizeId(stationKeyFor(station))}`;
+
+const stationItemFor = (station) => Object.freeze({
+    id: stationIdFor(station),
+    name: stationNameFor(station),
+    directory: true,
+    enabled: true,
+    icon: "icon.svg",
+    iconDark: "icon.svg"
+});
+
+const stationGroupSnapshotFor = (configuredStations, preparedItemsByGroupId = null) => {
+    const groups = new Map(STATION_GROUP_LABELS.map((label) => [label, {
+        id: stationGroupIdFor(label),
+        label,
+        stations: [],
+        favorite: false
+    }]));
+    groups.set("_favorites", {
+        id: "_favorites",
+        label: "_favorites",
+        stations: configuredStations.filter((station) => station.favorite === true),
+        favorite: true
+    });
+
+    for (const station of configuredStations) {
+        groups.get(stationGroupLabelFor(station)).stations.push(station);
+    }
+    for (const group of groups.values()) {
+        group.stations.sort((a, b) => stationSortKeyFor(a).localeCompare(stationSortKeyFor(b), "cs"));
+        Object.freeze(group.stations);
+        Object.freeze(group);
+    }
+
+    const groupsById = new Map(
+        [...groups.values()].flatMap((group) => [
+            [group.id, group],
+            ...(STATION_GROUP_LABELS.includes(group.label)
+                ? [[legacyStationGroupIdFor(group.label), group]]
+                : [])
+        ])
+    );
+    const itemsByGroupId = new Map(
+        [...groups.values()].map((group) => [
+            group.id,
+            Object.freeze(preparedItemsByGroupId?.get(group.id)
+                || group.stations.map(stationItemFor))
+        ])
+    );
+
+    return Object.freeze({ groupsById, itemsByGroupId });
+};
+
+const savePreparedStationGroupSnapshot = async (configuredStations) => {
+    const snapshot = stationGroupsSnapshot || stationGroupSnapshotFor(configuredStations);
+    const temporaryPath = `${STATION_GROUP_SNAPSHOT_FILE}.${randomUUID()}.tmp`;
+    try {
+        await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true });
+        await writeFile(temporaryPath, JSON.stringify({
+            version: 1,
+            stations: configuredStations.map(({ url, name, favorite }) => ({ url, name, favorite })),
+            itemsByGroupId: Object.fromEntries(snapshot.itemsByGroupId)
+        }), "utf8");
+        await rename(temporaryPath, STATION_GROUP_SNAPSHOT_FILE);
+    } catch {
+        await rm(temporaryPath, { force: true }).catch(() => { });
+    }
+};
+
+const loadPreparedStationGroupSnapshot = async () => {
+    if (configuredStationsSnapshot) return configuredStationsSnapshot;
+    try {
+        const prepared = JSON.parse(await readFile(STATION_GROUP_SNAPSHOT_FILE, "utf8"));
+        if (
+            prepared?.version !== 1
+            || !Array.isArray(prepared.stations)
+            || !prepared.itemsByGroupId
+            || typeof prepared.itemsByGroupId !== "object"
+        ) return null;
+        let configuredStations = configuredStationsForConfig({ urls: prepared.stations });
+        if (configuredStations.length !== prepared.stations.length) return null;
+        const storedFavorites = await readStoredFavoriteUrls();
+        if (storedFavorites) {
+            configuredStations = Object.freeze(configuredStations.map((station) => Object.freeze({
+                ...station,
+                favorite: storedFavorites.has(station.url)
+            })));
+        }
+
+        const preparedItemsByGroupId = new Map();
+        for (const [groupId, items] of Object.entries(prepared.itemsByGroupId || {})) {
+            if (!Array.isArray(items)) return null;
+            const normalizedItems = items.map((item) => {
+                if (
+                    !item
+                    || typeof item !== "object"
+                    || typeof item.id !== "string"
+                    || typeof item.name !== "string"
+                    || item.directory !== true
+                ) return null;
+                return Object.freeze({
+                    id: item.id,
+                    name: item.name,
+                    directory: true,
+                    enabled: item.enabled !== false,
+                    icon: typeof item.icon === "string" ? item.icon : "icon.svg",
+                    iconDark: typeof item.iconDark === "string" ? item.iconDark : "icon.svg"
+                });
+            });
+            if (normalizedItems.some((item) => !item)) return null;
+            preparedItemsByGroupId.set(groupId, Object.freeze(normalizedItems));
+        }
+
+        configuredStationsSnapshot = Object.freeze(configuredStations);
+        stationGroupsSnapshot = stationGroupSnapshotFor(
+            configuredStationsSnapshot,
+            preparedItemsByGroupId
+        );
+        configuredStationsPromise = Promise.resolve(configuredStationsSnapshot);
+        return configuredStationsSnapshot;
+    } catch {
+        return null;
+    }
+};
+
 const getConfiguredFavorites = async (configuredStations = null) => {
     const stations = configuredStations || await getConfiguredStations();
     return stations.filter((station) => station.favorite === true).slice(0, MAX_FAVORITE_COMMANDS);
@@ -1196,7 +1388,7 @@ const readFavoriteCommandIds = async () => {
     }
 };
 
-const syncFavoriteCommands = async (configuredStations) => {
+const syncFavoriteCommandsNow = async (configuredStations) => {
     const commands = Salamander.commands;
     if (!commands || typeof commands.register !== "function") return false;
 
@@ -1231,6 +1423,51 @@ const syncFavoriteCommands = async (configuredStations) => {
     }
 
     await writeFile(FAVORITE_COMMANDS_FILE, JSON.stringify(commandIds), "utf8").catch(() => { });
+    return true;
+};
+
+let favoriteCommandsPromise = Promise.resolve();
+const syncFavoriteCommands = (configuredStations) => {
+    const update = favoriteCommandsPromise
+        .catch(() => { })
+        .then(() => syncFavoriteCommandsNow(configuredStations));
+    favoriteCommandsPromise = update;
+    return update;
+};
+
+const commitFavoriteSelection = async () => {
+    let parsed;
+    try {
+        parsed = JSON.parse(await readFile(FAVORITE_SELECTION_FILE, "utf8"));
+    } catch {
+        return false;
+    }
+    if (
+        parsed?.version !== 1
+        || !Array.isArray(parsed.favorites)
+        || parsed.favorites.some((url) => typeof url !== "string")
+    ) return false;
+
+    const favorites = [...new Set(parsed.favorites.map((url) => url.trim()).filter(Boolean))];
+    const stored = await Salamander.storage.set(
+        FAVORITE_STATIONS_STORAGE_KEY,
+        JSON.stringify(favorites)
+    );
+    if (stored === false) return false;
+    const confirmedFavorites = await readStoredFavoriteUrls();
+    if (
+        !confirmedFavorites
+        || confirmedFavorites.size !== favorites.length
+        || favorites.some((url) => !confirmedFavorites.has(url))
+    ) return false;
+
+    await rm(FAVORITE_SELECTION_FILE, { force: true }).catch(() => { });
+    await rm(STATION_GROUP_SNAPSHOT_FILE, { force: true }).catch(() => { });
+    configuredStationsSnapshot = null;
+    configuredStationsPromise = null;
+    stationGroupsSnapshot = null;
+    const configuredStations = await getConfiguredStations();
+    await savePreparedStationGroupSnapshot(configuredStations);
     return true;
 };
 
@@ -1301,7 +1538,13 @@ async function getStringsAsync(locale = "en") {
         stationKeyLabel: "Key",
         unnamedStation: "(unnamed)",
         refreshLabel: "Refresh interval:",
-        configHint: "Edit config.json in the extension folder. Mark a station in urls with \"favorite\": true and restart Salamander.",
+        configHint: "Select favorite stations below. The selection is saved in Salamander storage and overrides config.json favorites.",
+        favoritesLabel: "Favorite",
+        saveConfig: "Save",
+        closeConfig: "Close",
+        savingConfig: "Saving...",
+        configSaved: "Configuration saved.",
+        configSaveFailed: "Configuration could not be saved.",
         urlsNotConfigured: "(not configured)",
         errorInvalidUrl: "No board URLs configured. Use Configure URL.",
         errorFetch: "Failed to fetch departures from URL",
@@ -1337,6 +1580,7 @@ async function handleConfigureUrl(strings) {
     }
 
     const config = await readConfigFile();
+    await loadPreparedStationGroupSnapshot();
     const currentStations = await getConfiguredStations();
     const configuredRefresh = Number(config.refreshMs);
     const currentRefresh = Number.isFinite(configuredRefresh) && configuredRefresh > 0
@@ -1354,21 +1598,22 @@ async function handleConfigureUrl(strings) {
                 ? `${strings.stationKeyLabel || "Key"}=${stationKey}`
                 : url;
             const number = String(index + 1).padStart(stationNumberWidth, "0");
-            return { number, name: displayName, identifier };
+            return { number, name: displayName, url, favorite: favorite === true, identifier };
         });
     const stationsText = stationRows.length
         ? stationRows.map(({ number, name, identifier }) => `${number}. ${name} (${identifier})`).join("\n  ")
         : strings.urlsNotConfigured || "(not configured)";
     const title = strings.settingsTitle || "Tabule SprŽel Settings";
-    const fallbackText = `${strings.configTitle || "Configuration"}\n\n${strings.stationsCountLabel || "Configured stations:"} ${currentStations.length}\n${strings.refreshLabel || "Refresh interval:"} ${refreshText}\n\n${strings.stationsLabel || "Stations:"}\n  ${stationsText}\n\n${strings.configHint || "Edit the config.json file in the extension folder and restart Salamander."}`;
+    const fallbackText = `${strings.configTitle || "Configuration"}\n\n${strings.stationsCountLabel || "Configured stations:"} ${currentStations.length}\n${strings.refreshLabel || "Refresh interval:"} ${refreshText}\n\n${strings.stationsLabel || "Stations:"}\n  ${stationsText}\n\n${strings.configHint || "Select favorite stations in the configuration dialog."}`;
 
+    let dialogStarted = false;
     try {
         await access(join(EXTENSION_DIR, "node_modules", "webview-node", "bin", "webview2-host.exe"));
         await access(CONFIGURATION_DIALOG_LAUNCHER);
         const configurationTemplate = await readFile(CONFIGURATION_DIALOG_TEMPLATE, "utf8");
         await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true });
         const listHtml = stationRows.length
-            ? stationRows.map(({ number, name, identifier }) => `<li><span class="station-number">${escapeHtml(number)}.</span><span class="station-name">${escapeHtml(name)}</span><span class="station-key">${escapeHtml(identifier)}</span></li>`).join("")
+            ? stationRows.map(({ number, name, url, favorite, identifier }) => `<li><label class="station-row"><input type="checkbox" name="favorite" value="${escapeHtml(url)}" aria-label="${escapeHtml(strings.favoritesLabel || "Favorite")} ${escapeHtml(name)}"${favorite ? " checked" : ""}><span class="station-number">${escapeHtml(number)}.</span><span class="station-name">${escapeHtml(name)}</span><span class="station-key">${escapeHtml(identifier)}</span></label></li>`).join("")
             : `<li class="empty">${escapeHtml(strings.urlsNotConfigured || "(not configured)")}</li>`;
         const configHtml = Object.entries({
             "__CONFIG_LANGUAGE__": escapeHtml(strings.detailPageLanguage || "en"),
@@ -1378,40 +1623,85 @@ async function handleConfigureUrl(strings) {
             "__REFRESH_LABEL__": escapeHtml(strings.refreshLabel || "Refresh interval:"),
             "__REFRESH_TEXT__": escapeHtml(refreshText),
             "__STATIONS_LABEL__": escapeHtml(strings.stationsLabel || "Stations:"),
+            "__FAVORITES_LABEL__": escapeHtml(strings.favoritesLabel || "Favorite"),
             "__STATION_ROWS__": listHtml,
-            "__CONFIG_HINT__": escapeHtml(strings.configHint || "Edit the config.json file in the extension folder and restart Salamander.")
+            "__CONFIG_HINT__": escapeHtml(strings.configHint || "Select favorite stations in the configuration dialog."),
+            "__CONFIG_SAVE_LABEL__": escapeHtml(strings.saveConfig || "Save"),
+            "__CONFIG_CLOSE_LABEL__": escapeHtml(strings.closeConfig || "Close"),
+            "__CONFIG_SAVING__": escapeHtml(strings.savingConfig || "Saving..."),
+            "__CONFIG_SAVED__": escapeHtml(strings.configSaved || "Configuration saved."),
+            "__CONFIG_SAVE_FAILED__": escapeHtml(strings.configSaveFailed || "Configuration could not be saved.")
         }).reduce((html, [placeholder, value]) => html.replaceAll(placeholder, String(value)), configurationTemplate);
         await writeFile(CONFIGURATION_DIALOG_HTML_FILE, configHtml, "utf8");
         await rm(CONFIGURATION_DIALOG_WEBVIEW_DATA, { recursive: true, force: true }).catch(() => { });
+        await rm(FAVORITE_SELECTION_FILE, { force: true }).catch(() => { });
         const child = spawn(process.execPath, [
-            CONFIGURATION_DIALOG_LAUNCHER,
-            CONFIGURATION_DIALOG_HTML_FILE,
-            title,
-            CONFIGURATION_DIALOG_WEBVIEW_DATA
+                CONFIGURATION_DIALOG_LAUNCHER,
+                CONFIGURATION_DIALOG_HTML_FILE,
+                title,
+                CONFIGURATION_DIALOG_WEBVIEW_DATA,
+                FAVORITE_SELECTION_FILE
         ], {
-            detached: true,
+            detached: false,
             windowsHide: true,
             stdio: "ignore"
         });
-        await new Promise((resolve, reject) => {
-            const onSpawn = () => {
+        const dialogResult = await new Promise((resolve, reject) => {
+            let spawned = false;
+            let settled = false;
+            const finish = (callback, value) => {
+                if (settled) return;
+                settled = true;
+                child.removeListener("spawn", onSpawn);
                 child.removeListener("error", onError);
-                resolve();
+                child.removeListener("exit", onExit);
+                callback(value);
+            };
+            const onSpawn = () => {
+                spawned = true;
+                dialogStarted = true;
             };
             const onError = (error) => {
-                child.removeListener("spawn", onSpawn);
-                reject(error);
+                if (!spawned) {
+                    finish(reject, error);
+                } else {
+                    finish(resolve, { error });
+                }
+            };
+            const onExit = (code, signal) => {
+                if (!spawned) {
+                    finish(reject, new Error("The configuration dialog exited before it started."));
+                } else {
+                    finish(resolve, { code, signal });
+                }
             };
             child.once("spawn", onSpawn);
             child.once("error", onError);
+            child.once("exit", onExit);
         });
-        child.unref();
+        if (dialogResult?.error || dialogResult?.code !== 0) {
+            try {
+                console.error(`[TabuleSprZel] configuration dialog exited with ${dialogResult?.error?.message || dialogResult?.signal || `code ${dialogResult?.code}`}`);
+            } catch { }
+        }
+        try {
+            if (!(await commitFavoriteSelection())) {
+                try {
+                    console.error("[TabuleSprZel] configuration selection was not committed");
+                } catch { }
+            }
+        } catch (error) {
+            // The dialog already completed; do not reopen the legacy fallback UI.
+            try {
+                console.error(`[TabuleSprZel] failed to commit configuration: ${error instanceof Error ? error.message : String(error)}`);
+            } catch { }
+        }
         return;
     } catch (error) {
         try {
-            console.error(`[TabuleSprZel] configuration dialog fallback: ${error instanceof Error ? error.message : String(error)}`);
+            console.error(`[TabuleSprZel] configuration dialog${dialogStarted ? " process" : " startup"} failed: ${error instanceof Error ? error.message : String(error)}`);
         } catch { }
-        await Salamander.ui.messageBox(fallbackText, title, "OK", "Information");
+        if (!dialogStarted) await Salamander.ui.messageBox(fallbackText, title, "OK", "Information");
     }
 }
 
@@ -1825,6 +2115,7 @@ async function handleListDepartures() {
             return;
         }
 
+        await loadPreparedStationGroupSnapshot();
         const configuredStations = await getConfiguredStations();
         if (!configuredStations.length) {
             strings = await getStringsAsync(await detectLocale());
@@ -1859,44 +2150,9 @@ async function handleListDepartures() {
                 ? `station-${normalizeId(stationNameFor(s))}!station-${normalizeId(stationKey)}`
                 : "";
         };
-        const stationSortKeyFor = (s) =>
-            `${normalizeId(stationNameFor(s)) || "station"}-${normalizeId(s.stationKey || deriveStationKeyFromUrl(s.url))}`;
-        const favoriteStations = configuredStations.filter((station) => station.favorite === true);
-        const stationItemFor = (s) => ({
-            id: stationIdFor(s),
-            name: stationNameFor(s),
-            directory: true,
-            enabled: true,
-            icon: "icon.svg",
-            iconDark: "icon.svg"
-        });
-        const stationGroups = new Map(STATION_GROUP_LABELS.map((label) => [label, {
-            id: stationGroupIdFor(label),
-            label,
-            stations: [],
-            favorite: false
-        }]));
-        stationGroups.set(FAVORITES_GROUP_ID, {
-            id: FAVORITES_GROUP_ID,
-            label: FAVORITES_GROUP_ID,
-            stations: favoriteStations,
-            favorite: true
-        });
-        for (const station of configuredStations) {
-            stationGroups.get(stationGroupLabelFor(station)).stations.push(station);
-        }
-        for (const group of stationGroups.values()) {
-            group.stations.sort((a, b) => stationSortKeyFor(a).localeCompare(stationSortKeyFor(b), "cs"));
-        }
-        const stationGroupsById = new Map(
-            [...stationGroups.values()].flatMap((group) => [
-                [group.id, group],
-                ...(STATION_GROUP_LABELS.includes(group.label)
-                    ? [[legacyStationGroupIdFor(group.label), group]]
-                    : [])
-            ])
-        );
-        const itemsForStationGroup = (group) => group.stations.map(stationItemFor);
+        const stationSnapshot = stationGroupsSnapshot || stationGroupSnapshotFor(configuredStations);
+        const stationGroupsById = stationSnapshot.groupsById;
+        const itemsForStationGroup = (group) => stationSnapshot.itemsByGroupId.get(group.id) || [];
         // Determine what view we're in: a station group or a specific station.
         let activeStation = null;
 
@@ -2379,8 +2635,12 @@ async function handleViewDeparture() {
 
 const handler = Salamander.commandHandler || Salamander.command_handler;
 
-if (!handler) await subscribeToStartup();
-await syncFavoriteCommands(await getConfiguredStations());
+if (!handler) {
+    await subscribeToStartup();
+    const configuredStations = await getConfiguredStations();
+    await savePreparedStationGroupSnapshot(configuredStations);
+    await syncFavoriteCommands(configuredStations);
+}
 
 if (handler === "viewDeparture" || handler === "configureUrl" || handler === "configure") {
     stopScraper();

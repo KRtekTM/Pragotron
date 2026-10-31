@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const extensionDirectory = dirname(fileURLToPath(import.meta.url));
-const [htmlPath, title, webviewDataFolder] = process.argv.slice(2);
+const [htmlPath, title, webviewDataFolder, favoriteSelectionPath] = process.argv.slice(2);
 const closeToken = randomUUID();
+const saveToken = randomUUID();
 let closeServer = null;
 let window = null;
 let allowWindowClose = true;
@@ -30,14 +31,75 @@ const startCloseServer = () => new Promise((resolve, reject) => {
     const server = createServer((request, response) => {
         try {
             const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
-            const authorized = requestUrl.searchParams.get("token") === closeToken;
-            if (request.method !== "GET" || requestUrl.pathname !== "/close" || !authorized) {
+            const isClose = request.method === "GET" && requestUrl.pathname === "/close";
+            const isSave = request.method === "POST" && requestUrl.pathname === "/save";
+            const isPreflight = request.method === "OPTIONS"
+                && (requestUrl.pathname === "/close" || requestUrl.pathname === "/save");
+            if (isPreflight) {
+                response.writeHead(204, {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "content-type"
+                });
+                response.end();
+                return;
+            }
+            const authorized = (isClose && requestUrl.searchParams.get("token") === closeToken)
+                || (isSave && requestUrl.searchParams.get("token") === saveToken);
+            if (!authorized) {
                 response.writeHead(404);
                 response.end();
                 return;
             }
+
+            if (isSave) {
+                const chunks = [];
+                let size = 0;
+                request.on("data", (chunk) => {
+                    size += chunk.length;
+                    if (size <= 4 * 1024 * 1024) chunks.push(chunk);
+                });
+                request.on("end", async () => {
+                    try {
+                        if (size > 4 * 1024 * 1024) throw new Error("The configuration update is too large.");
+                        const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+                        const favorites = [...new Set(
+                            Array.isArray(body?.favorites)
+                                ? body.favorites.filter((url) => typeof url === "string" && url.trim())
+                                    .map((url) => url.trim())
+                                : []
+                        )];
+                        await writeSelectionAtomically(favoriteSelectionPath, {
+                            version: 1,
+                            favorites
+                        });
+                        response.writeHead(200, {
+                            "content-type": "application/json; charset=utf-8",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                            "Access-Control-Allow-Headers": "content-type"
+                        });
+                        response.end(JSON.stringify({ ok: true }));
+                    } catch (error) {
+                        response.writeHead(400, {
+                            "content-type": "application/json; charset=utf-8",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                            "Access-Control-Allow-Headers": "content-type"
+                        });
+                        response.end(JSON.stringify({
+                            ok: false,
+                            error: error instanceof Error ? error.message : String(error)
+                        }));
+                    }
+                });
+                return;
+            }
+
             response.writeHead(204, {
-                "Access-Control-Allow-Origin": "*"
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "content-type"
             });
             response.end();
             allowWindowClose = true;
@@ -59,11 +121,33 @@ const startCloseServer = () => new Promise((resolve, reject) => {
         const updatedHtml = currentHtml.replaceAll(
             "__PRAGOTRON_CLOSE_ENDPOINT__",
             `http://127.0.0.1:${address.port}/close?token=${encodeURIComponent(closeToken)}`
+        ).replaceAll(
+            "__PRAGOTRON_SAVE_ENDPOINT__",
+            `http://127.0.0.1:${address.port}/save?token=${encodeURIComponent(saveToken)}`
         );
         if (updatedHtml !== currentHtml) await writeFile(htmlPath, updatedHtml, "utf8");
         resolve();
     });
 });
+
+const writeSelectionAtomically = async (path, selection) => {
+    if (!path) throw new Error("No writable configuration path is available.");
+    await mkdir(dirname(path), { recursive: true });
+    const temporaryPath = `${path}.${randomUUID()}.tmp`;
+    try {
+        await writeFile(temporaryPath, JSON.stringify(selection), "utf8");
+        try {
+            await rename(temporaryPath, path);
+        } catch (error) {
+            // Windows does not replace an existing file with rename().
+            if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
+            await rm(path, { force: true });
+            await rename(temporaryPath, path);
+        }
+    } finally {
+        await rm(temporaryPath, { force: true }).catch(() => { });
+    }
+};
 
 try {
     if (!htmlPath || !title) throw new Error("The configuration WebView launcher received incomplete arguments.");
