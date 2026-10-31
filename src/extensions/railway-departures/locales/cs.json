@@ -51,7 +51,8 @@
         "note": { "name": "Poznámka", "description": "Poznámka k odjezdu" }
       },
       "actions": {
-        "viewDeparture": "Zobrazit detaily odjezdu"
+        "viewDeparture": "Zobrazit detaily odjezdu",
+        "viewStationBoard": "Zobrazit odjezdy stanice"
       }
     }
   },
@@ -90,7 +91,7 @@
   "stationKeyLabel": "klíč",
   "unnamedStation": "(bez názvu)",
   "refreshLabel": "Interval obnovení:",
-  "configHint": "Vyberte oblíbené stanice výše. Výběr se uloží do úložiště Salamanderu a přebije favorites v config.json.",
+  "configHint": "Vyberte oblíbené stanice výše. Výběr se uloží do úložiště Salamanderu a přebije favorites v config.json. Menu na liště extension ten seznam načte při spuštění Salamanderu.",
   "favoritesLabel": "Oblíbená",
   "saveConfig": "Uložit",
   "closeConfig": "Zavřít",

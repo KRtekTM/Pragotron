@@ -97,6 +97,7 @@
 * { box-sizing: border-box; }
 html {
     min-height: 100%;
+    scrollbar-color: var(--carrier-background, var(--blue)) var(--carrier-page, var(--page));
 }
 body {
     margin: 0;
@@ -106,6 +107,7 @@ body {
     background: var(--carrier-page, var(--page));
     color: var(--carrier-page-text, var(--ink));
     font: 13px/1.15 "Open Sans", sans-serif;
+    scrollbar-color: var(--carrier-background, var(--blue)) var(--carrier-page, var(--page));
 }
 .card {
     width: 100%;
@@ -511,7 +513,7 @@ body {
     overflow-y: hidden;
     padding: 13px 10px 7px;
     color: var(--carrier-page-text, var(--ink));
-    scrollbar-color: #8cb9d7 transparent;
+    scrollbar-color: var(--carrier-background, var(--blue)) transparent;
 }
 
 .formation-source a { color: var(--carrier-page-text, var(--link)); }

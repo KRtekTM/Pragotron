@@ -1,10 +1,19 @@
-import { watch } from "node:fs";
 import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import {
+    cleanText,
+    decodeHtml,
+    deriveStationKeyFromUrl,
+    fetchStationTable,
+    formatActualDepartureWithDate,
+    getEffectiveDepartureDate,
+    resolveProfileTrainType,
+    trainTypeLogoPathFor
+} from "./station-table.mjs";
 
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = join(EXTENSION_DIR, "config.json");
@@ -18,13 +27,16 @@ const DEPARTURE_DETAILS_STATE_FILE = join(DEPARTURE_RUNTIME_DIR, "details-window
 const DEPARTURE_DETAILS_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "details-webview-data");
 const DEPARTURE_DETAILS_LAUNCH_FILE = join(DEPARTURE_RUNTIME_DIR, "details-launch.json");
 const DEPARTURE_FORMATION_CACHE_FILE = join(DEPARTURE_RUNTIME_DIR, "formation-cache.json");
-const FAVORITE_COMMANDS_FILE = join(DEPARTURE_RUNTIME_DIR, "favorite-commands.json");
 const STATION_GROUP_SNAPSHOT_FILE = join(DEPARTURE_RUNTIME_DIR, "station-groups.json");
 const CONFIGURATION_DIALOG_TEMPLATE = join(EXTENSION_DIR, "configuration.html");
 const CONFIGURATION_DIALOG_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "configuration.html");
 const CONFIGURATION_DIALOG_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "configuration-webview-data");
 const FAVORITE_SELECTION_FILE = join(DEPARTURE_RUNTIME_DIR, "favorite-selection.json");
 const CONFIGURATION_DIALOG_LAUNCHER = join(EXTENSION_DIR, "configuration-window.mjs");
+const STATION_DEPARTURES_STATE_FILE = join(DEPARTURE_RUNTIME_DIR, "station-departures-window.json");
+const STATION_DEPARTURES_LAUNCH_FILE = join(DEPARTURE_RUNTIME_DIR, "station-departures-launch.json");
+const STATION_DEPARTURES_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "station-departures-webview-data");
+const STATION_DEPARTURES_LAUNCHER = join(EXTENSION_DIR, "station-departures-window.mjs");
 const DEFAULT_REFRESH_MS = 30000;
 const VAGONWEB_FETCH_TIMEOUT_MS = 10000;
 const VAGONWEB_HTML_LIMIT = 8 * 1024 * 1024;
@@ -33,302 +45,6 @@ const VAGONWEB_SVG_LIMIT = 256 * 1024;
 const SCRAPER_STATE_KEY = "TabuleSprZel.scraperState";
 const CACHE_KEY = "TabuleSprZel.cache";
 const FAVORITE_STATIONS_STORAGE_KEY = "TabuleSprZel.favoriteStations";
-
-const HTML_ENTITIES = Object.freeze({
-    amp: "&",
-    apos: "'",
-    gt: ">",
-    lt: "<",
-    nbsp: " ",
-    quot: '"'
-});
-
-const decodeHtml = (value) => String(value ?? "")
-    .replace(
-        /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,
-        (entity, reference) => {
-            const normalized = reference.toLowerCase();
-            if (normalized.startsWith("#x")) {
-                return String.fromCodePoint(Number.parseInt(normalized.slice(2), 16));
-            }
-            if (normalized.startsWith("#")) {
-                return String.fromCodePoint(Number.parseInt(normalized.slice(1), 10));
-            }
-            return HTML_ENTITIES[normalized] || entity;
-        }
-    );
-
-const cleanText = (value) => decodeHtml(value)
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<\/(?:div|p|li|span|td|th)>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const extractCells = (rowHtml) => [
-    ...String(rowHtml).matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)
-].map((match) => match[1]);
-
-const extractDivTexts = (cellHtml) => [
-    ...String(cellHtml).matchAll(/<div\b[^>]*>([\s\S]*?)<\/div>/gi)
-]
-    .map((match) => cleanText(match[1]))
-    .filter(Boolean);
-
-const CLOCK_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
-
-const parseClock = (value) => {
-    const text = cleanText(value);
-    const match = text.match(CLOCK_PATTERN);
-    return match
-        ? { hours: Number(match[1]), minutes: Number(match[2]) }
-        : null;
-};
-
-const clockToMinutes = (time) => time.hours * 60 + time.minutes;
-
-const calculateDelay = (scheduled, actual) => {
-    if (!actual) return 0;
-    let delay = clockToMinutes(actual) - clockToMinutes(scheduled);
-    if (delay < 0) delay += 24 * 60;
-    return delay > 12 * 60 ? 0 : delay;
-};
-
-const isTrainTypeBoundary = (value, index) =>
-    index >= value.length
-    || /\s/.test(value[index])
-    || /\d/.test(value[index]);
-
-const SOURCE_TRAIN_TYPES = Object.freeze([
-    "Mim. Os", "Mim. R", "ČEDOK", "Eurocity", "Intercity", "Supercity",
-    "Nightjet", "Nightjet", "EuroNight",
-    "Railjet", "Railjet", "RegioJet", "RegioJet", "Ex", "rj", "RJ",
-    "EC", "IC", "EN", "NJ", "nj", "SC", "sc", "Os", "Sp", "R"
-]);
-
-const profileTrainLabels = () => SOURCE_TRAIN_TYPES;
-
-const resolveProfileTrainType = (sourceType, operator) => {
-    const op = String(operator ?? "").toLocaleLowerCase("cs-CZ");
-    const st = String(sourceType ?? "").trim();
-    if (/^rj$/i.test(st)) {
-        if (op.includes("regiojet")) return "RegioJet";
-        if (op.includes("čd") || op.includes("ceske drahy")) return "Railjet";
-        return st;
-    }
-    else if (/^nj$/i.test(st)) {
-        return "Nightjet";
-    }
-    return st;
-};
-
-const trainTypeLogoPathFor = (train, operator, resolvedTrainType = "") => {
-    const source = String(train ?? "").trim().toLocaleLowerCase("cs-CZ");
-    const resolved = String(resolvedTrainType || train || "").trim().toLocaleLowerCase("cs-CZ");
-    if (resolved === "regiojet") return "";
-    if (resolved === "railjet") return "train-types/railjet.svg";
-    if (source === "nj" || resolved === "nightjet") return "train-types/nightjet.svg";
-    return {
-        ic: "train-types/intercity.svg",
-        ec: "train-types/eurocity.svg",
-        sc: "train-types/supercity.svg",
-        en: "train-types/euronight.svg"
-    }[source] || "";
-};
-
-const findSourceTrainType = (value) => {
-    const normalized = String(value ?? "").trim();
-    if (!normalized) return "";
-    const lower = normalized.toLocaleLowerCase("cs-CZ");
-    let matchedLength = 0;
-    const candidates = [...profileTrainLabels(), ...SOURCE_TRAIN_TYPES];
-    candidates.forEach((candidate) => {
-        const candidateLower = candidate.toLocaleLowerCase("cs-CZ");
-        if (
-            lower.startsWith(candidateLower)
-            && isTrainTypeBoundary(normalized, candidateLower.length)
-            && candidateLower.length > matchedLength
-        ) {
-            matchedLength = candidateLower.length;
-        }
-    });
-    return matchedLength ? normalized.slice(0, matchedLength) : "";
-};
-
-const splitTrainPrimary = (value) => {
-    const text = String(value ?? "").trim();
-    const match = text.match(/^(.*?)(?:\s*)(\d+)([\s\S]*)$/);
-    if (!match) return { prefix: text, remainder: "" };
-    return {
-        prefix: match[1].trim(),
-        remainder: `${match[2]}${match[3]}`.trim()
-    };
-};
-
-const parseTrainCell = (cellHtml) => {
-    const divTexts = extractDivTexts(cellHtml);
-    const primary = divTexts[0] || cleanText(cellHtml);
-    const split = splitTrainPrimary(primary);
-    const listedType = findSourceTrainType(primary) || findSourceTrainType(split.prefix);
-    const sourceType = listedType || split.prefix;
-    const remainder = listedType
-        ? primary.slice(listedType.length).trim()
-        : split.remainder || primary.slice(sourceType.length).trim();
-    const numberMatch = remainder.match(/\d+/);
-    const sourceTrainNumber = numberMatch ? numberMatch[0] : "";
-    const trainNumber = sourceTrainNumber;
-    const operatorFromRemainder = numberMatch
-        ? remainder.slice(remainder.indexOf(numberMatch[0]) + numberMatch[0].length).trim()
-        : remainder.trim();
-    const operator = divTexts.slice(1).join(" ").trim() || operatorFromRemainder;
-    const trainType = resolveProfileTrainType(sourceType, operator);
-    return {
-        train: /^rj$/i.test(sourceType) ? "rj" : /^nj$/i.test(sourceType) ? "nj" : sourceType,
-        trainType,
-        trainNumber,
-        sourceTrainNumber,
-        operator
-    };
-};
-
-const parsePlatformTarget = (cellHtml) => {
-    const raw = cleanText(cellHtml).replace(/[–—−]/g, "-");
-    if (!raw) return { platform: "", track: "", sector: "" };
-    const match = raw.match(/^([^/]+?)\s*\/\s*([^\s]+)(?:\s+(.+))?$/);
-    if (match) {
-        return {
-            platform: match[1].trim(),
-            track: match[2].trim(),
-            sector: match[3] ? match[3].trim() : ""
-        };
-    }
-    return { platform: raw.trim(), track: "", sector: "" };
-};
-
-const normalizeStationName = (value) => cleanText(value);
-
-const parseViaStation = (value) => cleanText(value)
-    .split(/\s*[—–]\s*/)
-    .map((station) => normalizeStationName(station))
-    .find(Boolean) || "";
-
-const getLocalDateKey = (date = new Date()) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-};
-
-const extractStationNameFromHtml = (html) => {
-    const match = String(html ?? "").match(/id="[^"]*LStationName[^"]*"[^>]*>([^<]*)/i);
-    return cleanText(match?.[1] || "");
-};
-
-const deriveStationKeyFromUrl = (url) => {
-    try {
-        const u = new URL(String(url ?? "").trim());
-        const key = u.searchParams.get("Key") || u.searchParams.get("key") || "";
-        if (/^[A-Za-z0-9]+$/.test(key)) return key;
-        return "";
-    } catch {
-        return "";
-    }
-};
-
-const parseStationTable = (html, { now = new Date(), stationKey = "" } = {}) => {
-    const source = String(html ?? "");
-    const table = source.match(/<table\b[^>]*DXMainTable[^>]*>([\s\S]*?)<\/table>/i)?.[1] || source;
-    const dateKey = getLocalDateKey(now);
-    const departures = [];
-    const seenKeys = new Set();
-
-    for (const rowMatch of table.matchAll(/<tr\b[^>]*DXDataRow\d+[^>]*>([\s\S]*?)<\/tr>/gi)) {
-        const rowHtml = rowMatch[0];
-        if (/\btableTextRow\b/i.test(rowHtml)) {
-            const note = extractCells(rowMatch[1])
-                .map((cell) => cleanText(cell))
-                .find(Boolean);
-            if (note && departures.length) {
-                departures[departures.length - 1].note = departures[departures.length - 1].note
-                    ? `${departures[departures.length - 1].note}\n${note}`
-                    : note;
-            }
-            continue;
-        }
-
-        const cells = extractCells(rowMatch[1]);
-        if (cells.length < 10) continue;
-
-        const departureTime = parseClock(cells[0]);
-        if (!departureTime) continue;
-
-        const actualTime = parseClock(cells[1]);
-        const trainData = parseTrainCell(cells[3]);
-        const destination = normalizeStationName(cells[6]);
-        const via = cleanText(cells[7]);
-        const stations = [destination, parseViaStation(via)];
-        const target = parsePlatformTarget(cells[9]);
-        const trainRef = trainData.sourceTrainNumber || trainData.trainNumber;
-        const liveKey = [
-            `station-${stationKey || "unknown"}`,
-            trainRef ? `train-${trainRef}` : `seq-${departures.length}`
-        ].join(":");
-
-        if (seenKeys.has(liveKey)) continue;
-        seenKeys.add(liveKey);
-
-        departures.push({
-            id: `live:${liveKey}`,
-            train: trainData.train,
-            trainType: trainData.trainType,
-            trainNumber: trainData.trainNumber,
-            departureTime: `${String(departureTime.hours).padStart(2, "0")}:${String(departureTime.minutes).padStart(2, "0")}`,
-            delay: calculateDelay(departureTime, actualTime),
-            platform: target.platform,
-            track: target.track,
-            sector: target.sector,
-            stations,
-            operator: trainData.operator,
-            line: cleanText(cells[4]),
-            destination,
-            via,
-            note: ""
-        });
-    }
-
-    return departures;
-};
-
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const fetchStationTable = async ({ url, attempts = 3 } = {}) => {
-    const stationKey = deriveStationKeyFromUrl(url);
-    let lastError = null;
-    for (let attempt = 1; attempt <= Math.max(1, attempts); attempt += 1) {
-        try {
-            const response = await fetch(url, {
-                cache: "no-store",
-                headers: {
-                    Accept: "text/html,application/xhtml+xml",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PragotronLiveDepartures/1.0"
-                }
-            });
-            if (!response.ok) {
-                throw new Error(`The departure board returned HTTP ${response.status}.`);
-            }
-            const html = await response.text();
-            const station = extractStationNameFromHtml(html) || "Stanice";
-            const departures = parseStationTable(html, { stationKey });
-            return { station, departures, stationKey, url };
-        } catch (error) {
-            lastError = error;
-            if (attempt < attempts) await wait(400 * attempt);
-        }
-    }
-    throw new Error(String(lastError));
-};
 
 function makeDepartureId(departure) {
     const parts = [
@@ -383,40 +99,6 @@ const trainShortName = (train) => {
         Spěšný: "Sp",
     };
     return map[train] || train;
-};
-
-const RECENT_DEPARTURE_GRACE_MS = 10 * 60 * 1000;
-
-const getEffectiveDepartureDate = (departureTime, delayMinutes, now = new Date()) => {
-    const match = String(departureTime).match(/^(\d{1,2}):(\d{2})$/);
-    if (!match) return null;
-    const dep = new Date(now);
-    dep.setHours(Number(match[1]), Number(match[2]), 0, 0);
-
-    const delay = Number(delayMinutes || 0);
-    if (Number.isFinite(delay)) {
-        dep.setMinutes(dep.getMinutes() + delay);
-    }
-
-    const referenceMinute = new Date(now);
-    referenceMinute.setSeconds(0, 0);
-    const recentDeparture = referenceMinute.getTime() - dep.getTime()
-        <= RECENT_DEPARTURE_GRACE_MS;
-    if (dep < now && !recentDeparture) {
-        dep.setDate(dep.getDate() + 1);
-    }
-
-    return dep;
-};
-
-const formatActualDepartureWithDate = (departureTime, delayMinutes, now) => {
-    const dep = getEffectiveDepartureDate(departureTime, delayMinutes, now);
-    if (!dep) return "";
-    const day = String(dep.getDate()).padStart(2, "0");
-    const month = String(dep.getMonth() + 1).padStart(2, "0");
-    const year = dep.getFullYear();
-    const timeStr = `${String(dep.getHours()).padStart(2, "0")}:${String(dep.getMinutes()).padStart(2, "0")}`;
-    return `${day}.${month}.${year} ${timeStr}`;
 };
 
 function normalizeDepartures(raw, stationName) {
@@ -1226,7 +908,11 @@ const stationNameFor = (station) => {
         : `Station ${stationKey || ""}`.trim();
 };
 
-const stationIdFor = (station) => stationNameFor(station);
+// File-system actions match only an item-id prefix. Root entries are the
+// letter groups, so station ids carry this marker and the context menu stays
+// off that first level. The panel label remains the station name.
+const STATION_ITEM_ID_PREFIX = "stn-";
+const stationIdFor = (station) => `${STATION_ITEM_ID_PREFIX}${stationNameFor(station)}`;
 
 const STATION_GROUP_LABELS = Object.freeze([
     "A", "B", "C", "Č", "D", "E", "F", "G", "H", "CH", "I", "J", "K", "L",
@@ -1357,7 +1043,9 @@ const loadPreparedStationGroupSnapshot = async () => {
                     || item.directory !== true
                 ) return null;
                 return Object.freeze({
-                    id: item.id,
+                    id: item.id.startsWith(STATION_ITEM_ID_PREFIX)
+                        ? item.id
+                        : `${STATION_ITEM_ID_PREFIX}${item.name}`,
                     name: item.name,
                     directory: true,
                     enabled: item.enabled !== false,
@@ -1389,103 +1077,57 @@ const getConfiguredFavorites = async (configuredStations = null) => {
     return stations.filter((station) => station.favorite === true).slice(0, MAX_FAVORITE_COMMANDS);
 };
 
+const FAVORITE_COMMAND_PREFIX = "TabuleSprZel.favorite.";
+
 const favoriteCommandIdFor = (station) => {
     const identity = stationKeyFor(station) || stationNameFor(station) || station.url;
     const normalized = normalizeId(identity) || "station";
-    return `TabuleSprZel.favorite.${normalized}`.slice(0, 120);
+    return `${FAVORITE_COMMAND_PREFIX}${normalized}`.slice(0, 120);
 };
 
-const readFavoriteCommandIds = async () => {
-    try {
-        const parsed = JSON.parse(await readFile(FAVORITE_COMMANDS_FILE, "utf8"));
-        return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
-    } catch {
-        return [];
-    }
+const favoriteMenuTitleFor = (station, fallback) => {
+    const title = stationNameFor(station)
+        .replace(/[\u0000-\u001f\u007f]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 255);
+    return title || fallback;
 };
 
-let syncedFavoriteCommandKey = null;
+let favoriteMenuSealed = false;
 
-const favoriteCommandKeyFor = (stations) => stations
-    .map((station) => `${favoriteCommandIdFor(station)}\t${stationNameFor(station)}`)
-    .join("\n");
-
-const syncFavoriteCommandsNow = async (configuredStations) => {
+const registerFavoriteMenuOnce = async (configuredStations) => {
+    if (favoriteMenuSealed) return false;
     const commands = Salamander.commands;
     if (!commands || typeof commands.register !== "function") return false;
     const favorites = await getConfiguredFavorites(configuredStations);
-    const key = favoriteCommandKeyFor(favorites);
-    // Each register/unregister walks every extension's toolbar commands.
-    // Repeating that from panel refreshes re-enters the walk during shutdown.
-    if (key === syncedFavoriteCommandKey) return true;
-
-    await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true }).catch(() => { });
-
-    if (typeof commands.unregister === "function") {
-        for (const commandId of await readFavoriteCommandIds()) {
-            try {
-                await commands.unregister(commandId);
-            } catch { }
-        }
-    }
-
-    const commandIds = [];
+    const usedIds = new Set();
     for (const station of favorites) {
-        const commandId = favoriteCommandIdFor(station);
-        const handler = `favorite:${encodeURIComponent(station.url)}`;
+        if (favoriteMenuSealed) return false;
+        if (typeof station.url !== "string" || !station.url) continue;
+        let commandId = favoriteCommandIdFor(station);
+        let suffix = 2;
+        while (usedIds.has(commandId.toLowerCase())) {
+            const tail = `-${suffix}`;
+            commandId = `${favoriteCommandIdFor(station).slice(0, 120 - tail.length)}${tail}`;
+            suffix += 1;
+        }
+        usedIds.add(commandId.toLowerCase());
         try {
             await commands.register(
                 commandId,
-                stationNameFor(station),
+                favoriteMenuTitleFor(station, commandId),
                 true,
                 false,
                 0,
                 false,
-                handler,
+                `favorite:${encodeURIComponent(station.url)}`,
                 true,
                 true
             );
-            commandIds.push(commandId);
         } catch { }
     }
-
-    await writeFile(FAVORITE_COMMANDS_FILE, JSON.stringify(commandIds), "utf8").catch(() => { });
-    if (commandIds.length === favorites.length) syncedFavoriteCommandKey = key;
     return true;
-};
-
-let favoriteCommandWatch = null;
-let favoriteCommandSyncTimer = null;
-const scheduleFavoriteCommandSync = () => {
-    clearTimeout(favoriteCommandSyncTimer);
-    favoriteCommandSyncTimer = setTimeout(() => {
-        favoriteCommandSyncTimer = null;
-        void getConfiguredStations()
-            .then((stations) => syncFavoriteCommands(stations))
-            .catch(() => { });
-    }, 200);
-};
-
-const watchFavoriteCommands = async () => {
-    if (favoriteCommandWatch) return;
-    await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true }).catch(() => { });
-    try {
-        favoriteCommandWatch = watch(DEPARTURE_RUNTIME_DIR, (_event, filename) => {
-            const name = String(filename || "");
-            if (name && !name.startsWith("favorite-selection")) return;
-            scheduleFavoriteCommandSync();
-        });
-        favoriteCommandWatch.on("error", () => { });
-    } catch { }
-};
-
-let favoriteCommandsPromise = Promise.resolve();
-const syncFavoriteCommands = (configuredStations) => {
-    const update = favoriteCommandsPromise
-        .catch(() => { })
-        .then(() => syncFavoriteCommandsNow(configuredStations));
-    favoriteCommandsPromise = update;
-    return update;
 };
 
 const FAVORITE_SELECTION_PROCESSING_FILE = `${FAVORITE_SELECTION_FILE}.processing`;
@@ -1728,7 +1370,7 @@ async function getStringsAsync(locale = "en") {
         stationKeyLabel: "Key",
         unnamedStation: "(unnamed)",
         refreshLabel: "Refresh interval:",
-        configHint: "Select favorite stations above. The selection is saved in Salamander storage and overrides config.json favorites.",
+        configHint: "Select favorite stations above. The selection is saved in Salamander storage and overrides config.json favorites. The extension bar menu loads that list when Salamander starts.",
         favoritesLabel: "Favorite",
         saveConfig: "Save",
         closeConfig: "Close",
@@ -2339,9 +1981,7 @@ async function handleListDepartures() {
                 ? name
                 : `Station ${stationKey || ""}`.trim();
         };
-        const stationIdFor = (s) => {
-            return stationNameFor(s);
-        };
+        const stationIdFor = (s) => `${STATION_ITEM_ID_PREFIX}${stationNameFor(s)}`;
         const legacyStationIdFor = (s) =>
             (s.stationKey || deriveStationKeyFromUrl(s.url))
                 ? `station-${s.stationKey || deriveStationKeyFromUrl(s.url)}`
@@ -2837,6 +2477,212 @@ async function handleViewDeparture() {
     }
 }
 
+const stationSelectorsFor = (station) => {
+    const name = stationNameFor(station);
+    const stationKey = stationKeyFor(station);
+    const legacy = stationKey ? `station-${stationKey}` : "";
+    const previous = `station-${normalizeId(name)}`;
+    const composite = stationKey
+        ? `station-${normalizeId(name)}!station-${normalizeId(stationKey)}`
+        : "";
+    return [stationIdFor(station), name, legacy, previous, composite].filter(Boolean);
+};
+
+const findConfiguredStationForItem = async (item) => {
+    const selectors = new Set();
+    for (const value of [item?.id, item?.name]) {
+        if (value === undefined || value === null || value === "") continue;
+        for (const part of String(value).split(/[\\/!]/).filter(Boolean)) {
+            selectors.add(part);
+            try {
+                selectors.add(decodeURIComponent(part));
+            } catch { }
+        }
+    }
+    if (!selectors.size) return null;
+    const groupLabels = new Set([
+        ...STATION_GROUP_LABELS,
+        "_favorites",
+        "departures",
+        ...STATION_GROUP_LABELS.map(legacyStationGroupIdFor)
+    ]);
+    if ([...selectors].every((selector) => groupLabels.has(selector))) return null;
+    const stations = await getConfiguredStations();
+    return stations.find((station) =>
+        stationSelectorsFor(station).some((selector) => selectors.has(selector))
+    ) || null;
+};
+
+const readStationWindowState = async () => {
+    try {
+        const state = JSON.parse(await readFile(STATION_DEPARTURES_STATE_FILE, "utf8"));
+        if (state.version !== 1) return null;
+        if (!Number.isInteger(state.port) || state.port < 1 || state.port > 65535) return null;
+        if (typeof state.token !== "string" || !state.token) return null;
+        if (!Number.isInteger(state.hostPid) || state.hostPid < 1) return null;
+        return state;
+    } catch {
+        return null;
+    }
+};
+
+const readStationLaunch = async () => {
+    try {
+        const launch = JSON.parse(await readFile(STATION_DEPARTURES_LAUNCH_FILE, "utf8"));
+        if (!Number.isInteger(launch.pid) || launch.pid < 1) return null;
+        return launch;
+    } catch {
+        return null;
+    }
+};
+
+const requestStationWindow = async (state, url, name) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1500);
+    try {
+        const response = await fetch(`http://127.0.0.1:${state.port}/show`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ token: state.token, url, name }),
+            signal: controller.signal
+        });
+        return response.ok;
+    } finally {
+        clearTimeout(timeout);
+    }
+};
+
+const recoverPendingStationWindow = async (url, name) => {
+    const launch = await readStationLaunch();
+    if (!launch) return false;
+    if (!isProcessRunning(launch.pid)) {
+        await rm(STATION_DEPARTURES_LAUNCH_FILE, { force: true }).catch(() => { });
+        return false;
+    }
+
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+        const state = await readStationWindowState();
+        if (state) {
+            try {
+                if (await requestStationWindow(state, url, name)) return true;
+            } catch { }
+        }
+        if (!isProcessRunning(launch.pid)) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await stopDetailsLauncher(launch.pid);
+    await rm(STATION_DEPARTURES_LAUNCH_FILE, { force: true }).catch(() => { });
+    await rm(STATION_DEPARTURES_STATE_FILE, { force: true }).catch(() => { });
+    return false;
+};
+
+const showExistingStationWindow = async (url, name) => {
+    const state = await readStationWindowState();
+    if (!state) return false;
+    if (!isProcessRunning(state.hostPid)) {
+        await rm(STATION_DEPARTURES_STATE_FILE, { force: true }).catch(() => { });
+        return false;
+    }
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+        try {
+            if (await requestStationWindow(state, url, name)) return true;
+        } catch {
+            await rm(STATION_DEPARTURES_STATE_FILE, { force: true }).catch(() => { });
+            return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return false;
+};
+
+const waitForStationWindow = async (url, name) => {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+        const state = await readStationWindowState();
+        if (state) {
+            try {
+                if (await requestStationWindow(state, url, name)) return true;
+            } catch { }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("The station departures window did not become ready.");
+};
+
+async function handleViewStationBoard() {
+    const item = Salamander.invocation?.item || {};
+    const id = String(item.id || "");
+    if (id.startsWith("dep-")) return;
+
+    const station = await findConfiguredStationForItem(item);
+    if (!station?.url) return;
+
+    const name = stationNameFor(station);
+    let child = null;
+    try {
+        await access(join(EXTENSION_DIR, "node_modules", "webview-node", "bin", "webview2-host.exe"));
+        await access(STATION_DEPARTURES_LAUNCHER);
+        await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true });
+
+        if (await showExistingStationWindow(station.url, name)) return;
+        if (await recoverPendingStationWindow(station.url, name)) return;
+
+        await rm(STATION_DEPARTURES_STATE_FILE, { force: true }).catch(() => { });
+        await rm(STATION_DEPARTURES_LAUNCH_FILE, { force: true }).catch(() => { });
+        await rm(`${STATION_DEPARTURES_STATE_FILE}.error`, { force: true }).catch(() => { });
+
+        child = spawn(process.execPath, [
+            STATION_DEPARTURES_LAUNCHER,
+            STATION_DEPARTURES_STATE_FILE,
+            STATION_DEPARTURES_WEBVIEW_DATA,
+            station.url,
+            name
+        ], {
+            detached: true,
+            windowsHide: true,
+            stdio: "ignore"
+        });
+        await new Promise((resolve, reject) => {
+            const onSpawn = () => {
+                child.removeListener("error", onError);
+                resolve();
+            };
+            const onError = (error) => {
+                child.removeListener("spawn", onSpawn);
+                reject(error);
+            };
+            child.once("spawn", onSpawn);
+            child.once("error", onError);
+        });
+        await writeFile(STATION_DEPARTURES_LAUNCH_FILE, JSON.stringify({
+            pid: child.pid,
+            startedAt: Date.now()
+        }), "utf8");
+        await waitForStationWindow(station.url, name);
+        await rm(STATION_DEPARTURES_LAUNCH_FILE, { force: true }).catch(() => { });
+        child.unref();
+    } catch (error) {
+        if (child?.pid) await stopDetailsLauncher(child.pid);
+        await rm(STATION_DEPARTURES_LAUNCH_FILE, { force: true }).catch(() => { });
+        let detail = describeDepartureDetailsError(error);
+        try {
+            const launcherError = await readFile(`${STATION_DEPARTURES_STATE_FILE}.error`, "utf8");
+            if (launcherError.trim()) detail = launcherError.trim();
+        } catch { }
+        try {
+            console.error(`[TabuleSprZel] failed to open station departures: ${detail}`);
+        } catch { }
+        try {
+            await Salamander.ui.messageBox(
+                detail,
+                name || "Odjezdy na tabulích",
+                "OK",
+                "Error"
+            );
+        } catch { }
+    }
+}
+
 const handler = Salamander.commandHandler || Salamander.command_handler;
 
 await clearStaleSelectionResults();
@@ -2846,10 +2692,16 @@ configuredStationsPromise = null;
 stationGroupsSnapshot = null;
 
 if (!handler) {
+    try {
+        if (typeof Salamander.events?.subscribe === "function") {
+            await Salamander.events.subscribe("hostShutdown", () => {
+                favoriteMenuSealed = true;
+            });
+        }
+    } catch { }
     const configuredStations = await getConfiguredStations();
     await savePreparedStationGroupSnapshot(configuredStations);
-    await syncFavoriteCommands(configuredStations);
-    await watchFavoriteCommands();
+    await registerFavoriteMenuOnce(configuredStations);
 }
 
 if (handler === "viewDeparture" || handler === "configureUrl" || handler === "configure") {
@@ -2862,6 +2714,8 @@ if (handler === "listDepartures") {
     await handleOpenDepartures();
 } else if (handler === "viewDeparture") {
     await handleViewDeparture();
+} else if (handler === "viewStationBoard") {
+    await handleViewStationBoard();
 } else if (handler === "configureUrl" || handler === "configure") {
     await handleConfigureUrl();
 } else if (typeof handler === "string" && handler.startsWith("favorite:")) {

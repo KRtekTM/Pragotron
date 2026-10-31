@@ -76,6 +76,7 @@
       "iconDark": "icon.svg",
       "spinner": true,
       "listHandler": "listDepartures",
+      "openHandler": "viewStationBoard",
       "refreshDepth": 2,
       "rootItems": [
         { "id": "_favorites", "name": "_favorites", "icon": "icons/favorites.svg", "iconDark": "icons/favorites-dark.svg" },
@@ -181,6 +182,13 @@
           "handler": "viewDeparture",
           "default": true,
           "itemIdPrefix": "dep-"
+        },
+        {
+          "id": "viewStationBoard",
+          "title": "Show station departures",
+          "handler": "viewStationBoard",
+          "itemIdPrefix": "stn-",
+          "refresh": false
         }
       ]
     }

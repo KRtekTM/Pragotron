@@ -13446,6 +13446,7 @@
     }
   ],
   "refreshMs": 60000,
+  "lensLeadSeconds": 90,
   "departureDetails": {
     "colors": "light"
   }

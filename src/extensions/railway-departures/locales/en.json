@@ -51,7 +51,8 @@
         "note": { "name": "Note", "description": "Departure note" }
       },
       "actions": {
-        "viewDeparture": "Show departure details"
+        "viewDeparture": "Show departure details",
+        "viewStationBoard": "Show station departures"
       }
     }
   },
@@ -90,7 +91,7 @@
   "stationKeyLabel": "Key",
   "unnamedStation": "(unnamed)",
   "refreshLabel": "Refresh interval:",
-  "configHint": "Select favorite stations above. The selection is saved in Salamander storage and overrides config.json favorites.",
+  "configHint": "Select favorite stations above. The selection is saved in Salamander storage and overrides config.json favorites. The extension bar menu loads that list when Salamander starts.",
   "favoritesLabel": "Favorite",
   "saveConfig": "Save",
   "closeConfig": "Close",

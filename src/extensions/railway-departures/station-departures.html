@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title></title>
+    <link rel="stylesheet" href="station-departures.css">
+</head>
+<body>
+    <fieldset id="departuresPanel" class="manage-panel">
+        <div class="departures-panel-heading">
+            <legend id="departuresLegend"></legend>
+        </div>
+        <div class="departures-table-wrap">
+            <table id="departuresTable">
+                <thead>
+                    <tr>
+                        <th scope="col">Čočky</th>
+                        <th scope="col"><button type="button" data-sort-key="operator">Dopravce</button></th>
+                        <th scope="col"><button type="button" data-sort-key="train">Typ vlaku</button></th>
+                        <th scope="col"><button type="button" data-sort-key="trainNumber">Číslo vlaku</button></th>
+                        <th scope="col"><button type="button" data-sort-key="stationOne">Cílová stanice</button></th>
+                        <th scope="col"><button type="button" data-sort-key="stationTwo">Přes</button></th>
+                        <th scope="col"><button type="button" data-sort-key="departureTime">Odjezd</button></th>
+                        <th scope="col"><button type="button" data-sort-key="delay">Zpoždění</button></th>
+                        <th scope="col"><button type="button" data-sort-key="platform">Nástupiště</button></th>
+                        <th scope="col"><button type="button" data-sort-key="track">Kolej</button></th>
+                        <th scope="col"><button type="button" data-sort-key="sector">Sektor</button></th>
+                        <th scope="col"><button type="button" data-sort-key="line">Linka</button></th>
+                        <th scope="col"><button type="button" data-sort-key="note">Poznámka</button></th>
+                    </tr>
+                </thead>
+                <tbody id="departuresTableBody"></tbody>
+            </table>
+            <p id="departuresEmptyState" class="manage-empty-state">Stanice nemá žádné odjezdy.</p>
+        </div>
+    </fieldset>
+    <script src="station-departures.js"></script>
+</body>
+</html>
