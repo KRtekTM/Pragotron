@@ -200,6 +200,29 @@ const readLiveFeed = async () => {
     return JSON.parse(source.slice(separator + 1).replace(/;\s*$/, ""));
 };
 
+const departureCaption = (item) => {
+    const explicit = String(item?.name || "").trim();
+    if (explicit) return explicit;
+    const details = item?.details || {};
+    return [details.train, details.trainNumber]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(" ");
+};
+
+const windowTitleForDeparture = (item) => {
+    const prefix = String(title).split(" — ")[0] || "Tabule SprŽel";
+    const caption = departureCaption(item);
+    return (caption ? `${prefix} — ${caption}` : prefix).slice(0, 300);
+};
+
+const applyWindowTitle = (item) => {
+    if (!window || window.isDestroyed() || nativeUnavailable) return;
+    try {
+        window.setTitle(windowTitleForDeparture(item));
+    } catch { }
+};
+
 const navigateSelection = async (direction) => {
     const now = Date.now();
     if (direction !== -1 && direction !== 1) return;
@@ -213,8 +236,10 @@ const navigateSelection = async (direction) => {
     );
     const nextIndex = currentIndex + direction;
     if (currentIndex < 0 || nextIndex < 0 || nextIndex >= items.length) return;
-    selectedId = String(items[nextIndex].id || "");
-    selectedKey = String(items[nextIndex].key || "");
+    const nextItem = items[nextIndex];
+    selectedId = String(nextItem.id || "");
+    selectedKey = String(nextItem.key || "");
+    applyWindowTitle(nextItem);
 };
 
 const startControlServer = () => new Promise((resolve, reject) => {

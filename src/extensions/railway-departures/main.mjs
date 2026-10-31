@@ -2154,6 +2154,7 @@ const saveLocalDepartureDetails = async (items) => {
                 : "";
             return {
                 id: item.id,
+                name: item.name,
                 key: departureNavigationKey(details),
                 details: {
                     ...details,

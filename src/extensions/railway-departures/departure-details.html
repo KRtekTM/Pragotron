@@ -233,7 +233,9 @@
         setField("via", details.via);
         setField("note", details.note);
         const titlePrefix = document.title.split(" — ")[0] || "Tabule SprŽel";
-        document.title = `${titlePrefix} — ${text(details.train, "Train")} ${text(details.trainNumber, "")}`.trim();
+        const caption = text(entry.name, "")
+            || `${text(details.train, "Train")} ${text(details.trainNumber, "")}`.trim();
+        document.title = `${titlePrefix} — ${caption}`.trim();
         document.querySelectorAll("[data-live-delay-icon]").forEach((element) => {
             element.classList.remove("icon-delay--green", "icon-delay--yellow", "icon-delay--red");
             element.classList.add(delayClass);
