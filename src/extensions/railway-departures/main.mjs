@@ -1,3 +1,4 @@
+import { watch } from "node:fs";
 import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -1403,9 +1404,20 @@ const readFavoriteCommandIds = async () => {
     }
 };
 
+let syncedFavoriteCommandKey = null;
+
+const favoriteCommandKeyFor = (stations) => stations
+    .map((station) => `${favoriteCommandIdFor(station)}\t${stationNameFor(station)}`)
+    .join("\n");
+
 const syncFavoriteCommandsNow = async (configuredStations) => {
     const commands = Salamander.commands;
     if (!commands || typeof commands.register !== "function") return false;
+    const favorites = await getConfiguredFavorites(configuredStations);
+    const key = favoriteCommandKeyFor(favorites);
+    // Each register/unregister walks every extension's toolbar commands.
+    // Repeating that from panel refreshes re-enters the walk during shutdown.
+    if (key === syncedFavoriteCommandKey) return true;
 
     await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true }).catch(() => { });
 
@@ -1418,7 +1430,7 @@ const syncFavoriteCommandsNow = async (configuredStations) => {
     }
 
     const commandIds = [];
-    for (const station of await getConfiguredFavorites(configuredStations)) {
+    for (const station of favorites) {
         const commandId = favoriteCommandIdFor(station);
         const handler = `favorite:${encodeURIComponent(station.url)}`;
         try {
@@ -1438,7 +1450,33 @@ const syncFavoriteCommandsNow = async (configuredStations) => {
     }
 
     await writeFile(FAVORITE_COMMANDS_FILE, JSON.stringify(commandIds), "utf8").catch(() => { });
+    if (commandIds.length === favorites.length) syncedFavoriteCommandKey = key;
     return true;
+};
+
+let favoriteCommandWatch = null;
+let favoriteCommandSyncTimer = null;
+const scheduleFavoriteCommandSync = () => {
+    clearTimeout(favoriteCommandSyncTimer);
+    favoriteCommandSyncTimer = setTimeout(() => {
+        favoriteCommandSyncTimer = null;
+        void getConfiguredStations()
+            .then((stations) => syncFavoriteCommands(stations))
+            .catch(() => { });
+    }, 200);
+};
+
+const watchFavoriteCommands = async () => {
+    if (favoriteCommandWatch) return;
+    await mkdir(DEPARTURE_RUNTIME_DIR, { recursive: true }).catch(() => { });
+    try {
+        favoriteCommandWatch = watch(DEPARTURE_RUNTIME_DIR, (_event, filename) => {
+            const name = String(filename || "");
+            if (name && !name.startsWith("favorite-selection")) return;
+            scheduleFavoriteCommandSync();
+        });
+        favoriteCommandWatch.on("error", () => { });
+    } catch { }
 };
 
 let favoriteCommandsPromise = Promise.resolve();
@@ -1628,7 +1666,6 @@ const publishFavoriteSelection = async () => {
     stationGroupsSnapshot = null;
     const configuredStations = await getConfiguredStations();
     await savePreparedStationGroupSnapshot(configuredStations);
-    await syncFavoriteCommands(configuredStations);
 };
 
 // null: nothing pending, true: stored, false: storage rejected the selection.
@@ -1638,22 +1675,6 @@ const commitFavoriteSelection = () => {
         .then(commitFavoriteSelectionNow);
     favoriteSelectionCommit = run;
     return run;
-};
-
-const subscribeToStartup = async () => {
-    const events = Salamander.events;
-    if (!events || typeof events.subscribe !== "function") return false;
-
-    try {
-        await events.subscribe("hostStartup", () => {
-            void getConfiguredStations()
-                .then((stations) => syncFavoriteCommands(stations))
-                .catch(() => { });
-        });
-        return true;
-    } catch {
-        return false;
-    }
 };
 
 async function getRefreshInterval() {
@@ -1874,12 +1895,6 @@ async function handleConfigureUrl(strings) {
                     console.error(`[TabuleSprZel] failed to commit configuration: ${error instanceof Error ? error.message : String(error)}`);
                 } catch { }
             }
-            configuredStationsSnapshot = null;
-            configuredStationsPromise = null;
-            stationGroupsSnapshot = null;
-            try {
-                await syncFavoriteCommands(await getConfiguredStations());
-            } catch { }
         }
         return;
     } catch (error) {
@@ -2827,10 +2842,10 @@ configuredStationsPromise = null;
 stationGroupsSnapshot = null;
 
 if (!handler) {
-    await subscribeToStartup();
     const configuredStations = await getConfiguredStations();
     await savePreparedStationGroupSnapshot(configuredStations);
     await syncFavoriteCommands(configuredStations);
+    await watchFavoriteCommands();
 }
 
 if (handler === "viewDeparture" || handler === "configureUrl" || handler === "configure") {
@@ -2839,8 +2854,6 @@ if (handler === "viewDeparture" || handler === "configureUrl" || handler === "co
 
 if (handler === "listDepartures") {
     await handleListDepartures();
-    await loadPreparedStationGroupSnapshot();
-    await syncFavoriteCommands(await getConfiguredStations());
 } else if (handler === "openDepartures" || handler === "open") {
     await handleOpenDepartures();
 } else if (handler === "viewDeparture") {
