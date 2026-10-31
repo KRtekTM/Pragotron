@@ -2,7 +2,7 @@
   "schema": 2,
   "id": "TabuleSprZel",
   "name": "Tabule SprŽel",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Scrapes railway departures from Správy Železnic website and displays them in Salamander file-system panel.",
   "runtime": "JavaScript.Node",
   "entryPoint": "main.mjs",
@@ -21,7 +21,8 @@
     "panels.write",
     "ui.dialogs",
     "storage",
-    "commands"
+    "commands",
+    "events"
   ],
   "viewers": [
     {
@@ -32,7 +33,7 @@
       "handler": "viewDeparture"
     }
   ],
-  "events": [],
+  "events": ["hostStartup"],
   "locales": {
     "en": "locales/en.json",
     "cs": "locales/cs.json"
@@ -75,6 +76,32 @@
       "iconDark": "icon.svg",
       "spinner": true,
       "listHandler": "listDepartures",
+      "rootItems": [
+        { "id": "_favorites", "name": "_favorites", "icon": "icons/favorites.svg", "iconDark": "icons/favorites-dark.svg" },
+        { "id": "A", "name": "A", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "B", "name": "B", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "C", "name": "C", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "D", "name": "D", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "E", "name": "E", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "F", "name": "F", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "G", "name": "G", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "H", "name": "H", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "CH", "name": "CH", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "I", "name": "I", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "J", "name": "J", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "K", "name": "K", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "L", "name": "L", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "M", "name": "M", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "N", "name": "N", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "O", "name": "O", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "P", "name": "P", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "R", "name": "R", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "S", "name": "S", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "T", "name": "T", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "U", "name": "U", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "V", "name": "V", "icon": "icon.svg", "iconDark": "icon.svg" },
+        { "id": "Z", "name": "Z", "icon": "icon.svg", "iconDark": "icon.svg" }
+      ],
       "columns": [
         {
           "id": "train",

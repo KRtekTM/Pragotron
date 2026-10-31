@@ -14,6 +14,7 @@ const DEPARTURE_LIVE_FEED_FILE = join(DEPARTURE_RUNTIME_DIR, "details-feed.js");
 const DEPARTURE_DETAILS_HTML_FILE = join(DEPARTURE_RUNTIME_DIR, "details.html");
 const DEPARTURE_DETAILS_STATE_FILE = join(DEPARTURE_RUNTIME_DIR, "details-window.json");
 const DEPARTURE_DETAILS_WEBVIEW_DATA = join(DEPARTURE_RUNTIME_DIR, "details-webview-data");
+const DEPARTURE_DETAILS_LAUNCH_FILE = join(DEPARTURE_RUNTIME_DIR, "details-launch.json");
 const DEPARTURE_FORMATION_CACHE_FILE = join(DEPARTURE_RUNTIME_DIR, "formation-cache.json");
 const FAVORITE_COMMANDS_FILE = join(DEPARTURE_RUNTIME_DIR, "favorite-commands.json");
 const CONFIGURATION_DIALOG_TEMPLATE = join(EXTENSION_DIR, "configuration.html");
@@ -1233,6 +1234,22 @@ const syncFavoriteCommands = async (configuredStations) => {
     return true;
 };
 
+const subscribeToStartup = async () => {
+    const events = Salamander.events;
+    if (!events || typeof events.subscribe !== "function") return false;
+
+    try {
+        await events.subscribe("hostStartup", () => {
+            void getConfiguredStations()
+                .then((stations) => syncFavoriteCommands(stations))
+                .catch(() => { });
+        });
+        return true;
+    } catch {
+        return false;
+    }
+};
+
 async function getRefreshInterval() {
     const config = await readConfigFile();
     const n = Number(config.refreshMs);
@@ -1743,6 +1760,70 @@ async function handleListDepartures() {
         const invocation = Salamander.invocation || {};
         const item = invocation.item || {};
         const rawInvocationPath = invocation.path || "";
+        const FAVORITES_GROUP_ID = "_favorites";
+
+        const pathValues = [];
+        const collectPathValue = (value) => {
+            if (Array.isArray(value)) {
+                value.forEach(collectPathValue);
+            } else if (value !== undefined && value !== null && value !== "") {
+                pathValues.push(value);
+            }
+        };
+        collectPathValue(rawInvocationPath);
+        collectPathValue(item.path);
+        const pathParts = pathValues.flatMap((value) => String(value)
+            .split(/[\\/!]/)
+            .filter(Boolean));
+        const metadataSelectors = [item.id, item.name]
+            .filter((value) => value !== undefined && value !== null && value !== "")
+            .flatMap((value) => String(value).split(/[\\/!]/).filter(Boolean));
+        const selectorParts = pathParts.length ? pathParts : metadataSelectors;
+        const stationSelectors = new Set(selectorParts.flatMap((part) => {
+            try {
+                return [part, decodeURIComponent(part)];
+            } catch {
+                return [part];
+            }
+        }));
+        const legacyGroupIds = new Set(STATION_GROUP_LABELS.map(legacyStationGroupIdFor));
+        const groupSelectorParts = [...pathParts, item.id]
+            .filter((value) => value !== undefined && value !== null && value !== "")
+            .flatMap((value) => String(value).split(/[\\/!]/).filter(Boolean));
+        const hasGroupSelector = groupSelectorParts.some((part) =>
+            part === FAVORITES_GROUP_ID
+            || STATION_GROUP_LABELS.includes(part)
+            || legacyGroupIds.has(part)
+        );
+        const hasUnknownPathSelector = pathParts.some((part) =>
+            part !== "departures"
+            && !part.startsWith("salamatrix:")
+            && part !== FAVORITES_GROUP_ID
+            && !STATION_GROUP_LABELS.includes(part)
+            && !legacyGroupIds.has(part)
+        );
+        const hasUnknownItemSelector = item.id !== undefined
+            && item.id !== null
+            && item.id !== ""
+            && !hasGroupSelector
+            && item.id !== "departures";
+        const isRootView = !hasGroupSelector && !hasUnknownPathSelector && !hasUnknownItemSelector;
+        if (isRootView) {
+            activeStationConfig = null;
+            stopScraper();
+            currentView = "root";
+            if (requestId === listRequestId) {
+                await addFileSystemItems(["Č", "Ř", "Š", "Ú", "Ž"].map((label) => ({
+                    id: label,
+                    name: label,
+                    directory: true,
+                    enabled: true,
+                    icon: "icon.svg",
+                    iconDark: "icon.svg"
+                })), requestId);
+            }
+            return;
+        }
 
         const configuredStations = await getConfiguredStations();
         if (!configuredStations.length) {
@@ -1780,19 +1861,10 @@ async function handleListDepartures() {
         };
         const stationSortKeyFor = (s) =>
             `${normalizeId(stationNameFor(s)) || "station"}-${normalizeId(s.stationKey || deriveStationKeyFromUrl(s.url))}`;
-        const FAVORITES_GROUP_ID = "_favorites";
         const favoriteStations = configuredStations.filter((station) => station.favorite === true);
         const stationItemFor = (s) => ({
             id: stationIdFor(s),
             name: stationNameFor(s),
-            directory: true,
-            enabled: true,
-            icon: "icon.svg",
-            iconDark: "icon.svg"
-        });
-        const groupItemFor = (group) => ({
-            id: group.id,
-            name: group.label,
             directory: true,
             enabled: true,
             icon: "icon.svg",
@@ -1825,37 +1897,8 @@ async function handleListDepartures() {
             ])
         );
         const itemsForStationGroup = (group) => group.stations.map(stationItemFor);
-        const rootStationGroupItems = [
-            groupItemFor(stationGroups.get(FAVORITES_GROUP_ID)),
-            ...STATION_GROUP_LABELS.map((label) => groupItemFor(stationGroups.get(label)))
-        ];
-
-        // Determine what view we're in: root or a specific station
+        // Determine what view we're in: a station group or a specific station.
         let activeStation = null;
-        const pathValues = [];
-        const collectPathValue = (value) => {
-            if (Array.isArray(value)) {
-                value.forEach(collectPathValue);
-            } else if (value !== undefined && value !== null && value !== "") {
-                pathValues.push(value);
-            }
-        };
-        collectPathValue(rawInvocationPath);
-        collectPathValue(item.path);
-        const pathParts = pathValues.flatMap((value) => String(value)
-            .split(/[\\/!]/)
-            .filter(Boolean));
-        const metadataSelectors = [item.id, item.name]
-            .filter((value) => value !== undefined && value !== null && value !== "")
-            .flatMap((value) => String(value).split(/[\\/!]/).filter(Boolean));
-        const selectorParts = pathParts.length ? pathParts : metadataSelectors;
-        const stationSelectors = new Set(selectorParts.flatMap((part) => {
-            try {
-                return [part, decodeURIComponent(part)];
-            } catch {
-                return [part];
-            }
-        }));
 
         const activeGroup = [...pathParts]
             .reverse()
@@ -1886,17 +1929,7 @@ async function handleListDepartures() {
             return;
         }
 
-        if (!activeStation) {
-            // Root view: expose only the fixed initial-letter groups.
-            activeStationConfig = null;
-            stopScraper();
-            currentView = "root";
-            const stationItems = rootStationGroupItems;
-            if (requestId === listRequestId) {
-                await addFileSystemItems(stationItems, requestId);
-            }
-            return;
-        }
+        if (!activeStation) return;
 
         // Station view: fetch departures only for the selected station.
         stopScraper();
@@ -2069,6 +2102,26 @@ const isProcessRunning = (pid) => {
     }
 };
 
+const readDetailsLaunch = async () => {
+    try {
+        const launch = JSON.parse(await readFile(DEPARTURE_DETAILS_LAUNCH_FILE, "utf8"));
+        if (!Number.isInteger(launch.pid) || launch.pid < 1) return null;
+        return launch;
+    } catch {
+        return null;
+    }
+};
+
+const stopDetailsLauncher = async (pid) => {
+    if (!Number.isInteger(pid) || pid < 1) return;
+    try {
+        process.kill(pid);
+    } catch { }
+    for (let attempt = 0; attempt < 20 && isProcessRunning(pid); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+};
+
 const requestDetailsWindow = async (state, title, id, key) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1500);
@@ -2083,6 +2136,31 @@ const requestDetailsWindow = async (state, title, id, key) => {
     } finally {
         clearTimeout(timeout);
     }
+};
+
+const recoverPendingDetailsWindow = async (title, id, key) => {
+    const launch = await readDetailsLaunch();
+    if (!launch) return false;
+    if (!isProcessRunning(launch.pid)) {
+        await rm(DEPARTURE_DETAILS_LAUNCH_FILE, { force: true }).catch(() => { });
+        return false;
+    }
+
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+        const state = await readDetailsWindowState();
+        if (state) {
+            try {
+                if (await requestDetailsWindow(state, title, id, key)) return true;
+            } catch { }
+        }
+        if (!isProcessRunning(launch.pid)) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    await stopDetailsLauncher(launch.pid);
+    await rm(DEPARTURE_DETAILS_LAUNCH_FILE, { force: true }).catch(() => { });
+    await rm(DEPARTURE_DETAILS_STATE_FILE, { force: true }).catch(() => { });
+    return false;
 };
 
 const showExistingDetailsWindow = async (title, id, key) => {
@@ -2186,6 +2264,7 @@ async function handleViewDeparture() {
     const vagonwebUrl = buildVagonwebUrl(details);
     const detailsText = detailRows.join("\r\n");
     let htmlPath = DEPARTURE_DETAILS_HTML_FILE;
+    let child = null;
     try {
         const packageHostPath = join(
             EXTENSION_DIR,
@@ -2227,11 +2306,13 @@ async function handleViewDeparture() {
         await writeFile(htmlPath, html, "utf8");
 
         if (await showExistingDetailsWindow(title, id, departureNavigationKey(details))) return;
+        if (await recoverPendingDetailsWindow(title, id, departureNavigationKey(details))) return;
 
         await rm(DEPARTURE_DETAILS_STATE_FILE, { force: true }).catch(() => { });
+        await rm(DEPARTURE_DETAILS_LAUNCH_FILE, { force: true }).catch(() => { });
         const webviewDataFolder = DEPARTURE_DETAILS_WEBVIEW_DATA;
 
-        const child = spawn(process.execPath, [
+        child = spawn(process.execPath, [
             launcherPath,
             htmlPath,
             DEPARTURE_RUNTIME_DIR,
@@ -2261,7 +2342,12 @@ async function handleViewDeparture() {
             child.once("spawn", onSpawn);
             child.once("error", onError);
         });
+        await writeFile(DEPARTURE_DETAILS_LAUNCH_FILE, JSON.stringify({
+            pid: child.pid,
+            startedAt: Date.now()
+        }), "utf8");
         await waitForDetailsWindow(title, id, departureNavigationKey(details));
+        await rm(DEPARTURE_DETAILS_LAUNCH_FILE, { force: true }).catch(() => { });
         let fallbackShown = false;
         const showFallback = (error) => {
             if (fallbackShown) return;
@@ -2281,6 +2367,8 @@ async function handleViewDeparture() {
         child.unref();
         return;
     } catch (error) {
+        if (child?.pid) await stopDetailsLauncher(child.pid);
+        await rm(DEPARTURE_DETAILS_LAUNCH_FILE, { force: true }).catch(() => { });
         try {
             console.error(`[TabuleSprZel] failed to open departure details: ${describeDepartureDetailsError(error)}`);
         } catch { }
@@ -2291,9 +2379,8 @@ async function handleViewDeparture() {
 
 const handler = Salamander.commandHandler || Salamander.command_handler;
 
-if (handler !== "listDepartures") {
-    await syncFavoriteCommands(await getConfiguredStations());
-}
+if (!handler) await subscribeToStartup();
+await syncFavoriteCommands(await getConfiguredStations());
 
 if (handler === "viewDeparture" || handler === "configureUrl" || handler === "configure") {
     stopScraper();

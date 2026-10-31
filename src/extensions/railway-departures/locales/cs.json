@@ -10,7 +10,30 @@
     "departures": {
       "name": "Tabule odjezdů SprŽel",
       "rootItems": {
-        "departures-root": "Odjezdy"
+        "_favorites": "_favorites",
+        "A": "A",
+        "B": "B",
+        "C": "C",
+        "D": "D",
+        "E": "E",
+        "F": "F",
+        "G": "G",
+        "H": "H",
+        "CH": "CH",
+        "I": "I",
+        "J": "J",
+        "K": "K",
+        "L": "L",
+        "M": "M",
+        "N": "N",
+        "O": "O",
+        "P": "P",
+        "R": "R",
+        "S": "S",
+        "T": "T",
+        "U": "U",
+        "V": "V",
+        "Z": "Z"
       },
       "columns": {
         "train": { "name": "Vlak", "description": "Název nebo číslo vlaku" },
