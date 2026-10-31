@@ -15,6 +15,15 @@ let window = null;
 let allowWindowClose = true;
 let cleanupStarted = false;
 
+const closeConfigurationWindow = () => {
+    allowWindowClose = true;
+    setTimeout(() => {
+        try {
+            if (window && !window.isDestroyed()) window.close({ force: true });
+        } catch { }
+    }, 50);
+};
+
 const cleanup = async () => {
     if (cleanupStarted) return;
     cleanupStarted = true;
@@ -69,17 +78,23 @@ const startCloseServer = () => new Promise((resolve, reject) => {
                                     .map((url) => url.trim())
                                 : []
                         )];
+                        const id = randomUUID();
                         await writeSelectionAtomically(favoriteSelectionPath, {
                             version: 1,
+                            id,
                             favorites
                         });
+                        const payload = JSON.stringify({ ok: true });
                         response.writeHead(200, {
                             "content-type": "application/json; charset=utf-8",
+                            "content-length": Buffer.byteLength(payload),
+                            "connection": "close",
                             "Access-Control-Allow-Origin": "*",
                             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
                             "Access-Control-Allow-Headers": "content-type"
                         });
-                        response.end(JSON.stringify({ ok: true }));
+                        response.end(payload);
+                        closeConfigurationWindow();
                     } catch (error) {
                         response.writeHead(400, {
                             "content-type": "application/json; charset=utf-8",

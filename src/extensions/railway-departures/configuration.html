@@ -83,10 +83,9 @@ save.addEventListener("click", async () => {
         });
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || "save failed");
-        status.textContent = "__CONFIG_SAVED__";
+        fetch(closeEndpoint).catch(() => {});
     } catch {
         status.textContent = "__CONFIG_SAVE_FAILED__";
-    } finally {
         save.disabled = false;
     }
 });

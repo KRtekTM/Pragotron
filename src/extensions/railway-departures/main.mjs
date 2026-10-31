@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { join, dirname } from "node:path";
@@ -1172,24 +1172,32 @@ async function getConfiguredUrls() {
     return (await getConfiguredStations()).map((station) => station.url);
 }
 
+const favoritesMatch = (stations, favorites) => stations.every((station) =>
+    (station.favorite === true) === favorites.has(station.url));
+
+const withFavoriteSelection = (stations, favorites) => Object.freeze(stations.map((station) => Object.freeze({
+    ...station,
+    favorite: favorites.has(station.url)
+})));
+
 async function getConfiguredStations() {
-    if (configuredStationsSnapshot) return configuredStationsSnapshot;
-    if (!configuredStationsPromise) {
-        configuredStationsPromise = readConfigFile().then(async (config) => {
-            const stations = configuredStationsForConfig(config);
-            const storedFavorites = await readStoredFavoriteUrls();
-            if (!storedFavorites) return stations;
-            return Object.freeze(stations.map((station) => Object.freeze({
-                ...station,
-                favorite: storedFavorites.has(station.url)
-            })));
-        }).then((stations) => {
-            configuredStationsSnapshot = Object.freeze(stations);
-            stationGroupsSnapshot = stationGroupSnapshotFor(configuredStationsSnapshot);
-            return configuredStationsSnapshot;
-        });
+    if (!configuredStationsSnapshot) {
+        if (!configuredStationsPromise) {
+            configuredStationsPromise = readConfigFile().then((config) => {
+                configuredStationsSnapshot = Object.freeze(configuredStationsForConfig(config));
+                return configuredStationsSnapshot;
+            });
+        }
+        await configuredStationsPromise;
     }
-    return configuredStationsPromise;
+    const favorites = await resolveFavoriteUrls();
+    if (favorites && !favoritesMatch(configuredStationsSnapshot, favorites)) {
+        configuredStationsSnapshot = withFavoriteSelection(configuredStationsSnapshot, favorites);
+        stationGroupsSnapshot = stationGroupSnapshotFor(configuredStationsSnapshot);
+    } else if (!stationGroupsSnapshot) {
+        stationGroupsSnapshot = stationGroupSnapshotFor(configuredStationsSnapshot);
+    }
+    return configuredStationsSnapshot;
 }
 
 async function readStoredFavoriteUrls() {
@@ -1306,7 +1314,14 @@ const savePreparedStationGroupSnapshot = async (configuredStations) => {
             stations: configuredStations.map(({ url, name, favorite }) => ({ url, name, favorite })),
             itemsByGroupId: Object.fromEntries(snapshot.itemsByGroupId)
         }), "utf8");
-        await rename(temporaryPath, STATION_GROUP_SNAPSHOT_FILE);
+        try {
+            await rename(temporaryPath, STATION_GROUP_SNAPSHOT_FILE);
+        } catch (error) {
+            // Windows does not replace an existing file with rename().
+            if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
+            await rm(STATION_GROUP_SNAPSHOT_FILE, { force: true });
+            await rename(temporaryPath, STATION_GROUP_SNAPSHOT_FILE);
+        }
     } catch {
         await rm(temporaryPath, { force: true }).catch(() => { });
     }
@@ -1324,12 +1339,9 @@ const loadPreparedStationGroupSnapshot = async () => {
         ) return null;
         let configuredStations = configuredStationsForConfig({ urls: prepared.stations });
         if (configuredStations.length !== prepared.stations.length) return null;
-        const storedFavorites = await readStoredFavoriteUrls();
+        const storedFavorites = await resolveFavoriteUrls();
         if (storedFavorites) {
-            configuredStations = Object.freeze(configuredStations.map((station) => Object.freeze({
-                ...station,
-                favorite: storedFavorites.has(station.url)
-            })));
+            configuredStations = withFavoriteSelection(configuredStations, storedFavorites);
         }
 
         const preparedItemsByGroupId = new Map();
@@ -1355,6 +1367,9 @@ const loadPreparedStationGroupSnapshot = async () => {
             if (normalizedItems.some((item) => !item)) return null;
             preparedItemsByGroupId.set(groupId, Object.freeze(normalizedItems));
         }
+        // Favorite membership follows the station flags above. The cached item
+        // list was built from an older selection and would hide a storage update.
+        preparedItemsByGroupId.delete("_favorites");
 
         configuredStationsSnapshot = Object.freeze(configuredStations);
         stationGroupsSnapshot = stationGroupSnapshotFor(
@@ -1435,40 +1450,194 @@ const syncFavoriteCommands = (configuredStations) => {
     return update;
 };
 
-const commitFavoriteSelection = async () => {
-    let parsed;
+const FAVORITE_SELECTION_PROCESSING_FILE = `${FAVORITE_SELECTION_FILE}.processing`;
+const FAVORITE_SELECTION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const favoriteSelectionResultPath = (id) => join(
+    dirname(FAVORITE_SELECTION_FILE),
+    `favorite-selection.${id}.ok`
+);
+
+const favoriteUrlSet = (value) => {
+    if (!Array.isArray(value) || value.some((url) => typeof url !== "string")) return null;
+    return new Set(value.map((url) => url.trim()).filter(Boolean));
+};
+
+const readPendingFavoriteUrls = async () => {
     try {
-        parsed = JSON.parse(await readFile(FAVORITE_SELECTION_FILE, "utf8"));
+        const parsed = JSON.parse(await readFile(FAVORITE_SELECTION_FILE, "utf8"));
+        if (parsed?.version !== 1) return null;
+        return favoriteUrlSet(parsed.favorites);
+    } catch {
+        return null;
+    }
+};
+
+// The dialog file is the newest selection until storage accepts it.
+const resolveFavoriteUrls = async () => {
+    const pending = await readPendingFavoriteUrls();
+    if (pending) return pending;
+    return readStoredFavoriteUrls();
+};
+
+const writeFavoriteSelectionResult = async (id, result) => {
+    if (!FAVORITE_SELECTION_ID_PATTERN.test(id)) return;
+    const path = favoriteSelectionResultPath(id);
+    const temporaryPath = `${path}.${randomUUID()}.tmp`;
+    try {
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(temporaryPath, JSON.stringify(result), "utf8");
+        try {
+            await rename(temporaryPath, path);
+        } catch (error) {
+            if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
+            await rm(path, { force: true });
+            await rename(temporaryPath, path);
+        }
+    } catch {
+        // The dialog reports failure if this acknowledgement never appears.
+    } finally {
+        await rm(temporaryPath, { force: true }).catch(() => { });
+    }
+};
+
+const claimFavoriteSelection = async () => {
+    try {
+        await access(FAVORITE_SELECTION_PROCESSING_FILE);
+        return true;
+    } catch {
+        // No claim is in progress.
+    }
+    try {
+        await rename(FAVORITE_SELECTION_FILE, FAVORITE_SELECTION_PROCESSING_FILE);
+        return true;
     } catch {
         return false;
     }
-    if (
-        parsed?.version !== 1
-        || !Array.isArray(parsed.favorites)
-        || parsed.favorites.some((url) => typeof url !== "string")
-    ) return false;
+};
 
-    const favorites = [...new Set(parsed.favorites.map((url) => url.trim()).filter(Boolean))];
-    const stored = await Salamander.storage.set(
-        FAVORITE_STATIONS_STORAGE_KEY,
-        JSON.stringify(favorites)
-    );
-    if (stored === false) return false;
-    const confirmedFavorites = await readStoredFavoriteUrls();
-    if (
-        !confirmedFavorites
-        || confirmedFavorites.size !== favorites.length
-        || favorites.some((url) => !confirmedFavorites.has(url))
-    ) return false;
+const restoreFavoriteSelection = async () => {
+    try {
+        await access(FAVORITE_SELECTION_FILE);
+        // A newer save already replaced the selection. Drop the failed claim.
+        await rm(FAVORITE_SELECTION_PROCESSING_FILE, { force: true });
+    } catch {
+        try {
+            await rename(FAVORITE_SELECTION_PROCESSING_FILE, FAVORITE_SELECTION_FILE);
+        } catch {
+            await rm(FAVORITE_SELECTION_PROCESSING_FILE, { force: true }).catch(() => { });
+        }
+    }
+};
 
-    await rm(FAVORITE_SELECTION_FILE, { force: true }).catch(() => { });
+const clearStaleSelectionResults = async () => {
+    let names = [];
+    try {
+        names = await readdir(DEPARTURE_RUNTIME_DIR);
+    } catch {
+        return;
+    }
+    const staleBefore = Date.now() - 60_000;
+    await Promise.all(names.map(async (name) => {
+        if (!/^favorite-selection\.[0-9a-f-]{36}\.ok$/i.test(name)) return;
+        const path = join(DEPARTURE_RUNTIME_DIR, name);
+        try {
+            const info = await stat(path);
+            if (info.mtimeMs <= staleBefore) await rm(path, { force: true });
+        } catch { }
+    }));
+};
+
+let favoriteSelectionRetryAt = 0;
+let favoriteSelectionCommit = Promise.resolve();
+
+const publishStoredFavorites = async (storedAny) => {
+    if (!storedAny) return null;
+    try {
+        await publishFavoriteSelection();
+    } catch { }
+    return true;
+};
+
+const commitFavoriteSelectionNow = async () => {
+    if (Date.now() < favoriteSelectionRetryAt) return false;
+    let storedAny = false;
+
+    for (;;) {
+        if (!(await claimFavoriteSelection())) return publishStoredFavorites(storedAny);
+
+        let parsed;
+        let raw;
+        try {
+            raw = await readFile(FAVORITE_SELECTION_PROCESSING_FILE, "utf8");
+        } catch (error) {
+            if (error?.code === "ENOENT") return publishStoredFavorites(storedAny);
+            favoriteSelectionRetryAt = Date.now() + 1000;
+            await publishStoredFavorites(storedAny);
+            return false;
+        }
+        try {
+            parsed = JSON.parse(raw);
+        } catch {
+            await rm(FAVORITE_SELECTION_PROCESSING_FILE, { force: true }).catch(() => { });
+            continue;
+        }
+        const favorites = parsed?.version === 1 ? favoriteUrlSet(parsed.favorites) : null;
+        if (!favorites) {
+            if (typeof parsed?.id === "string") {
+                await writeFavoriteSelectionResult(parsed.id, {
+                    ok: false,
+                    error: "The favorite selection is invalid."
+                });
+            }
+            await rm(FAVORITE_SELECTION_PROCESSING_FILE, { force: true }).catch(() => { });
+            continue;
+        }
+
+        const favoriteList = [...favorites];
+        try {
+            await Salamander.storage.set(
+                FAVORITE_STATIONS_STORAGE_KEY,
+                JSON.stringify(favoriteList)
+            );
+            const confirmedFavorites = await readStoredFavoriteUrls();
+            const confirmed = confirmedFavorites
+                && confirmedFavorites.size === favoriteList.length
+                && favoriteList.every((url) => confirmedFavorites.has(url));
+            if (!confirmed) throw new Error("Salamander storage did not keep the favorite selection.");
+        } catch {
+            favoriteSelectionRetryAt = Date.now() + 1000;
+            await restoreFavoriteSelection();
+            await publishStoredFavorites(storedAny);
+            return false;
+        }
+
+        favoriteSelectionRetryAt = 0;
+        if (typeof parsed.id === "string") {
+            await writeFavoriteSelectionResult(parsed.id, { ok: true });
+        }
+        await rm(FAVORITE_SELECTION_PROCESSING_FILE, { force: true }).catch(() => { });
+        storedAny = true;
+    }
+};
+
+const publishFavoriteSelection = async () => {
     await rm(STATION_GROUP_SNAPSHOT_FILE, { force: true }).catch(() => { });
     configuredStationsSnapshot = null;
     configuredStationsPromise = null;
     stationGroupsSnapshot = null;
     const configuredStations = await getConfiguredStations();
     await savePreparedStationGroupSnapshot(configuredStations);
-    return true;
+    await syncFavoriteCommands(configuredStations);
+};
+
+// null: nothing pending, true: stored, false: storage rejected the selection.
+const commitFavoriteSelection = () => {
+    const run = favoriteSelectionCommit
+        .catch(() => { })
+        .then(commitFavoriteSelectionNow);
+    favoriteSelectionCommit = run;
+    return run;
 };
 
 const subscribeToStartup = async () => {
@@ -1580,8 +1749,16 @@ async function handleConfigureUrl(strings) {
     }
 
     const config = await readConfigFile();
+    await commitFavoriteSelection();
     await loadPreparedStationGroupSnapshot();
-    const currentStations = await getConfiguredStations();
+    let currentStations = await getConfiguredStations();
+    const pendingFavorites = await readPendingFavoriteUrls();
+    if (pendingFavorites) {
+        currentStations = currentStations.map((station) => ({
+            ...station,
+            favorite: pendingFavorites.has(station.url)
+        }));
+    }
     const configuredRefresh = Number(config.refreshMs);
     const currentRefresh = Number.isFinite(configuredRefresh) && configuredRefresh > 0
         ? configuredRefresh
@@ -1634,7 +1811,6 @@ async function handleConfigureUrl(strings) {
         }).reduce((html, [placeholder, value]) => html.replaceAll(placeholder, String(value)), configurationTemplate);
         await writeFile(CONFIGURATION_DIALOG_HTML_FILE, configHtml, "utf8");
         await rm(CONFIGURATION_DIALOG_WEBVIEW_DATA, { recursive: true, force: true }).catch(() => { });
-        await rm(FAVORITE_SELECTION_FILE, { force: true }).catch(() => { });
         const child = spawn(process.execPath, [
                 CONFIGURATION_DIALOG_LAUNCHER,
                 CONFIGURATION_DIALOG_HTML_FILE,
@@ -1646,54 +1822,63 @@ async function handleConfigureUrl(strings) {
             windowsHide: true,
             stdio: "ignore"
         });
-        const dialogResult = await new Promise((resolve, reject) => {
-            let spawned = false;
-            let settled = false;
-            const finish = (callback, value) => {
-                if (settled) return;
-                settled = true;
-                child.removeListener("spawn", onSpawn);
-                child.removeListener("error", onError);
-                child.removeListener("exit", onExit);
-                callback(value);
-            };
-            const onSpawn = () => {
-                spawned = true;
-                dialogStarted = true;
-            };
-            const onError = (error) => {
-                if (!spawned) {
-                    finish(reject, error);
-                } else {
-                    finish(resolve, { error });
-                }
-            };
-            const onExit = (code, signal) => {
-                if (!spawned) {
-                    finish(reject, new Error("The configuration dialog exited before it started."));
-                } else {
-                    finish(resolve, { code, signal });
-                }
-            };
-            child.once("spawn", onSpawn);
-            child.once("error", onError);
-            child.once("exit", onExit);
-        });
-        if (dialogResult?.error || dialogResult?.code !== 0) {
-            try {
-                console.error(`[TabuleSprZel] configuration dialog exited with ${dialogResult?.error?.message || dialogResult?.signal || `code ${dialogResult?.code}`}`);
-            } catch { }
-        }
         try {
-            if (!(await commitFavoriteSelection())) {
+            const dialogResult = await new Promise((resolve, reject) => {
+                let spawned = false;
+                let settled = false;
+                const finish = (callback, value) => {
+                    if (settled) return;
+                    settled = true;
+                    child.removeListener("spawn", onSpawn);
+                    child.removeListener("error", onError);
+                    child.removeListener("exit", onExit);
+                    callback(value);
+                };
+                const onSpawn = () => {
+                    spawned = true;
+                    dialogStarted = true;
+                };
+                const onError = (error) => {
+                    if (!spawned) {
+                        finish(reject, error);
+                    } else {
+                        finish(resolve, { error });
+                    }
+                };
+                const onExit = (code, signal) => {
+                    if (!spawned) {
+                        finish(reject, new Error("The configuration dialog exited before it started."));
+                    } else {
+                        finish(resolve, { code, signal });
+                    }
+                };
+                child.once("spawn", onSpawn);
+                child.once("error", onError);
+                child.once("exit", onExit);
+            });
+            if (dialogResult?.error || dialogResult?.code !== 0) {
                 try {
-                    console.error("[TabuleSprZel] configuration selection was not committed");
+                    console.error(`[TabuleSprZel] configuration dialog exited with ${dialogResult?.error?.message || dialogResult?.signal || `code ${dialogResult?.code}`}`);
                 } catch { }
             }
-        } catch (error) {
-            // The dialog already completed; do not reopen the legacy fallback UI.
+        } finally {
             try {
-                console.error(`[TabuleSprZel] failed to commit configuration: ${error instanceof Error ? error.message : String(error)}`);
+                if ((await commitFavoriteSelection()) === false) {
+                    try {
+                        console.error("[TabuleSprZel] configuration selection was not committed");
+                    } catch { }
+                }
+            } catch (error) {
+                // The dialog already completed; do not reopen the legacy fallback UI.
+                try {
+                    console.error(`[TabuleSprZel] failed to commit configuration: ${error instanceof Error ? error.message : String(error)}`);
+                } catch { }
+            }
+            configuredStationsSnapshot = null;
+            configuredStationsPromise = null;
+            stationGroupsSnapshot = null;
+            try {
+                await syncFavoriteCommands(await getConfiguredStations());
             } catch { }
         }
         return;
@@ -2635,6 +2820,12 @@ async function handleViewDeparture() {
 
 const handler = Salamander.commandHandler || Salamander.command_handler;
 
+await clearStaleSelectionResults();
+await commitFavoriteSelection();
+configuredStationsSnapshot = null;
+configuredStationsPromise = null;
+stationGroupsSnapshot = null;
+
 if (!handler) {
     await subscribeToStartup();
     const configuredStations = await getConfiguredStations();
@@ -2648,6 +2839,8 @@ if (handler === "viewDeparture" || handler === "configureUrl" || handler === "co
 
 if (handler === "listDepartures") {
     await handleListDepartures();
+    await loadPreparedStationGroupSnapshot();
+    await syncFavoriteCommands(await getConfiguredStations());
 } else if (handler === "openDepartures" || handler === "open") {
     await handleOpenDepartures();
 } else if (handler === "viewDeparture") {
